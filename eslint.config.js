@@ -5,7 +5,13 @@ import tseslint from "typescript-eslint";
 
 export default tseslint.config(
   {
-    ignores: ["coverage", "dist", "playwright-report", "test-results"],
+    ignores: [
+      ".worktrees/**",
+      "coverage",
+      "dist",
+      "playwright-report",
+      "test-results",
+    ],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
