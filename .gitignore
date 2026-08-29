@@ -1,0 +1,5 @@
+# Private, local-only research, decisions, and execution evidence.
+.docs/
+
+# Issue-isolated linked worktrees.
+.worktrees/
