@@ -1,5 +1,12 @@
 # Private, local-only research, decisions, and execution evidence.
 .docs/
 
+# Frontend dependencies and generated verification output.
+node_modules/
+dist/
+coverage/
+playwright-report/
+test-results/
+
 # Issue-isolated linked worktrees.
 .worktrees/
