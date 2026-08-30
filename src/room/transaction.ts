@@ -35,10 +35,15 @@ export type RoomChange =
   | { type: "edit"; operations: RoomOperation[] }
   | { type: "replace"; room: WimyRoomV1 };
 
+export const LOCAL_CATALOG_TRANSACTION = Symbol(
+  "wimy.localCatalogTransaction",
+);
+
 export type RoomTransactionRequest = {
   expectedRevision: number;
   origin: TransactionOrigin;
   change: RoomChange;
+  readonly [LOCAL_CATALOG_TRANSACTION]?: true;
 };
 
 export type TransactionFailureCode =
@@ -155,6 +160,12 @@ export function applyRoomTransaction(
   request: RoomTransactionRequest,
   dependencies: TransactionDependencies,
 ): RoomTransactionOutcome {
+  if (!Number.isSafeInteger(state.revision) || state.revision < 1) {
+    throw new RangeError(
+      "Runtime room revision must be a positive safe integer",
+    );
+  }
+
   if (request.expectedRevision !== state.revision) {
     return rejectTransaction(
       state,
@@ -162,6 +173,16 @@ export function applyRoomTransaction(
       dependencies,
       "REVISION_CONFLICT",
       `Expected revision ${request.expectedRevision}, but the room is at revision ${state.revision}`,
+    );
+  }
+
+  if (state.revision === Number.MAX_SAFE_INTEGER) {
+    return rejectTransaction(
+      state,
+      request,
+      dependencies,
+      "INVALID_DOCUMENT",
+      `Room revision cannot advance beyond ${Number.MAX_SAFE_INTEGER}`,
     );
   }
 

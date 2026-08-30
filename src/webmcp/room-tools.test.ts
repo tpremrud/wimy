@@ -1,18 +1,27 @@
 import { describe, expect, it, vi } from "vitest";
+import { resolveCatalogProduct } from "../room/catalog";
 import { WimyRoomV1Schema } from "../room/document";
 import { createRoomStore, type RoomStore } from "../room/store";
 import { getTemplate } from "../room/templates";
-import { TEST_TRANSACTION_DEPENDENCIES } from "../room/transaction";
+import {
+  applyRoomTransaction,
+  TEST_TRANSACTION_DEPENDENCIES,
+} from "../room/transaction";
 import {
   createRoomToolDefinitions,
   registerRoomTools,
 } from "./room-tools";
 
+const CATALOG_TRANSACTION_DEPENDENCIES = {
+  ...TEST_TRANSACTION_DEPENDENCIES,
+  resolveProduct: resolveCatalogProduct,
+};
+
 const execute = async (
   toolName: string,
   store = createRoomStore(
     getTemplate("living-room"),
-    TEST_TRANSACTION_DEPENDENCIES,
+    CATALOG_TRANSACTION_DEPENDENCIES,
   ),
   input: unknown = {},
 ) => {
@@ -36,6 +45,8 @@ const createTrackingStore = () => {
     getInitialState: () => ({ ...source.getInitialState(), transact }),
     getState: () => ({ ...source.getState(), transact }),
     subscribe: source.subscribe,
+    readCatalog: source.readCatalog,
+    resolveProduct: source.resolveProduct,
   };
 
   return { store, transact };
@@ -85,6 +96,27 @@ const createMaximumWarningRoom = () =>
 const jsonByteLength = (value: unknown) =>
   new TextEncoder().encode(JSON.stringify(value)).byteLength;
 
+type AdvertisedNumericSchema = {
+  type: "integer" | "number";
+  minimum?: number;
+  maximum?: number;
+  exclusiveMinimum?: number;
+  multipleOf?: number;
+};
+
+const advertisedNumericSchemaAccepts = (
+  schema: AdvertisedNumericSchema,
+  value: number,
+) =>
+  Number.isFinite(value) &&
+  (schema.type !== "integer" || Number.isInteger(value)) &&
+  (schema.minimum === undefined || value >= schema.minimum) &&
+  (schema.maximum === undefined || value <= schema.maximum) &&
+  (schema.exclusiveMinimum === undefined ||
+    value > schema.exclusiveMinimum) &&
+  (schema.multipleOf === undefined ||
+    Number.isInteger(value / schema.multipleOf));
+
 type RegisterBehavior = (
   tool: WebMCP.ModelContextTool,
   options?: WebMCP.ModelContextRegisterToolOptions,
@@ -117,7 +149,7 @@ class FakeModelContext extends EventTarget implements WebMCP.ModelContext {
 }
 
 describe("createRoomToolDefinitions", () => {
-  it("publishes the exact two-tool identity contract", () => {
+  it("publishes the exact three-tool identity contract", () => {
     const definitions = createRoomToolDefinitions(
       createRoomStore(
         getTemplate("living-room"),
@@ -139,18 +171,40 @@ describe("createRoomToolDefinitions", () => {
           "Read the current Wimy room revision, geometry, placed items, and layout warnings.",
       },
       {
+        name: "find_furniture",
+        title: "Find furniture",
+        description:
+          "Find deterministic geometric fits in Wimy's local fictional catalog without changing the room; suggestions are not aesthetic guarantees.",
+      },
+      {
         name: "apply_room_edit",
         title: "Apply room edit",
         description:
-          "Atomically transform or remove placed items at an exact room revision.",
+          "Atomically add, transform, or remove placed items at an exact room revision.",
       },
     ]);
   });
 
   it("marks projected room inspection as untrusted read-only content without commerce URLs", async () => {
     const room = getTemplate("living-room");
+    room.name = [
+      "<b>Imported Living Room</b>",
+      "https://room.invalid/private",
+      "javascript:alert(1)",
+      "data:text/html,private",
+      "ftp://files.invalid/private",
+      "mailto:owner@example.invalid",
+      "//protocol-relative.invalid/private",
+    ].join(" ");
     const firstItem = room.items[0];
     if (!firstItem) throw new Error("expected a living-room item");
+    firstItem.snapshot.name = [
+      '<img src="https://image.invalid/pixel">',
+      "Imported Sofa",
+      "https://name.invalid/private",
+      "file:///tmp/private",
+      "tel:+15555550100",
+    ].join(" ");
     firstItem.snapshot.commerce = {
       price: { amount: 699, currency: "USD" },
       productUrl: "https://retailer.example/private-product",
@@ -177,7 +231,7 @@ describe("createRoomToolDefinitions", () => {
       revision: 1,
       units: "meters",
       room: {
-        name: "Living Room",
+        name: "Imported Living Room",
         dimensions: { width: 4.8, depth: 4.2, height: 2.7 },
         openings: expect.arrayContaining([
           expect.objectContaining({
@@ -189,7 +243,7 @@ describe("createRoomToolDefinitions", () => {
         items: expect.arrayContaining([
           expect.objectContaining({
             id: "item_living_sofa",
-            name: "Linen Apartment Sofa",
+            name: "Imported Sofa",
             category: "sofa",
             dimensions: { width: 1.8, depth: 0.85, height: 0.8 },
             pose: { x: 2.4, y: 0.55, rotationDeg: 0 },
@@ -206,6 +260,9 @@ describe("createRoomToolDefinitions", () => {
       warningCount: 0,
       warningsTruncated: false,
     });
+    expect(JSON.stringify(output)).not.toMatch(
+      /(?:https?:|javascript:|data:|ftp:|mailto:|file:|tel:|\/\/[a-z0-9]|<\/?[a-z])/iu,
+    );
     expect(JSON.stringify(output)).not.toContain("retailer.example");
     expect(output).not.toHaveProperty("room.items.0.commerce");
   });
@@ -234,6 +291,202 @@ describe("createRoomToolDefinitions", () => {
     expect(JSON.parse(JSON.stringify(output))).toEqual(output);
   });
 
+  it("warns unless the local resolver confirms both catalog and product identity", async () => {
+    const room = getTemplate("living-room");
+    const exactCatalogItem = room.items[0];
+    const mismatchedCatalogItem = room.items[1];
+    if (!exactCatalogItem || !mismatchedCatalogItem) {
+      throw new Error("expected two living-room items");
+    }
+    exactCatalogItem.catalogRef = {
+      catalogId: "wimy-demo-v1",
+      productId: "ember-nest-chair",
+    };
+    mismatchedCatalogItem.catalogRef = {
+      catalogId: "https://imported.invalid/catalog",
+      productId: "ember-nest-chair",
+    };
+    const store = createRoomStore(room, CATALOG_TRANSACTION_DEPENDENCIES);
+
+    const output = (await execute("inspect_room", store)) as {
+      warnings: Array<{ code: string; itemIds: string[] }>;
+      warningCount: number;
+    };
+
+    expect(output.warningCount).toBe(1);
+    expect(output.warnings).toEqual([
+      {
+        code: "CATALOG_UNAVAILABLE",
+        message: `${mismatchedCatalogItem.id} references an unavailable catalog item`,
+        itemIds: [mismatchedCatalogItem.id],
+      },
+    ]);
+    expect(JSON.stringify(output)).not.toContain("imported.invalid");
+  });
+
+  it("removes punctuation-adjacent protocol-relative URLs from portable text", async () => {
+    const room = getTemplate("living-room");
+    room.name = 'Imported Room (//host.invalid/private) "//quoted.invalid/path"';
+    const store = createRoomStore(room, TEST_TRANSACTION_DEPENDENCIES);
+
+    const output = await execute("inspect_room", store);
+
+    expect(JSON.stringify(output)).not.toMatch(
+      /\/\/(?:host|quoted)\.invalid/iu,
+    );
+  });
+
+  it("removes spaced scheme payloads while preserving ordinary colon prose", async () => {
+    const template = getTemplate("living-room");
+    const spacedItemThreats = [
+      "data: text/plain,prompt custom-agent: private custom: private",
+      "ftp: //files.invalid/private",
+      "mailto: owner@example.invalid",
+      "file: ///tmp/private",
+      "tel: +15555550100",
+    ] as const;
+    const room = WimyRoomV1Schema.parse({
+      ...template,
+      name: [
+        "Living room: warm.",
+        "(javascript: alert(1))",
+        "[https: //host.invalid]",
+      ].join(" "),
+      items: template.items.map((item, index) => ({
+        ...item,
+        snapshot: {
+          ...item.snapshot,
+          name: `Item note: safe. ${spacedItemThreats[index] ?? "blob: private"}`,
+        },
+      })),
+    });
+    const store = createRoomStore(room, TEST_TRANSACTION_DEPENDENCIES);
+
+    const output = (await execute("inspect_room", store)) as {
+      room: { name: string; items: Array<{ id: string; name: string }> };
+    };
+    expect(output.room.name).toContain("Living room — warm.");
+    expect(
+      output.room.items.every(({ name }) => name.includes("Item note — safe.")),
+    ).toBe(true);
+    expect(JSON.stringify(output)).not.toMatch(
+      /(?:javascript|https|data|custom(?:-agent)?|ftp|mailto|file|tel)\s*:/iu,
+    );
+    expect(JSON.stringify(output)).not.toContain("host.invalid");
+    expect(JSON.stringify(output)).not.toContain("files.invalid");
+    expect(JSON.stringify(output)).not.toContain("owner@example.invalid");
+    expect(JSON.stringify(output)).not.toContain("/tmp/private");
+    expect(JSON.stringify(output)).not.toContain("text/plain,prompt");
+  });
+
+  it("removes lower- and upper-case arbitrary schemes and neutralizes a bounded prose label", async () => {
+    const room = getTemplate("living-room");
+    room.name = "Visit custom: private";
+    const firstItem = room.items[0];
+    const secondItem = room.items[1];
+    if (!firstItem || !secondItem) {
+      throw new Error("expected two living-room items");
+    }
+    firstItem.snapshot.name = "Status: ready";
+    secondItem.snapshot.name = "Visit Custom: private";
+    const store = createRoomStore(room, TEST_TRANSACTION_DEPENDENCIES);
+
+    const output = (await execute("inspect_room", store)) as {
+      room: { name: string; items: Array<{ id: string; name: string }> };
+    };
+
+    expect(output.room.name).toBe("Visit");
+    expect(
+      output.room.items.find(({ id }) => id === firstItem.id)?.name,
+    ).toBe("Status — ready");
+    expect(
+      output.room.items.find(({ id }) => id === secondItem.id)?.name,
+    ).toBe("Visit");
+    expect(JSON.stringify(output)).not.toMatch(/custom\s*:/iu);
+    expect(JSON.stringify(output)).not.toContain("private");
+  });
+
+  it("rewrites every allowlisted prose label so projected text cannot parse as a URL", async () => {
+    const safeLabels = [
+      "category",
+      "color",
+      "depth",
+      "height",
+      "item",
+      "name",
+      "note",
+      "price",
+      "revision",
+      "room",
+      "status",
+      "style",
+      "width",
+    ] as const;
+
+    for (const label of safeLabels.flatMap((value) => [
+      value,
+      value.toUpperCase(),
+    ])) {
+      const room = getTemplate("living-room");
+      room.name = `${label}: ready`;
+      const store = createRoomStore(room, TEST_TRANSACTION_DEPENDENCIES);
+
+      const output = (await execute("inspect_room", store)) as {
+        room: { name: string };
+      };
+
+      expect(output.room.name).toBe(`${label} — ready`);
+      expect(() => new URL(output.room.name)).toThrow();
+
+      room.name = `${label}:`;
+      const schemeOnlyOutput = (await execute(
+        "inspect_room",
+        createRoomStore(room, TEST_TRANSACTION_DEPENDENCIES),
+      )) as { room: { name: string } };
+      expect(schemeOnlyOutput.room.name).toBe("[untrusted text omitted]");
+      expect(() => new URL(schemeOnlyOutput.room.name)).toThrow();
+    }
+  });
+
+  it("removes known dangerous scheme-only tokens from imported room and item names", async () => {
+    const template = getTemplate("living-room");
+    const schemeOnlyTokens = [
+      "javascript:",
+      "data:",
+      "ftp:",
+      "mailto:",
+      "file:",
+      "tel:",
+    ] as const;
+    const room = WimyRoomV1Schema.parse({
+      ...template,
+      name: `Room note: calm. ${schemeOnlyTokens[0]}`,
+      items: template.items.map((item, index) => ({
+        ...item,
+        snapshot: {
+          ...item.snapshot,
+          name:
+            index === 0
+              ? `Item note: safe. custom: | ${schemeOnlyTokens[1]}`
+              : `Item note: safe. ${schemeOnlyTokens[index + 1] ?? "blob:"}`,
+        },
+      })),
+    });
+    const store = createRoomStore(room, TEST_TRANSACTION_DEPENDENCIES);
+
+    const output = (await execute("inspect_room", store)) as {
+      room: { name: string; items: Array<{ name: string }> };
+    };
+
+    expect(output.room.name).toContain("Room note — calm.");
+    expect(
+      output.room.items.every(({ name }) => name.includes("Item note — safe.")),
+    ).toBe(true);
+    expect(JSON.stringify(output)).not.toMatch(
+      /(?:javascript|data|ftp|mailto|file|tel|blob|custom)\s*:/iu,
+    );
+  });
+
   it("rejects inspect input extensions instead of exposing another read surface", async () => {
     await expect(
       execute("inspect_room", undefined, {
@@ -241,6 +494,623 @@ describe("createRoomToolDefinitions", () => {
       }),
     ).rejects.toThrow("inspect_room input must be an empty object");
   });
+
+  it("finds deterministic local furniture through the exact read-only contract without mutation", async () => {
+    const store = createRoomStore(
+      getTemplate("living-room"),
+      CATALOG_TRANSACTION_DEPENDENCIES,
+    );
+    const before = store.getState();
+    const find = createRoomToolDefinitions(store).find(
+      ({ name }) => name === "find_furniture",
+    );
+    if (!find) throw new Error("find_furniture was not defined");
+
+    expect(find.annotations).toEqual({
+      readOnlyHint: true,
+      untrustedContentHint: false,
+    });
+    expect(find.inputSchema).toEqual({
+      type: "object",
+      properties: {
+        category: {
+          enum: [
+            "bed",
+            "desk",
+            "chair",
+            "sofa",
+            "dresser",
+            "rug",
+            "table",
+            "plant",
+            "generic",
+          ],
+        },
+        styleTags: {
+          type: "array",
+          maxItems: 8,
+          items: {
+            type: "string",
+            minLength: 1,
+            maxLength: 80,
+            pattern:
+              "^(?:\\S|\\S[^\\u0000-\\u001F\\u007F-\\u009F]*\\S)$",
+          },
+        },
+        maxPrice: { type: "number", minimum: 0 },
+        maxWidth: {
+          type: "number",
+          exclusiveMinimum: 0,
+        },
+        maxDepth: {
+          type: "number",
+          exclusiveMinimum: 0,
+        },
+        limit: {
+          type: "integer",
+          minimum: 1,
+          maximum: 5,
+          default: 5,
+        },
+      },
+      additionalProperties: false,
+    });
+
+    const output = await find.execute(
+      {
+        category: "chair",
+        styleTags: ["warm-modern"],
+        maxPrice: 600,
+        limit: 1,
+      },
+      { signal: new AbortController().signal },
+    );
+
+    expect(output).toEqual({
+      revision: 1,
+      units: "meters",
+      matches: [
+        {
+          catalogId: "wimy-demo-v1",
+          productId: "ember-nest-chair",
+          name: "Ember Nest Chair",
+          category: "chair",
+          dimensions: { width: 0.6, depth: 0.6, height: 0.82 },
+          styleTags: ["warm-modern", "compact"],
+          price: { amount: 499, currency: "USD" },
+          suggestedPose: { x: 0.3, y: 0.3, rotationDeg: 0 },
+        },
+      ],
+    });
+    expect(Object.keys(output as object)).toEqual([
+      "revision",
+      "units",
+      "matches",
+    ]);
+    expect(JSON.parse(JSON.stringify(output))).toEqual(output);
+    expect(jsonByteLength(output)).toBeLessThanOrEqual(128 * 1_024);
+    expect(store.getState().room).toBe(before.room);
+    expect(store.getState().revision).toBe(before.revision);
+    expect(store.getState().receipts).toBe(before.receipts);
+  });
+
+  it("defaults to at most five matches and reads a coherent fresh revision on every find", async () => {
+    const store = createRoomStore(
+      getTemplate("living-room"),
+      CATALOG_TRANSACTION_DEPENDENCIES,
+    );
+
+    const first = (await execute("find_furniture", store)) as {
+      revision: number;
+      matches: unknown[];
+    };
+    expect(first.revision).toBe(1);
+    expect(first.matches).toHaveLength(5);
+    expect(store.getState().receipts).toEqual([]);
+
+    store.getState().transact({
+      expectedRevision: 1,
+      origin: "human",
+      change: {
+        type: "edit",
+        operations: [{ type: "remove", itemId: "item_living_rug" }],
+      },
+    });
+    const receiptsAfterHumanEdit = store.getState().receipts;
+    const second = (await execute("find_furniture", store, {
+      limit: 1,
+    })) as { revision: number; matches: unknown[] };
+
+    expect(second.revision).toBe(2);
+    expect(second.matches).toHaveLength(1);
+    expect(store.getState().revision).toBe(2);
+    expect(store.getState().receipts).toBe(receiptsAfterHumanEdit);
+  });
+
+  it("does not echo unmatched query text, URLs, or HTML", async () => {
+    const output = await execute("find_furniture", undefined, {
+      styleTags: ["<b>https://imported.invalid/instruction</b>"],
+    });
+
+    expect(output).toEqual({ revision: 1, units: "meters", matches: [] });
+    expect(JSON.stringify(output)).not.toMatch(/https?:\/\/|<\/?[a-z]/iu);
+  });
+
+  it("never advertises a catalog product that the registered store cannot apply", async () => {
+    const room = getTemplate("living-room");
+    const referencedItem = room.items[0];
+    if (!referencedItem) throw new Error("expected a living-room item");
+    referencedItem.catalogRef = {
+      catalogId: "wimy-demo-v1",
+      productId: "ember-nest-chair",
+    };
+    const resolveProduct = vi.fn(() => undefined);
+    const store = createRoomStore(room, {
+      resolveProduct,
+      createItemId: () => "item_should_not_be_created",
+    });
+
+    const inspected = (await execute("inspect_room", store)) as {
+      warningCount: number;
+      warnings: Array<{ code: string; itemIds: string[] }>;
+    };
+    const found = (await execute("find_furniture", store, {
+      category: "chair",
+      limit: 1,
+    })) as { revision: number; matches: unknown[] };
+    const applied = await execute("apply_room_edit", store, {
+      expectedRevision: found.revision,
+      operations: [
+        {
+          type: "add",
+          productId: "ember-nest-chair",
+          pose: { x: 0.3, y: 0.3, rotationDeg: 0 },
+        },
+      ],
+    });
+
+    expect(inspected.warningCount).toBe(1);
+    expect(inspected.warnings).toEqual([
+      {
+        code: "CATALOG_UNAVAILABLE",
+        message: `${referencedItem.id} references an unavailable catalog item`,
+        itemIds: [referencedItem.id],
+      },
+    ]);
+    expect(found).toEqual({ revision: 1, units: "meters", matches: [] });
+    expect(applied).toMatchObject({
+      ok: false,
+      revision: 1,
+      code: "UNKNOWN_PRODUCT",
+    });
+    expect(store.getState()).toMatchObject({ revision: 1 });
+    expect(resolveProduct).toHaveBeenCalled();
+  });
+
+  it("fails closed when resolved facts diverge from the immutable local catalog", async () => {
+    const resolveProduct = (productId: string) => {
+      const resolved = resolveCatalogProduct(productId);
+      if (!resolved || productId !== "ember-nest-chair") return undefined;
+
+      return {
+        ...resolved,
+        snapshot: {
+          ...resolved.snapshot,
+          name: "Resolver-Owned Ember Chair",
+          dimensions: { width: 0.2, depth: 0.2, height: 0.5 },
+        },
+      };
+    };
+    const store = createRoomStore(getTemplate("living-room"), {
+      resolveProduct,
+      createItemId: () => "item_resolver_owned_chair",
+    });
+
+    const found = (await execute("find_furniture", store, {
+      category: "chair",
+      limit: 1,
+    })) as {
+      revision: number;
+      matches: unknown[];
+    };
+    const applied = await execute("apply_room_edit", store, {
+      expectedRevision: found.revision,
+      operations: [
+        {
+          type: "add",
+          productId: "ember-nest-chair",
+          pose: { x: 0.3, y: 0.3, rotationDeg: 0 },
+        },
+      ],
+    });
+
+    expect(found).toEqual({
+      revision: 1,
+      units: "meters",
+      matches: [],
+    });
+    expect(applied).toMatchObject({
+      ok: false,
+      revision: 1,
+      code: "UNKNOWN_PRODUCT",
+    });
+    expect(store.getState().room.items).not.toContainEqual(
+      expect.objectContaining({ id: "item_resolver_owned_chair" }),
+    );
+  });
+
+  it("keeps resolver-only products unavailable across inspect, find, and apply", async () => {
+    const canonical = resolveCatalogProduct("ember-nest-chair");
+    if (!canonical) throw new Error("expected canonical chair facts");
+    const room = getTemplate("living-room");
+    const referencedItem = room.items[0];
+    if (!referencedItem) throw new Error("expected a living-room item");
+    referencedItem.catalogRef = {
+      catalogId: "resolver-only-catalog",
+      productId: "shadow-chair",
+    };
+    const resolveProduct = (productId: string) =>
+      productId === "shadow-chair"
+        ? {
+            catalogRef: {
+              catalogId: "resolver-only-catalog",
+              productId,
+            },
+            snapshot: structuredClone(canonical.snapshot),
+          }
+        : undefined;
+    const store = createRoomStore(room, {
+      resolveProduct,
+      createItemId: () => "item_shadow_chair",
+    });
+
+    const inspected = (await execute("inspect_room", store)) as {
+      warningCount: number;
+      warnings: Array<{ code: string; itemIds: string[] }>;
+    };
+    const found = await execute("find_furniture", store, {
+      category: "chair",
+      limit: 1,
+    });
+    const applied = await execute("apply_room_edit", store, {
+      expectedRevision: 1,
+      operations: [
+        {
+          type: "add",
+          productId: "shadow-chair",
+          pose: { x: 0.3, y: 0.3, rotationDeg: 0 },
+        },
+      ],
+    });
+
+    expect(inspected.warningCount).toBe(1);
+    expect(inspected.warnings).toEqual([
+      {
+        code: "CATALOG_UNAVAILABLE",
+        message:
+          referencedItem.id + " references an unavailable catalog item",
+        itemIds: [referencedItem.id],
+      },
+    ]);
+    expect(found).toEqual({ revision: 1, units: "meters", matches: [] });
+    expect(applied).toMatchObject({
+      ok: false,
+      revision: 1,
+      code: "UNKNOWN_PRODUCT",
+    });
+    expect(store.getState().room.items).not.toContainEqual(
+      expect.objectContaining({ id: "item_shadow_chair" }),
+    );
+  });
+
+  it.each([
+    ["null", null],
+    ["an array", []],
+    ["text", "not a resolved product"],
+  ])(
+    "treats %s from the runtime resolver as unavailable instead of throwing",
+    async (_label, malformedProduct) => {
+      const room = getTemplate("living-room");
+      const referencedItem = room.items[0];
+      if (!referencedItem) throw new Error("expected a living-room item");
+      referencedItem.catalogRef = {
+        catalogId: "wimy-demo-v1",
+        productId: "ember-nest-chair",
+      };
+      const store = createRoomStore(room, {
+        resolveProduct: () => malformedProduct as never,
+        createItemId: () => "item_malformed_resolver",
+      });
+
+      await expect(execute("inspect_room", store)).resolves.toMatchObject({
+        warningCount: 1,
+        warnings: [
+          {
+            code: "CATALOG_UNAVAILABLE",
+            itemIds: [referencedItem.id],
+          },
+        ],
+      });
+      await expect(execute("find_furniture", store)).resolves.toEqual({
+        revision: 1,
+        units: "meters",
+        matches: [],
+      });
+      await expect(
+        execute("apply_room_edit", store, {
+          expectedRevision: 1,
+          operations: [
+            {
+              type: "add",
+              productId: "ember-nest-chair",
+              pose: { x: 0.3, y: 0.3, rotationDeg: 0 },
+            },
+          ],
+        }),
+      ).resolves.toMatchObject({
+        ok: false,
+        revision: 1,
+        code: "UNKNOWN_PRODUCT",
+      });
+      expect(store.getState().revision).toBe(1);
+    },
+  );
+
+  it.each([
+    ["a ninth style tag", { styleTags: Array(9).fill("warm-modern") }],
+    ["a NaN limit", { limit: Number.NaN }],
+    ["an infinite limit", { limit: Number.POSITIVE_INFINITY }],
+    ["a negative limit", { limit: -1 }],
+    ["a fractional limit", { limit: 1.5 }],
+  ])("rejects %s through runtime validation", async (_label, input) => {
+    const store = createRoomStore(
+      getTemplate("living-room"),
+      CATALOG_TRANSACTION_DEPENDENCIES,
+    );
+    const before = store.getState();
+
+    await expect(execute("find_furniture", store, input)).rejects.toThrow(
+      "find_furniture input must match the exact catalog query schema",
+    );
+    expect(store.getState().room).toBe(before.room);
+    expect(store.getState().revision).toBe(before.revision);
+    expect(store.getState().receipts).toBe(before.receipts);
+  });
+
+  it("keeps advertised coordinate acceptance aligned with canonical runtime input", async () => {
+    const definition = createRoomToolDefinitions(
+      createRoomStore(
+        getTemplate("living-room"),
+        CATALOG_TRANSACTION_DEPENDENCIES,
+      ),
+    ).find(({ name }) => name === "apply_room_edit");
+    if (!definition) throw new Error("apply_room_edit was not defined");
+    const schema = definition.inputSchema as unknown as {
+      properties: {
+        operations: {
+          items: {
+            oneOf: Array<{
+              properties: {
+                pose?: {
+                  properties: { x: AdvertisedNumericSchema };
+                };
+              };
+            }>;
+          };
+        };
+      };
+    };
+    const addCoordinate =
+      schema.properties.operations.items.oneOf[0]?.properties.pose?.properties
+        .x;
+    const transformCoordinate =
+      schema.properties.operations.items.oneOf[1]?.properties.pose?.properties
+        .x;
+    if (!addCoordinate || !transformCoordinate) {
+      throw new Error("expected advertised add and transform coordinates");
+    }
+
+    expect(addCoordinate).toEqual({ type: "number" });
+    expect(transformCoordinate).toEqual({ type: "number" });
+
+    for (const [input, canonical] of [
+      [0.30000000000000004, 0.3],
+      [Number.MIN_VALUE, 0],
+      [1e308, 1e308],
+    ] as const) {
+      const { store, transact } = createTrackingStore();
+      const output = await execute("apply_room_edit", store, {
+        expectedRevision: 1,
+        operations: [
+          {
+            type: "transform",
+            itemId: "item_living_sofa",
+            pose: { x: input },
+          },
+        ],
+      });
+
+      expect(advertisedNumericSchemaAccepts(transformCoordinate, input)).toBe(
+        true,
+      );
+      expect(output).not.toMatchObject({ code: "INVALID_DOCUMENT" });
+      expect(transact).toHaveBeenCalledTimes(1);
+      expect(transact.mock.calls[0]?.[0]).toMatchObject({
+        change: {
+          operations: [
+            {
+              type: "transform",
+              pose: { x: canonical },
+            },
+          ],
+        },
+      });
+    }
+
+    for (const input of [Number.NaN, Number.POSITIVE_INFINITY]) {
+      const { store, transact } = createTrackingStore();
+      const output = await execute("apply_room_edit", store, {
+        expectedRevision: 1,
+        operations: [
+          {
+            type: "transform",
+            itemId: "item_living_sofa",
+            pose: { x: input },
+          },
+        ],
+      });
+
+      expect(advertisedNumericSchemaAccepts(transformCoordinate, input)).toBe(
+        false,
+      );
+      expect(output).toMatchObject({ code: "INVALID_DOCUMENT" });
+      expect(transact).not.toHaveBeenCalled();
+    }
+  });
+
+  it("keeps advertised safe revision bounds aligned with runtime validation", async () => {
+    const definition = createRoomToolDefinitions(
+      createRoomStore(
+        getTemplate("living-room"),
+        TEST_TRANSACTION_DEPENDENCIES,
+      ),
+    ).find(({ name }) => name === "apply_room_edit");
+    if (!definition) throw new Error("apply_room_edit was not defined");
+    const revisionSchema = (
+      definition.inputSchema as unknown as {
+        properties: { expectedRevision: AdvertisedNumericSchema };
+      }
+    ).properties.expectedRevision;
+
+    expect(revisionSchema).toEqual({
+      type: "integer",
+      minimum: 1,
+      maximum: Number.MAX_SAFE_INTEGER,
+    });
+
+    const accepted = createTrackingStore();
+    const acceptedOutput = await execute("apply_room_edit", accepted.store, {
+      expectedRevision: Number.MAX_SAFE_INTEGER,
+      operations: [{ type: "remove", itemId: "item_living_rug" }],
+    });
+    expect(
+      advertisedNumericSchemaAccepts(
+        revisionSchema,
+        Number.MAX_SAFE_INTEGER,
+      ),
+    ).toBe(true);
+    expect(acceptedOutput).toMatchObject({ code: "REVISION_CONFLICT" });
+    expect(accepted.transact).toHaveBeenCalledTimes(1);
+
+    for (const input of [Number.MAX_SAFE_INTEGER + 1, 1e100]) {
+      const rejected = createTrackingStore();
+      const output = await execute("apply_room_edit", rejected.store, {
+        expectedRevision: input,
+        operations: [{ type: "remove", itemId: "item_living_rug" }],
+      });
+
+      expect(advertisedNumericSchemaAccepts(revisionSchema, input)).toBe(
+        false,
+      );
+      expect(output).toMatchObject({ code: "INVALID_DOCUMENT" });
+      expect(rejected.transact).not.toHaveBeenCalled();
+    }
+  });
+
+  it("returns a safe atomic rejection when a matching max revision cannot advance", async () => {
+    const room = getTemplate("living-room");
+    const source = createRoomStore(room, TEST_TRANSACTION_DEPENDENCIES);
+    const runtimeState = {
+      room,
+      revision: Number.MAX_SAFE_INTEGER,
+    };
+    const transact = vi.fn((request) =>
+      applyRoomTransaction(
+        runtimeState,
+        request,
+        TEST_TRANSACTION_DEPENDENCIES,
+      ).result,
+    );
+    const getState = () => ({
+      ...source.getState(),
+      room: runtimeState.room,
+      revision: runtimeState.revision,
+      receipts: [],
+      transact,
+    });
+    const store: RoomStore = {
+      getInitialState: getState,
+      getState,
+      subscribe: source.subscribe,
+      readCatalog: source.readCatalog,
+      resolveProduct: source.resolveProduct,
+    };
+
+    const output = await execute("apply_room_edit", store, {
+      expectedRevision: Number.MAX_SAFE_INTEGER,
+      operations: [{ type: "remove", itemId: "item_living_rug" }],
+    });
+
+    expect(output).toEqual({
+      ok: false,
+      revision: Number.MAX_SAFE_INTEGER,
+      code: "INVALID_DOCUMENT",
+      message: `Room revision cannot advance beyond ${Number.MAX_SAFE_INTEGER}`,
+    });
+    expect(Number.isSafeInteger((output as { revision: number }).revision)).toBe(
+      true,
+    );
+    expect(transact).toHaveBeenCalledTimes(1);
+    expect(runtimeState.room).toBe(room);
+    expect(runtimeState.revision).toBe(Number.MAX_SAFE_INTEGER);
+  });
+
+  it.each(["maxPrice", "maxWidth", "maxDepth"] as const)(
+    "keeps advertised %s acceptance aligned with finite runtime queries",
+    async (field) => {
+      const definition = createRoomToolDefinitions(
+        createRoomStore(
+          getTemplate("living-room"),
+          CATALOG_TRANSACTION_DEPENDENCIES,
+        ),
+      ).find(({ name }) => name === "find_furniture");
+      if (!definition) throw new Error("find_furniture was not defined");
+      const numericSchema = (
+        definition.inputSchema as unknown as {
+          properties: Record<string, AdvertisedNumericSchema>;
+        }
+      ).properties[field];
+      if (!numericSchema) throw new Error(`missing ${field} schema`);
+
+      expect(numericSchema).not.toHaveProperty("multipleOf");
+      for (const input of [
+        0.30000000000000004,
+        Number.MIN_VALUE,
+        1e308,
+      ]) {
+        expect(advertisedNumericSchemaAccepts(numericSchema, input)).toBe(
+          field === "maxPrice" || input > 0,
+        );
+        await expect(
+          execute("find_furniture", undefined, {
+            [field]: input,
+            limit: 1,
+          }),
+        ).resolves.toMatchObject({ revision: 1, units: "meters" });
+      }
+
+      for (const input of [Number.NaN, Number.POSITIVE_INFINITY]) {
+        expect(advertisedNumericSchemaAccepts(numericSchema, input)).toBe(
+          false,
+        );
+        await expect(
+          execute("find_furniture", undefined, { [field]: input }),
+        ).rejects.toThrow(
+          "find_furniture input must match the exact catalog query schema",
+        );
+      }
+    },
+  );
 
   it("applies a transform through the shared WebMCP transaction contract", async () => {
     const store = createRoomStore(
@@ -259,13 +1129,41 @@ describe("createRoomToolDefinitions", () => {
     expect(apply.inputSchema).toEqual({
       type: "object",
       properties: {
-        expectedRevision: { type: "integer", minimum: 1 },
+        expectedRevision: {
+          type: "integer",
+          minimum: 1,
+          maximum: Number.MAX_SAFE_INTEGER,
+        },
         operations: {
           type: "array",
           minItems: 1,
           maxItems: 8,
           items: {
             oneOf: [
+              {
+                type: "object",
+                properties: {
+                  type: { const: "add" },
+                  productId: {
+                    type: "string",
+                    pattern: "^[a-z][a-z0-9-]{0,127}$",
+                    minLength: 1,
+                    maxLength: 128,
+                  },
+                  pose: {
+                    type: "object",
+                    properties: {
+                      x: { type: "number" },
+                      y: { type: "number" },
+                      rotationDeg: { enum: [0, 90, 180, 270] },
+                    },
+                    required: ["x", "y", "rotationDeg"],
+                    additionalProperties: false,
+                  },
+                },
+                required: ["type", "productId", "pose"],
+                additionalProperties: false,
+              },
               {
                 type: "object",
                 properties: {
@@ -279,8 +1177,8 @@ describe("createRoomToolDefinitions", () => {
                   pose: {
                     type: "object",
                     properties: {
-                      x: { type: "number", multipleOf: 0.001 },
-                      y: { type: "number", multipleOf: 0.001 },
+                      x: { type: "number" },
+                      y: { type: "number" },
                       rotationDeg: { enum: [0, 90, 180, 270] },
                     },
                     minProperties: 1,
@@ -342,6 +1240,164 @@ describe("createRoomToolDefinitions", () => {
       status: "accepted",
       revision: 2,
     });
+  });
+
+  it("adds a found product with authoritative catalog facts and an app-generated identity", async () => {
+    const store = createRoomStore(getTemplate("living-room"), {
+      resolveProduct: resolveCatalogProduct,
+      createItemId: () => "item_agent_generated_1",
+    });
+    const found = (await execute("find_furniture", store, {
+      category: "chair",
+      styleTags: ["warm-modern"],
+      maxPrice: 600,
+      limit: 1,
+    })) as {
+      revision: number;
+      matches: Array<{
+        productId: string;
+        suggestedPose: { x: number; y: number; rotationDeg: 0 | 90 | 180 | 270 };
+      }>;
+    };
+    const match = found.matches[0];
+    if (!match) throw new Error("expected a deterministic catalog match");
+
+    const output = await execute("apply_room_edit", store, {
+      expectedRevision: found.revision,
+      operations: [
+        {
+          type: "add",
+          productId: match.productId,
+          pose: match.suggestedPose,
+        },
+      ],
+    });
+
+    expect(output).toEqual({
+      ok: true,
+      revision: 2,
+      applied: 1,
+      itemIds: ["item_agent_generated_1"],
+      warnings: [],
+      warningCount: 0,
+      warningsTruncated: false,
+    });
+    expect(
+      store
+        .getState()
+        .room.items.find(({ id }) => id === "item_agent_generated_1"),
+    ).toMatchObject({
+      id: "item_agent_generated_1",
+      catalogRef: {
+        catalogId: "wimy-demo-v1",
+        productId: "ember-nest-chair",
+      },
+      snapshot: { name: "Ember Nest Chair" },
+      pose: match.suggestedPose,
+    });
+    expect(store.getState().receipts[0]).toMatchObject({
+      origin: "webmcp",
+      status: "accepted",
+      summary: "Added Ember Nest Chair",
+    });
+  });
+
+  it("rolls back an early add when a later mixed operation fails but keeps the rejected receipt", async () => {
+    const store = createRoomStore(getTemplate("living-room"), {
+      resolveProduct: resolveCatalogProduct,
+      createItemId: () => "item_rolled_back_agent_add",
+    });
+    const before = store.getState();
+
+    const output = await execute("apply_room_edit", store, {
+      expectedRevision: 1,
+      operations: [
+        {
+          type: "add",
+          productId: "ember-nest-chair",
+          pose: { x: 0.3, y: 0.3, rotationDeg: 0 },
+        },
+        { type: "remove", itemId: "item_missing_late" },
+      ],
+    });
+
+    expect(output).toEqual({
+      ok: false,
+      revision: 1,
+      code: "UNKNOWN_ITEM",
+      message: "Unknown placed item item_missing_late",
+    });
+    const after = store.getState();
+    expect(after.room).toBe(before.room);
+    expect(after.revision).toBe(before.revision);
+    expect(after.room.items).not.toContainEqual(
+      expect.objectContaining({ id: "item_rolled_back_agent_add" }),
+    );
+    expect(after.receipts).toHaveLength(1);
+    expect(after.receipts[0]).toMatchObject({
+      origin: "webmcp",
+      status: "rejected",
+      revision: 1,
+      code: "UNKNOWN_ITEM",
+      affectedItemIds: [],
+    });
+  });
+
+  it("recovers from a stale edit by inspecting fresh state and retrying", async () => {
+    const store = createRoomStore(
+      getTemplate("living-room"),
+      TEST_TRANSACTION_DEPENDENCIES,
+    );
+    const inspected = (await execute("inspect_room", store)) as {
+      revision: number;
+    };
+    store.getState().transact({
+      expectedRevision: inspected.revision,
+      origin: "human",
+      change: {
+        type: "edit",
+        operations: [{ type: "remove", itemId: "item_living_rug" }],
+      },
+    });
+
+    const stale = await execute("apply_room_edit", store, {
+      expectedRevision: inspected.revision,
+      operations: [
+        {
+          type: "transform",
+          itemId: "item_living_sofa",
+          pose: { x: 2.2, y: 0.6, rotationDeg: 0 },
+        },
+      ],
+    });
+    expect(stale).toEqual({
+      ok: false,
+      revision: 2,
+      code: "REVISION_CONFLICT",
+      message: "Expected revision 1, but the room is at revision 2",
+    });
+
+    const refreshed = (await execute("inspect_room", store)) as {
+      revision: number;
+    };
+    const retried = await execute("apply_room_edit", store, {
+      expectedRevision: refreshed.revision,
+      operations: [
+        {
+          type: "transform",
+          itemId: "item_living_sofa",
+          pose: { x: 2.2, y: 0.6, rotationDeg: 0 },
+        },
+      ],
+    });
+
+    expect(refreshed.revision).toBe(2);
+    expect(retried).toMatchObject({ ok: true, revision: 3, applied: 1 });
+    expect(
+      store
+        .getState()
+        .room.items.find(({ id }) => id === "item_living_sofa")?.pose,
+    ).toEqual({ x: 2.2, y: 0.6, rotationDeg: 0 });
   });
 
   it("bounds a successful apply output for a maximum-warning room", async () => {
@@ -463,7 +1519,8 @@ describe("createRoomToolDefinitions", () => {
       ok: false,
       revision: 1,
       code: "INVALID_DOCUMENT",
-      message: "input must contain only exact transform or remove operations",
+      message:
+        "input must contain only exact add, transform, or remove operations",
     });
     expect(transact).not.toHaveBeenCalled();
   });
@@ -528,19 +1585,6 @@ describe("createRoomToolDefinitions", () => {
 
   it.each([
     [
-      "agent add",
-      {
-        expectedRevision: 1,
-        operations: [
-          {
-            type: "add",
-            productId: "future-product",
-            pose: { x: 2, y: 1, rotationDeg: 0 },
-          },
-        ],
-      },
-    ],
-    [
       "empty transform pose",
       {
         expectedRevision: 1,
@@ -602,7 +1646,8 @@ describe("createRoomToolDefinitions", () => {
       ok: false,
       revision: 1,
       code: "INVALID_DOCUMENT",
-      message: "input must contain only exact transform or remove operations",
+      message:
+        "input must contain only exact add, transform, or remove operations",
     });
     expect(transact).not.toHaveBeenCalled();
     expect(store.getState().room).toEqual(before.room);
@@ -638,6 +1683,8 @@ describe("createRoomToolDefinitions", () => {
       }),
       getState: () => ({ ...source.getState(), transact: oversizedFailure }),
       subscribe: source.subscribe,
+      readCatalog: source.readCatalog,
+      resolveProduct: source.resolveProduct,
     };
 
     await expect(
@@ -646,6 +1693,149 @@ describe("createRoomToolDefinitions", () => {
         operations: [{ type: "remove", itemId: "item_living_sofa" }],
       }),
     ).rejects.toThrow("WebMCP output exceeds 131072 UTF-8 bytes");
+  });
+
+  it.each([
+    ["inspect_room", {}],
+    ["find_furniture", {}],
+    [
+      "apply_room_edit",
+      {
+        expectedRevision: 1,
+        operations: [{ type: "remove", itemId: "item_living_rug" }],
+      },
+    ],
+  ])(
+    "%s rejects a pre-aborted invocation with AbortError and no room effect",
+    async (toolName, input) => {
+      const { store, transact } = createTrackingStore();
+      const before = store.getState();
+      const tool = createRoomToolDefinitions(store).find(
+        ({ name }) => name === toolName,
+      );
+      if (!tool) throw new Error(`${toolName} was not defined`);
+      const controller = new AbortController();
+      controller.abort();
+
+      await expect(
+        Promise.resolve().then(() =>
+          tool.execute(input, { signal: controller.signal }),
+        ),
+      ).rejects.toMatchObject({ name: "AbortError" });
+      expect(transact).not.toHaveBeenCalled();
+      expect(store.getState().room).toBe(before.room);
+      expect(store.getState().revision).toBe(before.revision);
+      expect(store.getState().receipts).toBe(before.receipts);
+    },
+  );
+
+  it.each([
+    ["inspect_room", {}, { revision: 1, units: "meters" }],
+    [
+      "find_furniture",
+      { category: "chair", limit: 1 },
+      { revision: 1, units: "meters" },
+    ],
+    [
+      "apply_room_edit",
+      {
+        expectedRevision: 1,
+        operations: [{ type: "remove", itemId: "item_living_rug" }],
+      },
+      { ok: true, revision: 2, applied: 1 },
+    ],
+  ])(
+    "%s remains callable when a native host omits the optional signal",
+    async (toolName, input, expectedOutput) => {
+      const store = createRoomStore(
+        getTemplate("living-room"),
+        TEST_TRANSACTION_DEPENDENCIES,
+      );
+      const tool = createRoomToolDefinitions(store).find(
+        ({ name }) => name === toolName,
+      );
+      if (!tool) throw new Error(`${toolName} was not defined`);
+
+      await expect(
+        Promise.resolve().then(() =>
+          tool.execute(input, {
+            signal: undefined as unknown as AbortSignal,
+          }),
+        ),
+      ).resolves.toMatchObject(expectedOutput);
+    },
+  );
+
+  it("rechecks cancellation immediately before apply commits", async () => {
+    const source = createRoomStore(
+      getTemplate("living-room"),
+      TEST_TRANSACTION_DEPENDENCIES,
+    );
+    const controller = new AbortController();
+    const transact = vi.fn(source.getState().transact);
+    const store: RoomStore = {
+      getInitialState: source.getInitialState,
+      getState: () => {
+        const state = source.getState();
+        controller.abort();
+        return { ...state, transact };
+      },
+      subscribe: source.subscribe,
+      readCatalog: source.readCatalog,
+      resolveProduct: source.resolveProduct,
+    };
+    const apply = createRoomToolDefinitions(store).find(
+      ({ name }) => name === "apply_room_edit",
+    );
+    if (!apply) throw new Error("apply_room_edit was not defined");
+
+    await expect(
+      Promise.resolve().then(() =>
+        apply.execute(
+          {
+            expectedRevision: 1,
+            operations: [{ type: "remove", itemId: "item_living_rug" }],
+          },
+          { signal: controller.signal },
+        ),
+      ),
+    ).rejects.toMatchObject({ name: "AbortError" });
+    expect(transact).not.toHaveBeenCalled();
+    expect(source.getState().revision).toBe(1);
+    expect(source.getState().receipts).toEqual([]);
+  });
+
+  it("returns a committed apply result when cancellation arrives during publication", async () => {
+    const store = createRoomStore(
+      getTemplate("living-room"),
+      TEST_TRANSACTION_DEPENDENCIES,
+    );
+    const controller = new AbortController();
+    const unsubscribe = store.subscribe((state, previousState) => {
+      if (state.revision !== previousState.revision) controller.abort();
+    });
+    const apply = createRoomToolDefinitions(store).find(
+      ({ name }) => name === "apply_room_edit",
+    );
+    if (!apply) throw new Error("apply_room_edit was not defined");
+
+    const output = await apply.execute(
+      {
+        expectedRevision: 1,
+        operations: [{ type: "remove", itemId: "item_living_rug" }],
+      },
+      { signal: controller.signal },
+    );
+    unsubscribe();
+
+    expect(controller.signal.aborted).toBe(true);
+    expect(output).toMatchObject({ ok: true, revision: 2, applied: 1 });
+    expect(store.getState().revision).toBe(2);
+    expect(store.getState().receipts[0]).toMatchObject({
+      origin: "webmcp",
+      status: "accepted",
+      revision: 2,
+    });
   });
 });
 
@@ -685,9 +1875,11 @@ describe("registerRoomTools", () => {
   it("awaits every promised registration before reporting ready", async () => {
     const first = createDeferred();
     const second = createDeferred();
+    const third = createDeferred();
     const modelContext = new FakeModelContext([
       () => first.promise,
       () => second.promise,
+      () => third.promise,
     ]);
     const store = createRoomStore(
       getTemplate("living-room"),
@@ -706,6 +1898,7 @@ describe("registerRoomTools", () => {
     await Promise.resolve();
     expect(modelContext.definitions.map(({ name }) => name)).toEqual([
       "inspect_room",
+      "find_furniture",
       "apply_room_edit",
     ]);
     expect(settled).toBe(false);
@@ -715,9 +1908,44 @@ describe("registerRoomTools", () => {
     expect(settled).toBe(false);
 
     second.resolve();
+    await Promise.resolve();
+    expect(settled).toBe(false);
+
+    third.resolve();
     await expect(registration).resolves.toEqual({
       available: true,
-      registered: ["inspect_room", "apply_room_edit"],
+      registered: ["inspect_room", "find_furniture", "apply_room_edit"],
+      errors: [],
+    });
+  });
+
+  it("does not report registrations whose lifetime ends before deferred settlement", async () => {
+    const first = createDeferred();
+    const second = createDeferred();
+    const third = createDeferred();
+    const modelContext = new FakeModelContext([
+      () => first.promise,
+      () => second.promise,
+      () => third.promise,
+    ]);
+    const store = createRoomStore(
+      getTemplate("living-room"),
+      TEST_TRANSACTION_DEPENDENCIES,
+    );
+    const controller = new AbortController();
+    const registration = registerRoomTools(modelContext, store, controller);
+
+    await Promise.resolve();
+    expect(modelContext.definitions).toHaveLength(3);
+
+    controller.abort();
+    first.resolve();
+    second.resolve();
+    third.resolve();
+
+    await expect(registration).resolves.toEqual({
+      available: true,
+      registered: [],
       errors: [],
     });
   });
@@ -725,9 +1953,11 @@ describe("registerRoomTools", () => {
   it("awaits remaining registrations and reports a rejected promise as degraded", async () => {
     const first = createDeferred();
     const second = createDeferred();
+    const third = createDeferred();
     const modelContext = new FakeModelContext([
       () => first.promise,
       () => second.promise,
+      () => third.promise,
     ]);
     const store = createRoomStore(
       getTemplate("living-room"),
@@ -756,23 +1986,54 @@ describe("registerRoomTools", () => {
     expect(settled).toBe(false);
 
     second.resolve();
+    await Promise.resolve();
+    expect(settled).toBe(false);
+
+    third.resolve();
     await expect(observed).resolves.toEqual({
       fulfilled: true,
       value: {
         available: true,
-        registered: ["apply_room_edit"],
+        registered: ["find_furniture", "apply_room_edit"],
         errors: ["inspect_room: client denied by policy"],
       },
     });
   });
 
+  it("reports a rejected third-tool registration without hiding the two read-only tools", async () => {
+    const modelContext = new FakeModelContext([
+      () => Promise.resolve(),
+      () => Promise.resolve(),
+      () => Promise.reject(new Error("mutating tool denied")),
+    ]);
+    const store = createRoomStore(
+      getTemplate("living-room"),
+      TEST_TRANSACTION_DEPENDENCIES,
+    );
+
+    await expect(
+      registerRoomTools(modelContext, store, new AbortController()),
+    ).resolves.toEqual({
+      available: true,
+      registered: ["inspect_room", "find_furniture"],
+      errors: ["apply_room_edit: mutating tool denied"],
+    });
+    expect(modelContext.definitions.map(({ name }) => name)).toEqual([
+      "inspect_room",
+      "find_furniture",
+      "apply_room_edit",
+    ]);
+  });
+
   it("settles a synchronous failure while still awaiting later registrations", async () => {
     const second = createDeferred();
+    const third = createDeferred();
     const modelContext = new FakeModelContext([
       () => {
         throw new Error("synchronous client refusal");
       },
       () => second.promise,
+      () => third.promise,
     ]);
     const store = createRoomStore(
       getTemplate("living-room"),
@@ -799,16 +2060,21 @@ describe("registerRoomTools", () => {
     await Promise.resolve();
     expect(modelContext.definitions.map(({ name }) => name)).toEqual([
       "inspect_room",
+      "find_furniture",
       "apply_room_edit",
     ]);
     expect(settled).toBe(false);
 
     second.resolve();
+    await Promise.resolve();
+    expect(settled).toBe(false);
+
+    third.resolve();
     await expect(observed).resolves.toEqual({
       fulfilled: true,
       value: {
         available: true,
-        registered: ["apply_room_edit"],
+        registered: ["find_furniture", "apply_room_edit"],
         errors: ["inspect_room: synchronous client refusal"],
       },
     });
@@ -825,7 +2091,7 @@ describe("registerRoomTools", () => {
       );
       return Promise.resolve();
     };
-    const modelContext = new FakeModelContext([register, register]);
+    const modelContext = new FakeModelContext([register, register, register]);
     const store = createRoomStore(
       getTemplate("living-room"),
       TEST_TRANSACTION_DEPENDENCIES,
@@ -835,9 +2101,10 @@ describe("registerRoomTools", () => {
     await registerRoomTools(modelContext, store, controller);
 
     expect(activeTools).toEqual(
-      new Set(["inspect_room", "apply_room_edit"]),
+      new Set(["inspect_room", "find_furniture", "apply_room_edit"]),
     );
     expect(modelContext.options.map((options) => options?.signal)).toEqual([
+      controller.signal,
       controller.signal,
       controller.signal,
     ]);
@@ -847,5 +2114,80 @@ describe("registerRoomTools", () => {
 
     expect(controller.signal.aborted).toBe(true);
     expect(activeTools).toEqual(new Set());
+  });
+
+  it("rechecks the registration lifetime immediately before apply transacts", async () => {
+    const source = createRoomStore(
+      getTemplate("living-room"),
+      TEST_TRANSACTION_DEPENDENCIES,
+    );
+    const controller = new AbortController();
+    const transact = vi.fn(source.getState().transact);
+    const store: RoomStore = {
+      getInitialState: source.getInitialState,
+      getState: () => {
+        const state = source.getState();
+        controller.abort();
+        return { ...state, transact };
+      },
+      subscribe: source.subscribe,
+      readCatalog: source.readCatalog,
+      resolveProduct: source.resolveProduct,
+    };
+    const modelContext = new FakeModelContext([]);
+    await registerRoomTools(modelContext, store, controller);
+    const apply = modelContext.definitions.find(
+      ({ name }) => name === "apply_room_edit",
+    );
+    if (!apply) throw new Error("registered apply_room_edit was missing");
+
+    await expect(
+      Promise.resolve().then(() =>
+        apply.execute(
+          {
+            expectedRevision: 1,
+            operations: [{ type: "remove", itemId: "item_living_rug" }],
+          },
+          { signal: new AbortController().signal },
+        ),
+      ),
+    ).rejects.toMatchObject({ name: "AbortError" });
+    expect(transact).not.toHaveBeenCalled();
+    expect(source.getState()).toMatchObject({ revision: 1, receipts: [] });
+  });
+
+  it("returns a committed result when registration revocation happens during publication", async () => {
+    const store = createRoomStore(
+      getTemplate("living-room"),
+      TEST_TRANSACTION_DEPENDENCIES,
+    );
+    const controller = new AbortController();
+    const modelContext = new FakeModelContext([]);
+    await registerRoomTools(modelContext, store, controller);
+    const apply = modelContext.definitions.find(
+      ({ name }) => name === "apply_room_edit",
+    );
+    if (!apply) throw new Error("registered apply_room_edit was missing");
+    const unsubscribe = store.subscribe((state, previousState) => {
+      if (state.revision !== previousState.revision) controller.abort();
+    });
+
+    const output = await apply.execute(
+      {
+        expectedRevision: 1,
+        operations: [{ type: "remove", itemId: "item_living_rug" }],
+      },
+      { signal: new AbortController().signal },
+    );
+    unsubscribe();
+
+    expect(controller.signal.aborted).toBe(true);
+    expect(output).toMatchObject({ ok: true, revision: 2, applied: 1 });
+    expect(store.getState()).toMatchObject({ revision: 2 });
+    expect(store.getState().receipts[0]).toMatchObject({
+      origin: "webmcp",
+      status: "accepted",
+      revision: 2,
+    });
   });
 });

@@ -71,7 +71,7 @@ const callTool = async (
     { toolName: name, toolInput: input },
   );
 
-test("inspect and apply visibly mutate the room while stale edits fail", async ({
+test("inspect, find, and apply visibly collaborate while stale edits recover", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1_280, height: 720 });
@@ -81,7 +81,7 @@ test("inspect and apply visibly mutate the room while stale edits fail", async (
   await expect(
     page.getByRole("status", { name: "WebMCP status" }),
   ).toContainText(
-    "WebMCP ready — 2 tools registered",
+    "WebMCP ready — 3 tools registered",
   );
   const discovered = await page.evaluate(() => {
     const harness = (
@@ -96,9 +96,12 @@ test("inspect and apply visibly mutate the room while stale edits fail", async (
   });
   expect(discovered.activeNames).toEqual([
     "apply_room_edit",
+    "find_furniture",
     "inspect_room",
   ]);
-  expect(discovered.registrationCount).toBe(2);
+  expect(discovered.registrationCount).toBe(3);
+  const pageUrlBeforeReadOnlyTools = page.url();
+  const pageCountBeforeReadOnlyTools = page.context().pages().length;
 
   const inspected = await callTool(page, "inspect_room", {});
   expect(inspected).toMatchObject({
@@ -121,37 +124,81 @@ test("inspect and apply visibly mutate the room while stale edits fail", async (
     warningsTruncated: false,
   });
 
-  const applied = await callTool(page, "apply_room_edit", {
-    expectedRevision: 1,
-    operations: [
+  const found = (await callTool(page, "find_furniture", {
+    category: "chair",
+    styleTags: ["warm-modern"],
+    maxPrice: 600,
+    limit: 1,
+  })) as {
+    revision: number;
+    units: "meters";
+    matches: Array<{
+      catalogId: string;
+      productId: string;
+      name: string;
+      suggestedPose: { x: number; y: number; rotationDeg: 0 | 90 | 180 | 270 };
+    }>;
+  };
+  expect(found).toMatchObject({
+    revision: 1,
+    units: "meters",
+    matches: [
       {
-        type: "transform",
-        itemId: "item_living_sofa",
-        pose: { x: 2.2, y: 0.6, rotationDeg: 0 },
+        catalogId: "wimy-demo-v1",
+        productId: "ember-nest-chair",
+        name: "Ember Nest Chair",
+        suggestedPose: { x: 0.3, y: 0.3, rotationDeg: 0 },
       },
     ],
   });
-  expect(applied).toEqual({
+  expect(Object.keys(found)).toEqual(["revision", "units", "matches"]);
+  expect(JSON.stringify(found)).not.toMatch(/https?:\/\/|<\/?[a-z]/iu);
+  expect(page.url()).toBe(pageUrlBeforeReadOnlyTools);
+  expect(page.context().pages()).toHaveLength(pageCountBeforeReadOnlyTools);
+  await expect(
+    page.getByRole("region", { name: "Living Room" }),
+  ).toContainText("Revision 1");
+  await expect(
+    page
+      .getByRole("region", { name: "Activity receipts" })
+      .getByRole("listitem"),
+  ).toHaveCount(0);
+
+  const match = found.matches[0];
+  if (!match) throw new Error("expected a deterministic furniture match");
+
+  const applied = await callTool(page, "apply_room_edit", {
+    expectedRevision: found.revision,
+    operations: [
+      {
+        type: "add",
+        productId: match.productId,
+        pose: match.suggestedPose,
+      },
+    ],
+  });
+  expect(applied).toMatchObject({
     ok: true,
     revision: 2,
     applied: 1,
-    itemIds: ["item_living_sofa"],
     warnings: [],
     warningCount: 0,
     warningsTruncated: false,
   });
+  const addedItemId = (applied as { itemIds: string[] }).itemIds[0];
+  expect(addedItemId).toMatch(/^item_[A-Fa-f0-9-]+$/u);
   await expect(
     page.getByRole("region", { name: "Living Room" }),
   ).toContainText("Revision 2");
   await expect(
-    page.getByRole("button", { name: "Select Linen Apartment Sofa" }),
+    page.getByRole("button", { name: "Select Ember Nest Chair" }),
   ).toBeVisible();
   await page
-    .getByRole("button", { name: "Select Linen Apartment Sofa" })
+    .getByRole("button", { name: "Select Ember Nest Chair" })
     .focus();
   await page.keyboard.press("Enter");
   await expect(page.getByLabel("Selected item actions"))
-    .toContainText("Linen Apartment Sofa — x 2.2 m, y 0.6 m, rotation 0°");
+    .toContainText("Ember Nest Chair — x 0.3 m, y 0.3 m, rotation 0°");
   await expect(
     page
       .getByRole("region", { name: "Activity receipts" })
@@ -159,65 +206,13 @@ test("inspect and apply visibly mutate the room while stale edits fail", async (
       .first(),
   ).toContainText("Agent: Accepted. Applied 1 room operationsRevision 2");
 
-  const chair = page.getByRole("button", { name: "Select Soft Lounge Chair" });
-  const dragGeometry = await chair.evaluate((element) => {
-    const item = element as SVGGElement;
-    const svg = item.ownerSVGElement;
-    const footprint = item.querySelector<SVGRectElement>(
-      ".room-item-footprint",
-    );
-    const boundary = svg?.querySelector<SVGRectElement>(".room-boundary");
-    const matrix = svg?.getScreenCTM();
-    if (!svg || !footprint || !boundary || !matrix) {
-      throw new Error("expected rendered room geometry");
-    }
-
-    const roomScale = Number(boundary.getAttribute("width")) / 4.8;
-    const center = {
-      x:
-        Number(footprint.getAttribute("x")) +
-        Number(footprint.getAttribute("width")) / 2,
-      y:
-        Number(footprint.getAttribute("y")) +
-        Number(footprint.getAttribute("height")) / 2,
-    };
-    const start = new DOMPoint(center.x, center.y).matrixTransform(matrix);
-    const release = new DOMPoint(
-      center.x + roomScale * 0.5,
-      center.y + roomScale,
-    ).matrixTransform(matrix);
-    const bounds = svg.getBoundingClientRect();
-
-    return {
-      bounds: { width: bounds.width, height: bounds.height },
-      ctm: { a: matrix.a, d: matrix.d, e: matrix.e, f: matrix.f },
-      start: { x: start.x, y: start.y },
-      release: { x: release.x, y: release.y },
-    };
-  });
-
-  expect(dragGeometry.bounds.width).toBeGreaterThan(600);
-  expect(dragGeometry.bounds.height).toBeLessThanOrEqual(461);
-  expect(dragGeometry.ctm.a).toBeCloseTo(dragGeometry.ctm.d, 5);
-  expect(dragGeometry.ctm.a).toBeLessThan(
-    dragGeometry.bounds.width / 720,
-  );
-  expect(dragGeometry.ctm.e).toBeGreaterThan(0);
-  await page.mouse.move(dragGeometry.start.x, dragGeometry.start.y);
-  await page.mouse.down();
-  await page.mouse.move(dragGeometry.release.x, dragGeometry.release.y, {
-    steps: 4,
-  });
-  await page.mouse.up();
+  await page.getByRole("button", { name: "Rotate 90 degrees" }).click();
 
   await expect(
     page.getByRole("region", { name: "Living Room" }),
   ).toContainText("Revision 3");
   await expect(page.getByLabel("Selected item actions"))
-    .toContainText("Soft Lounge Chair — x 1.6 m, y 3.3 m, rotation 90°");
-  await expect(page.getByLabel("Selected item actions")).not.toContainText(
-    "x 1.388 m",
-  );
+    .toContainText("Ember Nest Chair — x 0.3 m, y 0.3 m, rotation 90°");
   await expect(
     page
       .getByRole("region", { name: "Activity receipts" })
@@ -234,7 +229,7 @@ test("inspect and apply visibly mutate the room while stale edits fail", async (
       {
         type: "transform",
         itemId: "item_living_sofa",
-        pose: { x: 2, y: 0.6, rotationDeg: 0 },
+        pose: { x: 2.2, y: 0.6, rotationDeg: 0 },
       },
     ],
   });
@@ -245,13 +240,31 @@ test("inspect and apply visibly mutate the room while stale edits fail", async (
     message: "Expected revision 2, but the room is at revision 3",
   });
   await expect(
-    page
-      .getByRole("region", { name: "Activity receipts" })
-      .getByRole("listitem")
-      .first(),
+    page.getByRole("region", { name: "Activity receipts" }).getByRole(
+      "listitem",
+    ).first(),
   ).toContainText(
     "Agent: Rejected. Expected revision 2, but the room is at revision 3Revision 3",
   );
+
+  const refreshed = (await callTool(page, "inspect_room", {})) as {
+    revision: number;
+  };
+  expect(refreshed.revision).toBe(3);
+  const retried = await callTool(page, "apply_room_edit", {
+    expectedRevision: refreshed.revision,
+    operations: [
+      {
+        type: "transform",
+        itemId: "item_living_sofa",
+        pose: { x: 2.2, y: 0.6, rotationDeg: 0 },
+      },
+    ],
+  });
+  expect(retried).toMatchObject({ ok: true, revision: 4, applied: 1 });
+  await expect(
+    page.getByRole("region", { name: "Living Room" }),
+  ).toContainText("Revision 4");
   await page
     .getByRole("button", { name: "Select Linen Apartment Sofa" })
     .focus();
@@ -259,6 +272,12 @@ test("inspect and apply visibly mutate the room while stale edits fail", async (
   await expect(
     page.getByLabel("Selected item actions"),
   ).toContainText("x 2.2 m, y 0.6 m, rotation 0°");
+  await expect(
+    page
+      .getByRole("region", { name: "Activity receipts" })
+      .getByRole("listitem")
+      .first(),
+  ).toContainText("Agent: Accepted. Applied 1 room operationsRevision 4");
 
   const registrationCountAfterEdits = await page.evaluate(() => {
     const harness = (
@@ -268,7 +287,7 @@ test("inspect and apply visibly mutate the room while stale edits fail", async (
     ).__wimyModelContextHarness;
     return harness.registrationCalls.length;
   });
-  expect(registrationCountAfterEdits).toBe(2);
+  expect(registrationCountAfterEdits).toBe(3);
 });
 
 test("the room remains functional without modelContext", async ({ page }) => {

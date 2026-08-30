@@ -4,9 +4,9 @@ import {
   type CatalogMatch,
   type CatalogQuery,
 } from "../room/catalog";
-import { DEMO_CATALOG } from "../room/catalog-data";
 import type { FurnitureSnapshot, WimyRoomV1 } from "../room/document";
 import type { RoomStore } from "../room/store";
+import { LOCAL_CATALOG_TRANSACTION } from "../room/transaction";
 
 const CATEGORIES: readonly FurnitureSnapshot["category"][] = [
   "bed",
@@ -111,7 +111,7 @@ export function CatalogPanel({ store }: CatalogPanelProps) {
   });
 
   const matchesFor = (room: WimyRoomV1, query: CatalogQuery) =>
-    findFurniture(room, query, DEMO_CATALOG);
+    findFurniture(room, query, store.readCatalog());
 
   const search = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -160,6 +160,7 @@ export function CatalogPanel({ store }: CatalogPanelProps) {
     }
 
     const result = current.transact({
+      [LOCAL_CATALOG_TRANSACTION]: true,
       expectedRevision: current.revision,
       origin: "human",
       change: {

@@ -5,7 +5,9 @@ import { LIVING_ROOM_TEMPLATE } from "./templates";
 import {
   applyRoomTransaction,
   TEST_TRANSACTION_DEPENDENCIES,
+  type RoomChange,
   type RuntimeRoomState,
+  type TransactionOrigin,
 } from "./transaction";
 
 const makeRuntimeState = (
@@ -16,7 +18,66 @@ const makeRuntimeState = (
   revision,
 });
 
+const MAX_REVISION_CHANGES: Array<{
+  label: string;
+  origin: TransactionOrigin;
+  change: RoomChange;
+}> = [
+  {
+    label: "edit",
+    origin: "human",
+    change: {
+      type: "edit",
+      operations: [{ type: "remove", itemId: "item_living_rug" }],
+    },
+  },
+  {
+    label: "replace",
+    origin: "template",
+    change: {
+      type: "replace",
+      room: makeRoom({ name: "Replacement at revision limit" }),
+    },
+  },
+  {
+    label: "undo replacement",
+    origin: "undo",
+    change: {
+      type: "replace",
+      room: makeRoom({ name: "Undo at revision limit" }),
+    },
+  },
+];
+
 describe("applyRoomTransaction", () => {
+  it.each([0, Number.MAX_SAFE_INTEGER + 1, Number.POSITIVE_INFINITY])(
+    "fails closed before touching an invalid runtime revision %s",
+    (revision) => {
+      const before = makeRuntimeState(LIVING_ROOM_TEMPLATE.room, revision);
+
+      expect(() =>
+        applyRoomTransaction(
+          before,
+          {
+            expectedRevision: revision,
+            origin: "human",
+            change: {
+              type: "edit",
+              operations: [
+                { type: "remove", itemId: "item_living_rug" },
+              ],
+            },
+          },
+          TEST_TRANSACTION_DEPENDENCIES,
+        ),
+      ).toThrow("Runtime room revision must be a positive safe integer");
+      expect(before).toEqual({
+        room: LIVING_ROOM_TEMPLATE.room,
+        revision,
+      });
+    },
+  );
+
   it("commits an edit atomically and increments once", () => {
     const state = makeRuntimeState(LIVING_ROOM_TEMPLATE.room, 4);
     const outcome = applyRoomTransaction(
@@ -118,6 +179,45 @@ describe("applyRoomTransaction", () => {
     });
     expect(outcome.state).toBe(before);
   });
+
+  it.each(MAX_REVISION_CHANGES)(
+    "rejects a $label that would exceed the safe revision limit",
+    ({ origin, change }) => {
+      const before = makeRuntimeState(
+        LIVING_ROOM_TEMPLATE.room,
+        Number.MAX_SAFE_INTEGER,
+      );
+      const outcome = applyRoomTransaction(
+        before,
+        {
+          expectedRevision: Number.MAX_SAFE_INTEGER,
+          origin,
+          change,
+        },
+        TEST_TRANSACTION_DEPENDENCIES,
+      );
+
+      expect(outcome.state).toBe(before);
+      expect(outcome.result).toMatchObject({
+        ok: false,
+        revision: Number.MAX_SAFE_INTEGER,
+        code: "INVALID_DOCUMENT",
+        message: `Room revision cannot advance beyond ${Number.MAX_SAFE_INTEGER}`,
+        receipt: {
+          origin,
+          status: "rejected",
+          revision: Number.MAX_SAFE_INTEGER,
+          code: "INVALID_DOCUMENT",
+          affectedItemIds: [],
+          removedItemIds: [],
+        },
+      });
+      expect(Number.isSafeInteger(outcome.result.revision)).toBe(true);
+      expect(Number.isSafeInteger(outcome.result.receipt.revision)).toBe(
+        true,
+      );
+    },
+  );
 
   it("rejects an edit with more than eight operations", () => {
     const before = makeRuntimeState();

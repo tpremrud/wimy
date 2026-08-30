@@ -8,7 +8,7 @@ import {
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
 import { resolveCatalogProduct } from "../room/catalog";
-import { createRoomStore } from "../room/store";
+import { createRoomStore, type RoomStore } from "../room/store";
 import { getTemplate } from "../room/templates";
 import { makePlacedItem, makeRoom } from "../test/room-fixtures";
 import { CatalogPanel } from "./CatalogPanel";
@@ -165,6 +165,76 @@ describe("CatalogPanel", () => {
       screen.getByRole("status", { name: "Catalog search result" }),
     ).toHaveTextContent(
       "Search 1 results refreshed: 2 matches. Best match: Ember Nest Chair at x 0.9 m, y 0.3 m, rotation 0°.",
+    );
+  });
+
+  it("fails closed when catalog facts change between refresh and transact", async () => {
+    let transactionStarted = false;
+    const source = createRoomStore(getTemplate("living-room"), {
+      resolveProduct: (productId) => {
+        const resolved = resolveCatalogProduct(productId);
+        if (!resolved || !transactionStarted) return resolved;
+
+        return {
+          ...resolved,
+          snapshot: {
+            ...resolved.snapshot,
+            name: "Resolver-Swapped Ember Chair",
+          },
+        };
+      },
+      createItemId: () => "item_catalog_swapped",
+    });
+    const store: RoomStore = {
+      getInitialState: source.getInitialState,
+      getState: () => {
+        const current = source.getState();
+        return {
+          ...current,
+          transact: (request) => {
+            transactionStarted = true;
+            return current.transact(request);
+          },
+        };
+      },
+      subscribe: source.subscribe,
+      readCatalog: source.readCatalog,
+      resolveProduct: source.resolveProduct,
+    };
+    render(<CatalogPanel store={store} />);
+    const user = await searchForWarmModernChair();
+    const roomBefore = source.getState().room;
+
+    expect(
+      within(screen.getByRole("list", { name: "Catalog results" })).getByText(
+        "Ember Nest Chair",
+      ),
+    ).toBeVisible();
+
+    await user.click(screen.getByRole("button", { name: "Add best fit" }));
+
+    const state = source.getState();
+    expect(transactionStarted).toBe(true);
+    expect(state.room).toBe(roomBefore);
+    expect(state.revision).toBe(1);
+    expect(state.receipts).toHaveLength(1);
+    expect(state.receipts[0]).toMatchObject({
+      origin: "human",
+      status: "rejected",
+      revision: 1,
+      code: "UNKNOWN_PRODUCT",
+      affectedItemIds: [],
+    });
+    expect(state.room.items).not.toContainEqual(
+      expect.objectContaining({ id: "item_catalog_swapped" }),
+    );
+    expect(JSON.stringify(state.room)).not.toContain(
+      "Resolver-Swapped Ember Chair",
+    );
+    expect(
+      screen.getByRole("status", { name: "Catalog add result" }),
+    ).toHaveTextContent(
+      "Rejected: Unknown catalog product ember-nest-chair. Revision 1.",
     );
   });
 

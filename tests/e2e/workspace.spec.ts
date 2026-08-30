@@ -33,6 +33,13 @@ type PortableRoomFile = Record<string, unknown> & {
 const maximumToken = (prefix: string, length: number) =>
   `${prefix}${"x".repeat(length - prefix.length)}`;
 
+const getLocalOrigin = (baseURL: unknown) => {
+  if (typeof baseURL !== "string" || !URL.canParse(baseURL)) {
+    throw new Error("expected a valid Playwright project baseURL");
+  }
+  return new URL(baseURL).origin;
+};
+
 const createMaximumTokenRoom = (source: string) => {
   const envelope = JSON.parse(source) as PortableRoomFile;
   envelope.room.name = maximumToken("R", 80);
@@ -74,17 +81,18 @@ for (const viewport of [
 ]) {
   test(`downloads, restores maximum tokens without overflow, and undoes at ${viewport.width}px`, async ({
     page,
-  }) => {
+  }, testInfo) => {
     await page.setViewportSize(viewport);
-  const externalRequests: string[] = [];
-  const popups: Page[] = [];
-  page.on("request", (request) => {
-    if (!request.url().startsWith("http://127.0.0.1:4173")) {
-      externalRequests.push(request.url());
-    }
-  });
-  page.on("popup", (popup) => popups.push(popup));
-  await page.goto("/");
+    const localOrigin = getLocalOrigin(testInfo.project.use.baseURL);
+    const externalRequests: string[] = [];
+    const popups: Page[] = [];
+    page.on("request", (request) => {
+      if (!request.url().startsWith(localOrigin)) {
+        externalRequests.push(request.url());
+      }
+    });
+    page.on("popup", (popup) => popups.push(popup));
+    await page.goto("/");
 
     const portableBox = await page
     .getByRole("region", { name: "Room files and templates" })
@@ -254,12 +262,13 @@ for (const viewport of [
 
 test("fails closed on malformed and stale imports and never opens snapshot URLs", async ({
   page,
-}) => {
+}, testInfo) => {
   await page.setViewportSize({ width: 1_024, height: 900 });
+  const localOrigin = getLocalOrigin(testInfo.project.use.baseURL);
   const externalRequests: string[] = [];
   const popups: Page[] = [];
   page.on("request", (request) => {
-    if (!request.url().startsWith("http://127.0.0.1:4173")) {
+    if (!request.url().startsWith(localOrigin)) {
       externalRequests.push(request.url());
     }
   });

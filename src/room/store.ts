@@ -1,15 +1,27 @@
 import { createStore, type StoreApi } from "zustand/vanilla";
-import { resolveCatalogProduct } from "./catalog";
-import type { EntityId, WimyRoomV1 } from "./document";
+import { resolveCatalogProduct, type CatalogItem } from "./catalog";
+import { DEMO_CATALOG } from "./catalog-data";
+import {
+  CatalogRefSchema,
+  FurnitureSnapshotSchema,
+  type EntityId,
+  type WimyRoomV1,
+} from "./document";
 import { getTemplate } from "./templates";
 import type {
   ActivityReceipt,
   RoomWarning,
+  ProductResolver,
+  ResolvedProduct,
   RoomTransactionRequest,
   RoomTransactionResult,
   TransactionDependencies,
 } from "./transaction";
-import { applyRoomTransaction, getRoomLayoutWarnings } from "./transaction";
+import {
+  applyRoomTransaction,
+  getRoomLayoutWarnings,
+  LOCAL_CATALOG_TRANSACTION,
+} from "./transaction";
 
 const MAX_RECEIPTS = 20;
 
@@ -43,6 +55,26 @@ const cloneResult = (result: RoomTransactionResult): RoomTransactionResult => {
   return cloned;
 };
 
+const catalogFactsFingerprint = ({
+  catalogRef,
+  snapshot,
+}: ResolvedProduct) =>
+  JSON.stringify([
+    catalogRef.catalogId,
+    catalogRef.productId,
+    snapshot.name,
+    snapshot.category,
+    snapshot.dimensions.width,
+    snapshot.dimensions.depth,
+    snapshot.dimensions.height,
+    snapshot.appearance.color,
+    snapshot.styleTags,
+    snapshot.commerce?.price.amount ?? null,
+    snapshot.commerce?.price.currency ?? null,
+    snapshot.commerce?.productUrl ?? null,
+    snapshot.commerce?.observedAt ?? null,
+  ]);
+
 export type RoomStoreState = {
   readonly room: DeepReadonly<WimyRoomV1>;
   readonly revision: number;
@@ -60,7 +92,10 @@ export type RoomStoreState = {
 export type RoomStore = Pick<
   StoreApi<RoomStoreState>,
   "getInitialState" | "getState" | "subscribe"
->;
+> & {
+  readonly readCatalog: () => readonly CatalogItem[];
+  readonly resolveProduct: ProductResolver;
+};
 
 export type RoomStoreOptions = {
   reportSubscriberError?: (error: unknown) => void;
@@ -75,6 +110,71 @@ export const createRoomStore = (
   dependencies: TransactionDependencies,
   options: RoomStoreOptions = {},
 ): RoomStore => {
+  const catalog = DEMO_CATALOG;
+  const resolveAnyProduct: ProductResolver = (productId) => {
+    const resolved: unknown = dependencies.resolveProduct(productId);
+    if (
+      resolved === null ||
+      typeof resolved !== "object" ||
+      Array.isArray(resolved)
+    ) {
+      return undefined;
+    }
+    const resolvedObject = resolved as Record<string, unknown>;
+
+    const catalogRef = CatalogRefSchema.safeParse(
+      resolvedObject.catalogRef,
+    );
+    const snapshot = FurnitureSnapshotSchema.safeParse(
+      resolvedObject.snapshot,
+    );
+    if (
+      !catalogRef.success ||
+      catalogRef.data.productId !== productId ||
+      !snapshot.success
+    ) {
+      return undefined;
+    }
+
+    return {
+      catalogRef: structuredClone(catalogRef.data),
+      snapshot: structuredClone(snapshot.data),
+    };
+  };
+  const resolveProduct: ProductResolver = (productId) => {
+    const normalized = resolveAnyProduct(productId);
+    if (!normalized) return undefined;
+
+    const catalogItem = catalog.find(
+      ({ catalogRef: candidateRef }) =>
+        candidateRef.productId === productId,
+    );
+    if (
+      !catalogItem ||
+      catalogFactsFingerprint(normalized) !==
+        catalogFactsFingerprint(catalogItem)
+    ) {
+      return undefined;
+    }
+
+    return normalized;
+  };
+  const transactionDependencies: TransactionDependencies = {
+    resolveProduct: resolveAnyProduct,
+    createItemId: dependencies.createItemId,
+  };
+  const webMcpTransactionDependencies: TransactionDependencies = {
+    resolveProduct,
+    createItemId: dependencies.createItemId,
+  };
+  const readCatalog = () =>
+    catalog.filter(({ catalogRef }) => {
+      const resolved = resolveProduct(catalogRef.productId);
+      return (
+        resolved?.catalogRef.catalogId === catalogRef.catalogId &&
+        resolved.catalogRef.productId === catalogRef.productId
+      );
+    });
   const store = createStore<RoomStoreState>((set, get) => {
     let activeTransaction:
       | { reentrantReceipts: ActivityReceipt[] }
@@ -123,7 +223,9 @@ export const createRoomStore = (
             revision: current.revision,
           },
           request,
-          dependencies,
+          request[LOCAL_CATALOG_TRANSACTION]
+            ? webMcpTransactionDependencies
+            : transactionDependencies,
         );
       } catch (error) {
         activeTransaction = undefined;
@@ -240,6 +342,8 @@ export const createRoomStore = (
     getInitialState: store.getInitialState,
     getState: store.getState,
     subscribe,
+    readCatalog,
+    resolveProduct,
   };
 };
 

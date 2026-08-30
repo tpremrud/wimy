@@ -3,6 +3,8 @@ import {
   lazy,
   Suspense,
   useEffect,
+  useLayoutEffect,
+  useRef,
   useState,
   type ComponentType,
   type ReactNode,
@@ -139,6 +141,10 @@ export function App({
   const Preview3D = previewLoadFailure
     ? RejectedRoomPreview3D
     : RoomPreview3D;
+  const registrationGenerationRef = useRef<{
+    controller: AbortController;
+    owner: RoomStore;
+  } | null>(null);
   const [registration, setRegistration] = useState<RegistrationViewState>({
     generation: null,
     owner: store,
@@ -154,8 +160,31 @@ export function App({
           phase: "pending",
         };
 
+  useLayoutEffect(() => {
+    const generation = {
+      controller: new AbortController(),
+      owner: store,
+    };
+    registrationGenerationRef.current = generation;
+
+    return () => {
+      generation.controller.abort();
+      if (registrationGenerationRef.current === generation) {
+        registrationGenerationRef.current = null;
+      }
+    };
+  }, [store]);
+
   useEffect(() => {
-    const controller = new AbortController();
+    const generation = registrationGenerationRef.current;
+    if (
+      !generation ||
+      generation.owner !== store ||
+      generation.controller.signal.aborted
+    ) {
+      return;
+    }
+    const { controller } = generation;
 
     void registerRoomTools(document.modelContext, store, controller).then(
       (status) => {
@@ -169,8 +198,6 @@ export function App({
         }
       },
     );
-
-    return () => controller.abort();
   }, [store]);
 
   return (

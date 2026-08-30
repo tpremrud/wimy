@@ -79,6 +79,55 @@ describe("createRoomStore", () => {
     },
   );
 
+  it.each(["human", "webmcp"] as const)(
+    "keeps an unmarked %s fixture add on the generic resolver seam",
+    (origin) => {
+      const fixture = makePlacedItem();
+      const store = createRoomStore(makeRoom({ items: [] }), {
+        resolveProduct: (productId) =>
+          productId === "fixture-chair"
+            ? {
+                catalogRef: {
+                  catalogId: "fixture-catalog",
+                  productId,
+                },
+                snapshot: structuredClone(fixture.snapshot),
+              }
+            : undefined,
+        createItemId: () => `item_${origin}_fixture`,
+      });
+
+      const result = store.getState().transact({
+        expectedRevision: 1,
+        origin,
+        change: {
+          type: "edit",
+          operations: [
+            {
+              type: "add",
+              productId: "fixture-chair",
+              pose: { x: 2, y: 1.5, rotationDeg: 0 },
+            },
+          ],
+        },
+      });
+
+      expect(result).toMatchObject({ ok: true, revision: 2, applied: 1 });
+      expect(store.getState().room.items).toContainEqual(
+        expect.objectContaining({
+          id: `item_${origin}_fixture`,
+          catalogRef: {
+            catalogId: "fixture-catalog",
+            productId: "fixture-chair",
+          },
+          snapshot: expect.objectContaining({
+            name: fixture.snapshot.name,
+          }),
+        }),
+      );
+    },
+  );
+
   it("protects committed state from out-of-band mutation", () => {
     const initialRoom = getTemplate("living-room");
     const store = createRoomStore(

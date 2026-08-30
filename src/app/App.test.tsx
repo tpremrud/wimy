@@ -8,10 +8,10 @@ import {
   within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { StrictMode, type ReactNode } from "react";
+import { StrictMode, useLayoutEffect, type ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { resolveCatalogProduct } from "../room/catalog";
-import { createRoomStore } from "../room/store";
+import { createRoomStore, type RoomStore } from "../room/store";
 import { getTemplate } from "../room/templates";
 import { TEST_TRANSACTION_DEPENDENCIES } from "../room/transaction";
 import { serializeWimyRoom } from "../room/wimy-file";
@@ -75,6 +75,7 @@ class AppModelContext extends EventTarget implements WebMCP.ModelContext {
   readonly definitions: WebMCP.ModelContextTool[] = [];
   readonly options: (WebMCP.ModelContextRegisterToolOptions | undefined)[] =
     [];
+  readonly activeDefinitions = new Map<string, WebMCP.ModelContextTool>();
 
   constructor(private readonly behaviors: RegisterBehavior[] = []) {
     super();
@@ -86,6 +87,16 @@ class AppModelContext extends EventTarget implements WebMCP.ModelContext {
   ) {
     this.definitions.push(tool);
     this.options.push(options);
+    this.activeDefinitions.set(tool.name, tool);
+    options?.signal?.addEventListener(
+      "abort",
+      () => {
+        if (this.activeDefinitions.get(tool.name) === tool) {
+          this.activeDefinitions.delete(tool.name);
+        }
+      },
+      { once: true },
+    );
     const behavior = this.behaviors[this.definitions.length - 1];
     return behavior ? behavior(tool, options) : Promise.resolve();
   }
@@ -490,11 +501,12 @@ describe("App", () => {
 
     await waitFor(() =>
       expect(getWebMcpStatus()).toHaveTextContent(
-        "WebMCP ready — 2 tools registered",
+        "WebMCP ready — 3 tools registered",
       ),
     );
     expect(modelContext.definitions.map(({ name }) => name)).toEqual([
       "inspect_room",
+      "find_furniture",
       "apply_room_edit",
     ]);
 
@@ -516,7 +528,7 @@ describe("App", () => {
         "Revision 2",
       ),
     ).toBeVisible();
-    expect(modelContext.definitions).toHaveLength(2);
+    expect(modelContext.definitions).toHaveLength(3);
     expect(
       modelContext.options.every(({ signal } = {}) => !signal?.aborted),
     ).toBe(true);
@@ -528,7 +540,7 @@ describe("App", () => {
     ).toBe(true);
   });
 
-  it("attempts exactly two live registrations under StrictMode", async () => {
+  it("attempts exactly three live registrations under StrictMode", async () => {
     const modelContext = new AppModelContext();
     setModelContext(modelContext);
     const store = createRoomStore(
@@ -544,11 +556,12 @@ describe("App", () => {
 
     await waitFor(() =>
       expect(getWebMcpStatus()).toHaveTextContent(
-        "WebMCP ready — 2 tools registered",
+        "WebMCP ready — 3 tools registered",
       ),
     );
     expect(modelContext.definitions.map(({ name }) => name)).toEqual([
       "inspect_room",
+      "find_furniture",
       "apply_room_edit",
     ]);
     expect(
@@ -564,8 +577,9 @@ describe("App", () => {
 
   it("keeps a rejected registration visibly degraded", async () => {
     const modelContext = new AppModelContext([
-      () => Promise.reject(new Error("client refused inspect")),
       () => Promise.resolve(),
+      () => Promise.resolve(),
+      () => Promise.reject(new Error("client refused apply")),
     ]);
     setModelContext(modelContext);
 
@@ -573,22 +587,25 @@ describe("App", () => {
 
     await waitFor(() =>
       expect(getWebMcpStatus()).toHaveTextContent(
-        "WebMCP degraded — 1 of 2 tools registered",
+        "WebMCP degraded — 2 of 3 tools registered",
       ),
     );
     expect(getWebMcpStatus()).toHaveTextContent(
-      "inspect_room: client refused inspect",
+      "apply_room_edit: client refused apply",
     );
     expect(getWebMcpStatus()).not.toHaveTextContent("WebMCP ready");
   });
 
   it("renders pending immediately while replacement-store tools register", async () => {
     const inspectSecondStore = createDeferred();
+    const findSecondStore = createDeferred();
     const applySecondStore = createDeferred();
     const modelContext = new AppModelContext([
       () => Promise.resolve(),
       () => Promise.resolve(),
+      () => Promise.resolve(),
       () => inspectSecondStore.promise,
+      () => findSecondStore.promise,
       () => applySecondStore.promise,
     ]);
     setModelContext(modelContext);
@@ -604,7 +621,7 @@ describe("App", () => {
     const view = render(<App store={firstStore} />);
     await waitFor(() =>
       expect(getWebMcpStatus()).toHaveTextContent(
-        "WebMCP ready — 2 tools registered",
+        "WebMCP ready — 3 tools registered",
       ),
     );
 
@@ -614,8 +631,8 @@ describe("App", () => {
       "WebMCP registration pending",
     );
     expect(getWebMcpStatus()).not.toHaveTextContent("WebMCP ready");
-    await waitFor(() => expect(modelContext.definitions).toHaveLength(4));
-    expect(modelContext.options.slice(0, 2).every(
+    await waitFor(() => expect(modelContext.definitions).toHaveLength(6));
+    expect(modelContext.options.slice(0, 3).every(
       ({ signal } = {}) => signal?.aborted,
     )).toBe(true);
 
@@ -625,11 +642,205 @@ describe("App", () => {
       "WebMCP registration pending",
     );
 
+    findSecondStore.resolve();
+    await act(() => Promise.resolve());
+    expect(getWebMcpStatus()).toHaveTextContent(
+      "WebMCP registration pending",
+    );
+
     applySecondStore.resolve();
     await waitFor(() =>
       expect(getWebMcpStatus()).toHaveTextContent(
-        "WebMCP ready — 2 tools registered",
+        "WebMCP ready — 3 tools registered",
       ),
     );
+  });
+
+  it("invalidates old-store tools before replacement layout observers can invoke them", async () => {
+    const modelContext = new AppModelContext();
+    setModelContext(modelContext);
+    const firstStore = createRoomStore(
+      getTemplate("living-room"),
+      TEST_TRANSACTION_DEPENDENCIES,
+    );
+    const secondStore = createRoomStore(
+      getTemplate("compact-bedroom"),
+      TEST_TRANSACTION_DEPENDENCIES,
+    );
+    let replacementProbe:
+      | { active: false }
+      | {
+          active: true;
+          inspectedRoom: string;
+          applyResult: unknown;
+        }
+      | undefined;
+
+    const ReplacementProbe = ({ store }: { store: RoomStore }) => {
+      useLayoutEffect(() => {
+        if (store !== secondStore) return;
+        const inspect = modelContext.activeDefinitions.get("inspect_room");
+        const apply = modelContext.activeDefinitions.get("apply_room_edit");
+        if (!inspect || !apply) {
+          replacementProbe = { active: false };
+          return;
+        }
+
+        const signal = new AbortController().signal;
+        const inspected = inspect.execute({}, { signal }) as {
+          room: { name: string };
+        };
+        replacementProbe = {
+          active: true,
+          inspectedRoom: inspected.room.name,
+          applyResult: apply.execute(
+            {
+              expectedRevision: 1,
+              operations: [
+                { type: "remove", itemId: "item_living_rug" },
+              ],
+            },
+            { signal },
+          ),
+        };
+      }, [store]);
+
+      return <App store={store} />;
+    };
+
+    const view = render(<ReplacementProbe store={firstStore} />);
+    await waitFor(() =>
+      expect(getWebMcpStatus()).toHaveTextContent(
+        "WebMCP ready — 3 tools registered",
+      ),
+    );
+
+    view.rerender(<ReplacementProbe store={secondStore} />);
+
+    expect(replacementProbe).toEqual({ active: false });
+    expect(firstStore.getState()).toMatchObject({ revision: 1, receipts: [] });
+    expect(secondStore.getState()).toMatchObject({ revision: 1, receipts: [] });
+
+    await waitFor(() =>
+      expect(modelContext.activeDefinitions.size).toBe(3),
+    );
+    const replacementInspect =
+      modelContext.activeDefinitions.get("inspect_room");
+    if (!replacementInspect) {
+      throw new Error("replacement inspect_room was not active");
+    }
+    await expect(
+      Promise.resolve(
+        replacementInspect.execute(
+          {},
+          { signal: new AbortController().signal },
+        ),
+      ),
+    ).resolves.toMatchObject({
+      revision: 1,
+      room: { name: "Compact Bedroom" },
+    });
+  });
+
+  it("rejects captured handlers after an A to B to A registration lifetime ends", async () => {
+    const modelContext = new AppModelContext();
+    setModelContext(modelContext);
+    const firstStore = createRoomStore(
+      getTemplate("living-room"),
+      TEST_TRANSACTION_DEPENDENCIES,
+    );
+    const secondStore = createRoomStore(
+      getTemplate("compact-bedroom"),
+      TEST_TRANSACTION_DEPENDENCIES,
+    );
+
+    const view = render(<App store={firstStore} />);
+    await waitFor(() =>
+      expect(getWebMcpStatus()).toHaveTextContent(
+        "WebMCP ready — 3 tools registered",
+      ),
+    );
+    const capturedFirstGeneration = modelContext.definitions.slice(0, 3);
+
+    view.rerender(<App store={secondStore} />);
+    await waitFor(() => expect(modelContext.definitions).toHaveLength(6));
+    await waitFor(() =>
+      expect(getWebMcpStatus()).toHaveTextContent(
+        "WebMCP ready — 3 tools registered",
+      ),
+    );
+
+    view.rerender(<App store={firstStore} />);
+    await waitFor(() => expect(modelContext.definitions).toHaveLength(9));
+    await waitFor(() =>
+      expect(getWebMcpStatus()).toHaveTextContent(
+        "WebMCP ready — 3 tools registered",
+      ),
+    );
+
+    expect(modelContext.definitions.map(({ name }) => name)).toEqual([
+      "inspect_room",
+      "find_furniture",
+      "apply_room_edit",
+      "inspect_room",
+      "find_furniture",
+      "apply_room_edit",
+      "inspect_room",
+      "find_furniture",
+      "apply_room_edit",
+    ]);
+
+    expect(
+      modelContext.options.slice(0, 6).every(
+        ({ signal } = {}) => signal?.aborted,
+      ),
+    ).toBe(true);
+    expect(
+      modelContext.options.slice(6).every(
+        ({ signal } = {}) => !signal?.aborted,
+      ),
+    ).toBe(true);
+
+    const freshSignal = () => new AbortController().signal;
+    const invocations = [
+      () =>
+        capturedFirstGeneration[0]?.execute({}, { signal: freshSignal() }),
+      () =>
+        capturedFirstGeneration[1]?.execute(
+          { limit: 1 },
+          { signal: freshSignal() },
+        ),
+      () =>
+        capturedFirstGeneration[2]?.execute(
+          {
+            expectedRevision: 1,
+            operations: [{ type: "remove", itemId: "item_living_rug" }],
+          },
+          { signal: freshSignal() },
+        ),
+    ].map((invoke) => Promise.resolve().then(invoke));
+
+    const settlements = await Promise.allSettled(invocations);
+    expect(settlements).toHaveLength(3);
+    expect(
+      settlements.every(
+        (settlement) =>
+          settlement.status === "rejected" &&
+          (settlement.reason as { name?: string }).name === "AbortError",
+      ),
+    ).toBe(true);
+    expect(firstStore.getState()).toMatchObject({ revision: 1, receipts: [] });
+    expect(secondStore.getState()).toMatchObject({ revision: 1, receipts: [] });
+
+    const currentInspect = modelContext.definitions[6];
+    if (!currentInspect) throw new Error("current inspect_room was not active");
+    await expect(
+      Promise.resolve(
+        currentInspect.execute({}, { signal: freshSignal() }),
+      ),
+    ).resolves.toMatchObject({
+      revision: 1,
+      room: { name: "Living Room" },
+    });
   });
 });
