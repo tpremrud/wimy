@@ -8,8 +8,8 @@ import {
   within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { StrictMode } from "react";
-import { afterEach, describe, expect, it } from "vitest";
+import { StrictMode, type ReactNode } from "react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { resolveCatalogProduct } from "../room/catalog";
 import { createRoomStore } from "../room/store";
 import { getTemplate } from "../room/templates";
@@ -17,6 +17,43 @@ import { TEST_TRANSACTION_DEPENDENCIES } from "../room/transaction";
 import { serializeWimyRoom } from "../room/wimy-file";
 import { makePlacedItem } from "../test/room-fixtures";
 import { App } from "./App";
+
+const previewModuleHarness = vi.hoisted(() => ({ evaluations: 0 }));
+
+vi.mock("../ui/RoomPreview3D", () => {
+  previewModuleHarness.evaluations += 1;
+  return {
+    RoomPreview3D: ({ room }: { room: { items: Array<{ snapshot: { name: string } }>; name: string } }) => (
+      <section aria-label={`3D preview of ${room.name}`}>
+        <div data-testid="three-canvas-host" />
+        {room.items.map((item) => <p key={item.snapshot.name}>{item.snapshot.name}</p>)}
+      </section>
+    ),
+  };
+});
+
+vi.mock("@react-three/fiber", () => ({
+  Canvas: ({ children }: { children: ReactNode }) => (
+    <div data-testid="three-canvas-host">{children}</div>
+  ),
+  useFrame: () => {},
+  useThree: () => ({
+    camera: {
+      far: 100,
+      lookAt: () => {},
+      near: 0.1,
+      position: { set: () => {} },
+      updateProjectionMatrix: () => {},
+    },
+    gl: { domElement: { setAttribute: () => {} } },
+    size: { height: 500, width: 500 },
+  }),
+}));
+
+vi.mock("@react-three/drei", () => ({
+  Grid: () => null,
+  OrbitControls: () => null,
+}));
 
 type RegisterBehavior = (
   tool: WebMCP.ModelContextTool,
@@ -71,6 +108,7 @@ const getWebMcpStatus = () =>
 afterEach(() => {
   cleanup();
   setModelContext(undefined);
+  previewModuleHarness.evaluations = 0;
 });
 
 describe("App", () => {
@@ -78,6 +116,80 @@ describe("App", () => {
     render(<App />);
     expect(screen.getByRole("heading", { name: "Wimy" })).toBeVisible();
     expect(screen.getByText(/fit, find, and place/i)).toBeVisible();
+  });
+
+  it("does not evaluate the 3D module until preview activation", async () => {
+    const user = userEvent.setup();
+    const store = createRoomStore(
+      getTemplate("living-room"),
+      TEST_TRANSACTION_DEPENDENCIES,
+    );
+
+    render(<App store={store} />);
+    expect(previewModuleHarness.evaluations).toBe(0);
+
+    await user.click(screen.getByRole("button", { name: "Preview in 3D" }));
+    await screen.findByRole("region", { name: "3D preview of Living Room" });
+    expect(previewModuleHarness.evaluations).toBe(1);
+    expect(store.getState()).toMatchObject({ revision: 1, receipts: [] });
+  });
+
+  it("keeps the canonical workspace usable when the lazy 3D module rejects", async () => {
+    const user = userEvent.setup();
+    const store = createRoomStore(
+      getTemplate("living-room"),
+      TEST_TRANSACTION_DEPENDENCIES,
+    );
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    render(<App previewLoadFailure store={store} />);
+    await user.click(screen.getByRole("button", { name: "Preview in 3D" }));
+
+    const preview = await screen.findByRole("region", {
+      name: "3D preview of Living Room",
+    });
+    expect(within(preview).getByRole("status")).toHaveTextContent(
+      "The interactive 3D preview could not load",
+    );
+    expect(preview).toHaveTextContent(
+      "Living Room: 4.8 m by 4.2 m room with 5 placed items.",
+    );
+    expect(preview).toHaveTextContent("Linen Apartment Sofa");
+    expect(store.getState()).toMatchObject({ revision: 1, receipts: [] });
+
+    await user.click(screen.getByRole("button", { name: "Return to 2D editor" }));
+    await user.click(
+      screen.getByRole("button", { name: "Select Linen Apartment Sofa" }),
+    );
+    expect(screen.getByRole("button", { name: "Rotate 90 degrees" })).toBeVisible();
+    expect(
+      screen.getByRole("complementary", { name: "Furniture catalog" }),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("complementary", { name: "Activity receipts" }),
+    ).toBeVisible();
+    expect(consoleError).toHaveBeenCalled();
+  });
+
+  it("derives a read-only 3D preview from the current room", async () => {
+    const user = userEvent.setup();
+    const store = createRoomStore(
+      getTemplate("living-room"),
+      TEST_TRANSACTION_DEPENDENCIES,
+    );
+
+    render(<App store={store} />);
+
+    await user.click(screen.getByRole("button", { name: "Preview in 3D" }));
+
+    const preview = await screen.findByRole("region", {
+      name: "3D preview of Living Room",
+    });
+    expect(preview).toContainElement(screen.getByTestId("three-canvas-host"));
+    expect(preview).toHaveTextContent("Linen Apartment Sofa");
+    expect(preview).toHaveTextContent("Soft Lounge Chair");
+    expect(within(preview).queryByRole("button")).not.toBeInTheDocument();
+    expect(store.getState()).toMatchObject({ revision: 1, receipts: [] });
   });
 
   it("names the catalog and activity complementary landmarks", () => {

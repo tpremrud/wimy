@@ -141,6 +141,27 @@ for (const viewport of [
   await expect(revisionText(page, maximumRoom.roomName)).toHaveText(
     "Revision 2",
   );
+  const [headingBox, revisionBox, viewControlsBox] = await Promise.all([
+    page.getByRole("heading", { name: maximumRoom.roomName }).boundingBox(),
+    revisionText(page, maximumRoom.roomName).boundingBox(),
+    page.getByRole("group", { name: "Room view" }).boundingBox(),
+  ]);
+  if (!headingBox || !revisionBox || !viewControlsBox) {
+    throw new Error("expected imported room heading, revision, and view controls");
+  }
+  const intersects = (
+    first: { x: number; y: number; width: number; height: number },
+    second: { x: number; y: number; width: number; height: number },
+  ) =>
+    first.x < second.x + second.width &&
+    first.x + first.width > second.x &&
+    first.y < second.y + second.height &&
+    first.y + first.height > second.y;
+  expect(intersects(headingBox, viewControlsBox)).toBe(false);
+  expect(intersects(revisionBox, viewControlsBox)).toBe(false);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+    viewport.width,
+  );
   const exportedMaximumRoom = await exportRoom(page);
   expect(exportedMaximumRoom.text).toBe(maximumRoom.text);
 
@@ -364,3 +385,156 @@ test("fails closed on malformed and stale imports and never opens snapshot URLs"
   expect(externalRequests).toEqual([]);
   expect(popups).toEqual([]);
 });
+
+test("keeps the read-only 3D preview synchronized through template and import changes", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1_280, height: 900 });
+  const pageErrors: string[] = [];
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+  await page.goto("/");
+
+  await page.getByRole("button", { name: "Select Soft Lounge Chair" }).click();
+  await page.getByRole("button", { name: "Rotate 90 degrees" }).click();
+  const livingRoomExport = await exportRoom(page);
+
+  await page.getByRole("button", { name: "Preview in 3D" }).click();
+  const canvas = page.locator(".room-preview-canvas canvas");
+  await expect(canvas).toBeVisible();
+  await expect(
+    page.getByRole("region", { name: "3D preview of Living Room" }),
+  ).toContainText("Soft Lounge Chair — x 1.1 m, y 2.3 m, rotation 180°");
+
+  await page
+    .getByRole("combobox", { name: "Load room template" })
+    .selectOption("compact-bedroom");
+  await expect(canvas).toBeVisible();
+  await expect(
+    page.getByRole("region", { name: "3D preview of Compact Bedroom" }),
+  ).toContainText("Platform Bed");
+
+  await page.getByLabel("Import .wimy file").setInputFiles({
+    name: livingRoomExport.filename,
+    mimeType: "application/json",
+    buffer: Buffer.from(livingRoomExport.text),
+  });
+  await expect(canvas).toBeVisible();
+  await expect(
+    page.getByRole("region", { name: "3D preview of Living Room" }),
+  ).toContainText("Soft Lounge Chair — x 1.1 m, y 2.3 m, rotation 180°");
+
+  await page.getByRole("button", { name: "Edit in 2D" }).click();
+  await expect(
+    page.getByRole("group", { name: "Living Room 2D room editor" }),
+  ).toBeVisible();
+  expect(pageErrors).toEqual([]);
+});
+
+test("reframes the actual 3D camera after importing materially larger room dimensions", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1_280, height: 900 });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Preview in 3D" }).click();
+  const canvas = page.locator(".room-preview-canvas canvas");
+  await expect(canvas).toBeVisible();
+
+  await page.getByLabel("Import .wimy file").setInputFiles({
+    name: "huge-room.wimy",
+    mimeType: "application/json",
+    buffer: Buffer.from(
+      JSON.stringify({
+        format: "wimy-room",
+        schemaVersion: 1,
+        room: {
+          name: "Huge Room",
+          dimensions: { width: 30, depth: 30, height: 10 },
+          openings: [],
+          items: [],
+        },
+      }),
+    ),
+  });
+  await expect(
+    page.getByRole("region", { name: "3D preview of Huge Room" }),
+  ).toBeVisible();
+  await expect(canvas).toBeVisible();
+  await expect(canvas).toHaveAttribute("data-wimy-camera-position", /,/u);
+  const camera = await canvas.evaluate((element) => ({
+    aspect: element.clientWidth / element.clientHeight,
+    far: Number(element.dataset.wimyCameraFar),
+    position: element.dataset.wimyCameraPosition?.split(",").map(Number),
+  }));
+  const radius = Math.hypot(30, 10, 30) / 2;
+  const verticalHalfAngle = (42 * Math.PI) / 360;
+  const horizontalHalfAngle = Math.atan(
+    Math.tan(verticalHalfAngle) * camera.aspect,
+  );
+  const distance =
+    (radius / Math.sin(Math.min(verticalHalfAngle, horizontalHalfAngle))) *
+    1.18;
+  const directionLength = Math.hypot(1, 0.8, 1);
+  const expectedPosition = [
+    15 + distance / directionLength,
+    5 + (distance * 0.8) / directionLength,
+    15 + distance / directionLength,
+  ];
+
+  expect(camera.position).toHaveLength(3);
+  camera.position?.forEach((value, index) =>
+    expect(value).toBeCloseTo(expectedPosition[index] ?? 0, 1),
+  );
+  expect(camera.far).toBeCloseTo(distance + radius * 2, 1);
+});
+
+test("accepts real user orbit input while the 3D preview remains visible", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1_280, height: 900 });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Preview in 3D" }).click();
+  const canvas = page.locator(".room-preview-canvas canvas");
+  await expect(canvas).toBeVisible();
+  await expect(canvas).toHaveAttribute("data-wimy-camera-position", /.+/u);
+  const initialPosition = await canvas.getAttribute("data-wimy-camera-position");
+  if (!initialPosition) throw new Error("expected an initial 3D camera position");
+
+  const canvasBox = await canvas.boundingBox();
+  if (!canvasBox) throw new Error("expected a visible 3D canvas");
+  await page.mouse.move(canvasBox.x + canvasBox.width / 2, canvasBox.y + canvasBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(canvasBox.x + canvasBox.width * 0.7, canvasBox.y + canvasBox.height * 0.42, { steps: 8 });
+  await page.mouse.up();
+  await expect(canvas).not.toHaveAttribute(
+    "data-wimy-camera-position",
+    initialPosition,
+  );
+  await expect(canvas).toHaveAttribute("data-wimy-camera-position", /.+/u);
+  const userOrbitPosition = await canvas.getAttribute(
+    "data-wimy-camera-position",
+  );
+  if (!userOrbitPosition) throw new Error("expected a user-orbited camera position");
+  expect(userOrbitPosition.split(",").map(Number)).toHaveLength(3);
+  expect(userOrbitPosition).not.toBe(initialPosition);
+  await expect(
+    page.getByRole("region", { name: "3D preview of Living Room" }),
+  ).toContainText("Linen Apartment Sofa");
+});
+
+for (const viewport of [
+  { width: 1_280, height: 900 },
+  { width: 1_024, height: 900 },
+  { width: 390, height: 844 },
+]) {
+  test(`does not overflow at ${viewport.width}px in the 3D preview`, async ({
+    page,
+  }) => {
+    await page.setViewportSize(viewport);
+    await page.goto("/");
+    await page.getByRole("button", { name: "Preview in 3D" }).click();
+    await expect(page.locator(".room-preview-canvas canvas")).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+      viewport.width,
+    );
+  });
+}

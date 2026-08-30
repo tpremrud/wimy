@@ -9,6 +9,7 @@ import { orientedFootprint } from "./placement";
 import {
   clientPointToSvg,
   planPointToRoom,
+  projectRoomToScene,
   projectRoomToPlan,
   screenPointToRoom,
 } from "./projection";
@@ -194,6 +195,93 @@ describe("projectRoomToPlan", () => {
 
     expect(room).toEqual(roomBefore);
     expect(viewport).toEqual(viewportBefore);
+  });
+});
+
+describe("projectRoomToScene", () => {
+  it("maps room x/y and item height to Three X/Z/Y", () => {
+    const item = makePlacedItem({
+      pose: { x: 1.2, y: 2.3, rotationDeg: 90 },
+      snapshot: {
+        ...makePlacedItem().snapshot,
+        dimensions: { width: 1.8, depth: 0.8, height: 0.7 },
+      },
+    });
+
+    const scene = projectRoomToScene(makeRoom({ items: [item] }));
+
+    expect(scene.items[0]).toMatchObject({
+      position: [1.2, 0.35, 2.3],
+      rotationY: -Math.PI / 2,
+    });
+  });
+
+  it.each([
+    [0, 0],
+    [90, -1.5707963267948966],
+    [180, -3.141592653589793],
+    [270, -4.71238898038469],
+  ] as const)(
+    "maps clockwise %i degree turns to %f Y radians",
+    (rotationDeg, rotationY) => {
+      const scene = projectRoomToScene(
+        makeRoom({
+          items: [makePlacedItem({ pose: { x: 1, y: 1, rotationDeg } })],
+        }),
+      );
+
+      expect(scene.items[0]?.rotationY).toBe(rotationY);
+    },
+  );
+
+  it("derives literal floor, wall, opening, and safe generic-box facts", () => {
+    const scene = projectRoomToScene(
+      makeRoom({
+        dimensions: { width: 6, depth: 5, height: 3 },
+        openings: [
+          makeOpening({
+            id: "window_east",
+            kind: "window",
+            wall: "east",
+            centerOffset: 1.5,
+            width: 1.2,
+            bottom: 0.8,
+            height: 1.1,
+          }),
+        ],
+        items: [
+          makePlacedItem({
+            snapshot: {
+              ...makePlacedItem().snapshot,
+              category: "generic",
+              appearance: { color: "#not-a-color" },
+            },
+          }),
+        ],
+      }),
+    );
+
+    expect(scene.floor).toEqual({ position: [3, 0, 2.5], size: [6, 5] });
+    expect(scene.walls).toEqual([
+      { wall: "north", position: [3, 1.5, 0], size: [6, 3, 0.08] },
+      { wall: "east", position: [6, 1.5, 2.5], size: [0.08, 3, 5] },
+      { wall: "south", position: [3, 1.5, 5], size: [6, 3, 0.08] },
+      { wall: "west", position: [0, 1.5, 2.5], size: [0.08, 3, 5] },
+    ]);
+    expect(scene.openings).toEqual([
+      {
+        id: "window_east",
+        kind: "window",
+        wall: "east",
+        position: [6, 1.35, 1.5],
+        size: [0.08, 1.1, 1.2],
+      },
+    ]);
+    expect(scene.items[0]).toMatchObject({
+      category: "generic",
+      color: "#8a8a8a",
+      size: [0.6, 0.8, 0.6],
+    });
   });
 });
 

@@ -1,4 +1,9 @@
-import type { EntityId, Opening, WimyRoomV1 } from "./document";
+import type {
+  EntityId,
+  FurnitureSnapshot,
+  Opening,
+  WimyRoomV1,
+} from "./document";
 import { orientedFootprint } from "./placement";
 
 type DeepReadonly<T> = T extends readonly (infer Item)[]
@@ -40,6 +45,140 @@ export type PlanProjection = {
   };
   openings: PlanOpeningMark[];
   items: PlanItem[];
+};
+
+export type SceneVector3 = [number, number, number];
+
+export type SceneFloor = {
+  position: SceneVector3;
+  size: [number, number];
+};
+
+export type SceneWall = {
+  wall: Opening["wall"];
+  position: SceneVector3;
+  size: SceneVector3;
+};
+
+export type SceneOpeningHint = {
+  id: EntityId;
+  kind: Opening["kind"];
+  wall: Opening["wall"];
+  position: SceneVector3;
+  size: SceneVector3;
+};
+
+export type SceneItem = {
+  id: EntityId;
+  name: string;
+  category: FurnitureSnapshot["category"];
+  color: string;
+  position: SceneVector3;
+  rotationDeg: number;
+  rotationY: number;
+  size: SceneVector3;
+};
+
+export type SceneProjection = {
+  dimensions: SceneVector3;
+  floor: SceneFloor;
+  walls: SceneWall[];
+  openings: SceneOpeningHint[];
+  items: SceneItem[];
+};
+
+const NEUTRAL_SCENE_COLOR = "#8a8a8a";
+const SAFE_HEX_COLOR = /^#[0-9a-f]{6}$/iu;
+const WALL_THICKNESS = 0.08;
+
+const sceneColor = (color: string) =>
+  SAFE_HEX_COLOR.test(color) ? color : NEUTRAL_SCENE_COLOR;
+
+const openingSceneSize = (opening: DeepReadonly<Opening>): SceneVector3 =>
+  opening.wall === "north" || opening.wall === "south"
+    ? [opening.width, opening.height, WALL_THICKNESS]
+    : [WALL_THICKNESS, opening.height, opening.width];
+
+const openingScenePosition = (
+  opening: DeepReadonly<Opening>,
+  room: DeepReadonly<WimyRoomV1>,
+): SceneVector3 => {
+  const height = opening.bottom + opening.height / 2;
+
+  switch (opening.wall) {
+    case "north":
+      return [opening.centerOffset, height, 0];
+    case "east":
+      return [room.dimensions.width, height, opening.centerOffset];
+    case "south":
+      return [opening.centerOffset, height, room.dimensions.depth];
+    case "west":
+      return [0, height, opening.centerOffset];
+  }
+};
+
+export const projectRoomToScene = (
+  room: DeepReadonly<WimyRoomV1>,
+): SceneProjection => {
+  const { width, depth, height } = room.dimensions;
+
+  return {
+    dimensions: [width, height, depth],
+    floor: {
+      position: [width / 2, 0, depth / 2],
+      size: [width, depth],
+    },
+    walls: [
+      {
+        wall: "north",
+        position: [width / 2, height / 2, 0],
+        size: [width, height, WALL_THICKNESS],
+      },
+      {
+        wall: "east",
+        position: [width, height / 2, depth / 2],
+        size: [WALL_THICKNESS, height, depth],
+      },
+      {
+        wall: "south",
+        position: [width / 2, height / 2, depth],
+        size: [width, height, WALL_THICKNESS],
+      },
+      {
+        wall: "west",
+        position: [0, height / 2, depth / 2],
+        size: [WALL_THICKNESS, height, depth],
+      },
+    ],
+    openings: room.openings.map((opening) => ({
+      id: opening.id,
+      kind: opening.kind,
+      wall: opening.wall,
+      position: openingScenePosition(opening, room),
+      size: openingSceneSize(opening),
+    })),
+    items: room.items.map((item) => ({
+      id: item.id,
+      name: item.snapshot.name,
+      category: item.snapshot.category,
+      color: sceneColor(item.snapshot.appearance.color),
+      position: [
+        item.pose.x,
+        item.snapshot.dimensions.height / 2,
+        item.pose.y,
+      ],
+      rotationDeg: item.pose.rotationDeg,
+      rotationY:
+        item.pose.rotationDeg === 0
+          ? 0
+          : (-item.pose.rotationDeg * Math.PI) / 180,
+      size: [
+        item.snapshot.dimensions.width,
+        item.snapshot.dimensions.height,
+        item.snapshot.dimensions.depth,
+      ],
+    })),
+  };
 };
 
 const projectOpening = (

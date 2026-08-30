@@ -46,6 +46,49 @@ section > p {
   min-width: 0;
 }
 
+.workspace-room-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 1rem;
+}
+
+.workspace-room-heading {
+  min-width: 0;
+}
+
+.workspace-room-heading > p {
+  margin-top: 0.75rem;
+}
+
+.room-view-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.room-view-controls button {
+  min-height: 2.5rem;
+  border: 1px solid #555555;
+  border-radius: 0.25rem;
+  padding: 0.5rem 0.75rem;
+  color: #111111;
+  background: #ffffff;
+  font: inherit;
+  cursor: pointer;
+}
+
+.room-view-controls button[aria-pressed="true"] {
+  border-color: #075985;
+  color: #ffffff;
+  background: #075985;
+}
+
+.room-view-controls button:focus-visible {
+  outline: 3px solid #b45309;
+  outline-offset: 2px;
+}
+
 .workspace-activity {
   display: grid;
   gap: 1.25rem;
@@ -180,6 +223,54 @@ section > p {
 
 .room-editor {
   margin-top: 1.25rem;
+}
+
+.room-preview {
+  display: grid;
+  min-width: 0;
+  margin-top: 1.25rem;
+  gap: 0.75rem;
+}
+
+.room-preview-heading-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.room-preview-heading-row p,
+.room-preview-summary,
+.room-preview-fallback {
+  color: #555555;
+}
+
+.room-preview-canvas {
+  width: 100%;
+  min-width: 0;
+  height: clamp(20rem, 60vh, 42rem);
+  overflow: hidden;
+  border: 1px solid #b9b9b9;
+  background: #edf0f2;
+}
+
+.room-preview-canvas canvas {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.room-preview-items {
+  display: flex;
+  flex-wrap: wrap;
+  margin: 0;
+  padding: 0;
+  gap: 0.35rem 1rem;
+  list-style: none;
+}
+
+.room-preview-items li::before {
+  content: "• ";
 }
 
 .room-editor-heading-row {
@@ -351,9 +442,18 @@ section > p {
   }
 
   .room-editor-heading-row,
+  .room-preview-heading-row,
   .room-item-actions {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .room-view-controls {
+    margin-top: 1rem;
+  }
+
+  .workspace-room-header {
+    grid-template-columns: 1fr;
   }
 
   .room-item-actions p {
