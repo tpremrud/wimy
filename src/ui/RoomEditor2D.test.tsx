@@ -355,6 +355,53 @@ describe("RoomEditor2D selection", () => {
       screen.getByRole("button", { name: "Rotate 90 degrees" }),
     ).toBeVisible();
   });
+
+  it("restores editor focus after accepted replacement and preserves it after rejection", () => {
+    const store = renderEditor(makeRoom({ items: [makePlacedItem()] }));
+    const item = screen.getByRole("button", { name: "Select Test Chair" });
+    fireEvent.keyDown(item, { key: "Enter" });
+    const rotate = screen.getByRole("button", { name: "Rotate 90 degrees" });
+    rotate.focus();
+
+    act(() => {
+      store.getState().transact({
+        expectedRevision: 1,
+        origin: "template",
+        change: {
+          type: "replace",
+          room: makeRoom({
+            name: "Replacement Room",
+            items: [
+              makePlacedItem({ pose: { x: 2, y: 1, rotationDeg: 0 } }),
+            ],
+          }),
+        },
+      });
+    });
+
+    const replacementItem = screen.getByRole("button", {
+      name: "Select Test Chair",
+    });
+    expect(replacementItem).toHaveFocus();
+    fireEvent.keyDown(replacementItem, { key: "Enter" });
+    const replacementRotate = screen.getByRole("button", {
+      name: "Rotate 90 degrees",
+    });
+    replacementRotate.focus();
+
+    act(() => {
+      store.getState().transact({
+        expectedRevision: 0,
+        origin: "import",
+        change: { type: "replace", room: makeRoom() },
+      });
+    });
+
+    expect(replacementRotate).toHaveFocus();
+    expect(
+      screen.getByLabelText("Selected item actions"),
+    ).toBeInTheDocument();
+  });
 });
 
 describe("RoomEditor2D drag", () => {
@@ -1087,6 +1134,7 @@ describe("RoomEditor2D selected-item actions", () => {
       affectedItemIds: ["item_chair_1"],
     });
 
+    remove.focus();
     fireEvent.click(remove);
 
     expect(store.getState().revision).toBe(3);
@@ -1099,5 +1147,6 @@ describe("RoomEditor2D selected-item actions", () => {
     expect(screen.getByLabelText("Human edit result")).toHaveTextContent(
       "Human edit attempt 2 accepted. Applied 1 room operations. Revision 3.",
     );
+    expect(svg).toHaveFocus();
   });
 });

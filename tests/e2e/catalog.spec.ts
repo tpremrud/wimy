@@ -83,7 +83,7 @@ test("searches the fictional catalog and adds its deterministic best fit", async
       .getByRole("region", { name: "Activity receipts" })
       .getByRole("listitem")
       .first(),
-  ).toContainText("HumanAcceptedAdded Ember Nest ChairRevision 2");
+  ).toContainText("Human: Accepted. Added Ember Nest ChairRevision 2");
   await expect(page.getByRole("status").filter({ hasText: "Accepted:" }))
     .toHaveText("Accepted: Added Ember Nest Chair. Revision 2.");
   await expect(

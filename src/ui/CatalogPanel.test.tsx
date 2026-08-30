@@ -172,6 +172,12 @@ describe("CatalogPanel", () => {
     const store = createCatalogStore(
       makeRoom({
         dimensions: { width: 2, depth: 2, height: 2.7 },
+        items: [
+          makePlacedItem({
+            id: "item_existing_blocker",
+            pose: { x: 1.7, y: 1.7, rotationDeg: 0 },
+          }),
+        ],
       }),
       () => "item_latest_fit",
     );
@@ -188,19 +194,16 @@ describe("CatalogPanel", () => {
       const current = store.getState();
       current.transact({
         expectedRevision: current.revision,
-        origin: "template",
+        origin: "human",
         change: {
-          type: "replace",
-          room: makeRoom({
-            name: "Changed Room",
-            dimensions: { width: 2, depth: 2, height: 2.7 },
-            items: [
-              makePlacedItem({
-                id: "item_new_blocker",
-                pose: { x: 0.3, y: 0.3, rotationDeg: 0 },
-              }),
-            ],
-          }),
+          type: "edit",
+          operations: [
+            {
+              type: "transform",
+              itemId: "item_existing_blocker",
+              pose: { x: 0.3, y: 0.3 },
+            },
+          ],
         },
       });
     });
@@ -226,34 +229,43 @@ describe("CatalogPanel", () => {
   });
 
   it("announces when a latest-state refresh leaves no fit to add", async () => {
-    const store = createCatalogStore(
-      makeRoom({ dimensions: { width: 2, depth: 2, height: 2.7 } }),
+    const baseItem = makePlacedItem();
+    const store = createRoomStore(
+      makeRoom({ dimensions: { width: 1, depth: 1, height: 2.7 } }),
+      {
+        resolveProduct: (productId) =>
+          productId === "fill-room"
+            ? {
+                catalogRef: {
+                  catalogId: "wimy-demo-v1",
+                  productId,
+                },
+                snapshot: {
+                  ...baseItem.snapshot,
+                  dimensions: { width: 1, depth: 1, height: 0.8 },
+                },
+              }
+            : resolveCatalogProduct(productId),
+        createItemId: () => "item_full_blocker",
+      },
     );
     render(<CatalogPanel store={store} />);
     const user = await searchForWarmModernChair();
-    const baseItem = makePlacedItem();
 
     act(() => {
       const current = store.getState();
       current.transact({
         expectedRevision: current.revision,
-        origin: "template",
+        origin: "human",
         change: {
-          type: "replace",
-          room: makeRoom({
-            name: "Filled Room",
-            dimensions: { width: 1, depth: 1, height: 2.7 },
-            items: [
-              makePlacedItem({
-                id: "item_full_blocker",
-                snapshot: {
-                  ...baseItem.snapshot,
-                  dimensions: { width: 1, depth: 1, height: 0.8 },
-                },
-                pose: { x: 0.5, y: 0.5, rotationDeg: 0 },
-              }),
-            ],
-          }),
+          type: "edit",
+          operations: [
+            {
+              type: "add",
+              productId: "fill-room",
+              pose: { x: 0.5, y: 0.5, rotationDeg: 0 },
+            },
+          ],
         },
       });
     });
@@ -338,5 +350,66 @@ describe("CatalogPanel", () => {
     ).toHaveTextContent(
       "Rejected: Generated placed-item identity item_duplicate already exists. Revision 1.",
     );
+  });
+
+  it("clears ephemeral results after accepted replacement while retaining filters and focus", async () => {
+    const store = createCatalogStore();
+    render(<CatalogPanel store={store} />);
+    await searchForWarmModernChair();
+    const addButton = screen.getByRole("button", { name: "Add best fit" });
+    addButton.focus();
+
+    act(() => {
+      const current = store.getState();
+      current.transact({
+        expectedRevision: current.revision,
+        origin: "template",
+        change: { type: "replace", room: getTemplate("blank-room") },
+      });
+    });
+
+    expect(
+      screen.queryByRole("list", { name: "Catalog results" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("status", { name: "Catalog add result" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Category" })).toHaveValue(
+      "chair",
+    );
+    expect(screen.getByRole("textbox", { name: "Style tags" })).toHaveValue(
+      "warm-modern",
+    );
+    expect(
+      screen.getByRole("spinbutton", { name: "Maximum price (USD)" }),
+    ).toHaveValue(600);
+    expect(
+      screen.getByRole("button", { name: "Search catalog" }),
+    ).toHaveFocus();
+  });
+
+  it("preserves ephemeral results after a rejected replacement", async () => {
+    const store = createCatalogStore();
+    render(<CatalogPanel store={store} />);
+    await searchForWarmModernChair();
+
+    act(() => {
+      store.getState().transact({
+        expectedRevision: 0,
+        origin: "import",
+        change: { type: "replace", room: getTemplate("blank-room") },
+      });
+    });
+
+    expect(
+      within(screen.getByRole("list", { name: "Catalog results" })).getByText(
+        "Ember Nest Chair",
+      ),
+    ).toBeVisible();
+    expect(screen.getByRole("button", { name: "Add best fit" })).toBeVisible();
+    expect(store.getState()).toMatchObject({
+      revision: 1,
+      room: { name: "Living Room" },
+    });
   });
 });

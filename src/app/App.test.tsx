@@ -7,12 +7,15 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { StrictMode } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 import { resolveCatalogProduct } from "../room/catalog";
 import { createRoomStore } from "../room/store";
 import { getTemplate } from "../room/templates";
 import { TEST_TRANSACTION_DEPENDENCIES } from "../room/transaction";
+import { serializeWimyRoom } from "../room/wimy-file";
+import { makePlacedItem } from "../test/room-fixtures";
 import { App } from "./App";
 
 type RegisterBehavior = (
@@ -88,6 +91,102 @@ describe("App", () => {
     ).toBeVisible();
   });
 
+  it("renders portable room controls without creating an initial transaction", () => {
+    const store = createRoomStore(
+      getTemplate("living-room"),
+      TEST_TRANSACTION_DEPENDENCIES,
+    );
+
+    render(<App store={store} />);
+
+    const portableControls = screen.getByRole("region", {
+      name: "Room files and templates",
+    });
+    expect(portableControls).toBeVisible();
+    expect(
+      within(screen.getByRole("banner")).getByRole("region", {
+        name: "Room files and templates",
+      }),
+    ).toBe(portableControls);
+    expect(
+      within(screen.getByRole("banner")).queryByRole("region", {
+        name: "Room warnings",
+      }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(
+        screen.getByRole("complementary", { name: "Activity receipts" }),
+      ).queryByRole("region", { name: "Room files and templates" }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(
+        screen.getByRole("complementary", { name: "Activity receipts" }),
+      ).getByRole("region", { name: "Room warnings" }),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("combobox", { name: "Load room template" }),
+    ).toHaveValue("");
+    expect(
+      screen.getByRole("button", { name: "Undo last room change" }),
+    ).toBeDisabled();
+    expect(store.getState()).toMatchObject({ revision: 1, receipts: [] });
+  });
+
+  it("keeps an imported unavailable-catalog snapshot visible and editable", async () => {
+    const user = userEvent.setup();
+    const store = createRoomStore(
+      getTemplate("living-room"),
+      TEST_TRANSACTION_DEPENDENCIES,
+    );
+    const imported = getTemplate("blank-room");
+    imported.items.push(
+      makePlacedItem({
+        id: "item_portable_archive",
+        catalogRef: {
+          catalogId: "portable-archive",
+          productId: "retired-chair",
+        },
+        snapshot: {
+          ...makePlacedItem().snapshot,
+          name: "Archived Portable Chair",
+          commerce: {
+            price: { amount: 199, currency: "USD" },
+            productUrl: "https://example.invalid/do-not-open",
+          },
+        },
+      }),
+    );
+    render(<App store={store} />);
+
+    await user.upload(
+      screen.getByLabelText("Import .wimy file"),
+      new File([serializeWimyRoom(imported)], "portable.wimy"),
+    );
+
+    expect(
+      screen.getByText("Catalog unavailable; using embedded snapshot."),
+    ).toBeVisible();
+    const item = screen.getByRole("button", {
+      name: "Select Archived Portable Chair",
+    });
+    expect(item).toBeVisible();
+    await user.click(item);
+    await user.click(
+      screen.getByRole("button", { name: "Rotate 90 degrees" }),
+    );
+
+    expect(store.getState().revision).toBe(3);
+    expect(
+      store
+        .getState()
+        .room.items.find(({ id }) => id === "item_portable_archive")?.pose
+        .rotationDeg,
+    ).toBe(90);
+    expect(
+      screen.getByText("Catalog unavailable; using embedded snapshot."),
+    ).toBeVisible();
+  });
+
   it("renders a supplied store's room, revision, and receipts", () => {
     const store = createRoomStore(
       getTemplate("living-room"),
@@ -153,7 +252,7 @@ describe("App", () => {
     expect(
       within(screen.getByRole("region", { name: "Activity receipts" }))
         .getAllByRole("listitem")[0],
-    ).toHaveTextContent("HumanAcceptedAdded Ember Nest ChairRevision 2");
+    ).toHaveTextContent("Human: Accepted. Added Ember Nest ChairRevision 2");
   });
 
   it("edits the latest room through one accessible human editor transaction", () => {
@@ -201,7 +300,9 @@ describe("App", () => {
     expect(
       within(screen.getByRole("region", { name: "Activity receipts" }))
         .getAllByRole("listitem")[0],
-    ).toHaveTextContent("HumanAcceptedApplied 1 room operationsRevision 3");
+    ).toHaveTextContent(
+      "Human: Accepted. Applied 1 room operationsRevision 3",
+    );
     expect(screen.getByLabelText("Human edit result")).toHaveTextContent(
       "Human edit attempt 1 accepted. Applied 1 room operations. Revision 3.",
     );

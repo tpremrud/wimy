@@ -1,4 +1,4 @@
-import { useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
   findFurniture,
   type CatalogMatch,
@@ -69,6 +69,32 @@ export function CatalogPanel({ store }: CatalogPanelProps) {
   const searchButtonRef = useRef<HTMLButtonElement>(null);
   const visibleSearch = searchState?.owner === store ? searchState : null;
   const visibleAction = actionState?.owner === store ? actionState : null;
+
+  useEffect(
+    () =>
+      store.subscribe((current, previous) => {
+        const receipt = current.receipts[0];
+        if (
+          receipt === previous.receipts[0] ||
+          receipt?.status !== "accepted" ||
+          receipt.changeType !== "replace"
+        ) {
+          return;
+        }
+
+        const activeElement = document.activeElement;
+        const restoreSearchFocus =
+          activeElement instanceof Element &&
+          activeElement.closest(".catalog-results, .catalog-panel > button") !==
+            null;
+        setSearchState(null);
+        setActionState(null);
+        if (restoreSearchFocus) {
+          searchButtonRef.current?.focus();
+        }
+      }),
+    [store],
+  );
 
   const currentQuery = (): CatalogQuery => ({
     category:

@@ -28,6 +28,25 @@ const getUtf8ByteLength = (value: string) =>
   new TextEncoder().encode(value).byteLength;
 
 const SAFE_PATH_KEY_PATTERN = /^[A-Za-z][A-Za-z0-9_]*$/u;
+const VALIDATION_ISSUE_MESSAGES: Readonly<Record<string, string>> = {
+  custom: "Value violates a room constraint",
+  invalid_element: "Invalid collection value",
+  invalid_format: "Value has an invalid format",
+  invalid_key: "Invalid object key",
+  invalid_type: "Invalid value type",
+  invalid_union: "Value does not match an allowed shape",
+  invalid_value: "Value is not allowed",
+  not_multiple_of: "Value has an invalid increment",
+  too_big: "Value exceeds an allowed limit",
+  too_small: "Value does not meet an allowed limit",
+  unrecognized_keys: "Unexpected field",
+};
+
+const formatValidationMessage = (issue?: { code: string }) =>
+  issue
+    ? `Invalid Wimy document: ${VALIDATION_ISSUE_MESSAGES[issue.code] ?? "Invalid value"}`
+    : "Invalid Wimy document";
+
 const formatValidationPath = (
   path: readonly PropertyKey[],
 ): string | undefined => {
@@ -126,9 +145,7 @@ export const parseWimyFile = async (
     return {
       ok: false,
       code: "INVALID_DOCUMENT",
-      message: issue
-        ? `Invalid Wimy document: ${issue.message}`
-        : "Invalid Wimy document",
+      message: formatValidationMessage(issue),
       path: issue ? formatValidationPath(issue.path) : undefined,
     };
   }

@@ -2,6 +2,10 @@ import { useEffect, useState } from "react";
 import { useStore } from "zustand";
 import { roomStore, type RoomStore } from "../room/store";
 import { CatalogPanel } from "../ui/CatalogPanel";
+import {
+  FileAndTemplateControls,
+  RoomWarnings,
+} from "../ui/FileAndTemplateControls";
 import { ReceiptPanel } from "../ui/ReceiptPanel";
 import { RoomEditor2D } from "../ui/RoomEditor2D";
 import {
@@ -88,6 +92,7 @@ export function App({ store = roomStore }: AppProps) {
         <p role="status" aria-label="WebMCP status" aria-live="polite">
           {registrationStatusText(visibleRegistration)}
         </p>
+        <FileAndTemplateControls store={store} />
       </header>
       <div className="workspace-grid">
         <aside
@@ -108,6 +113,7 @@ export function App({ store = roomStore }: AppProps) {
           className="workspace-activity"
           aria-labelledby="activity-receipts-heading"
         >
+          <RoomWarnings store={store} />
           <ReceiptPanel receipts={receipts} />
         </aside>
       </div>

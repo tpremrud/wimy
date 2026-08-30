@@ -4,11 +4,12 @@ import type { EntityId, WimyRoomV1 } from "./document";
 import { getTemplate } from "./templates";
 import type {
   ActivityReceipt,
+  RoomWarning,
   RoomTransactionRequest,
   RoomTransactionResult,
   TransactionDependencies,
 } from "./transaction";
-import { applyRoomTransaction } from "./transaction";
+import { applyRoomTransaction, getRoomLayoutWarnings } from "./transaction";
 
 const MAX_RECEIPTS = 20;
 
@@ -52,6 +53,7 @@ export type RoomStoreState = {
     request: RoomTransactionRequest,
   ) => RoomTransactionResult;
   readonly createUndoRequest: () => RoomTransactionRequest | null;
+  readonly getLayoutWarnings: () => readonly RoomWarning[];
   readonly selectItem: (itemId: EntityId | null) => void;
 };
 
@@ -186,6 +188,10 @@ export const createRoomStore = (
         },
       };
     };
+    const getLayoutWarnings = () =>
+      structuredClone(
+        getRoomLayoutWarnings(get().room as WimyRoomV1, dependencies),
+      );
     const selectItem = (itemId: EntityId | null) => {
       replaceState({ ...get(), selectedItemId: itemId });
     };
@@ -198,6 +204,7 @@ export const createRoomStore = (
       selectedItemId: null,
       transact,
       createUndoRequest,
+      getLayoutWarnings,
       selectItem,
     });
   });

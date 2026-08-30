@@ -20,11 +20,64 @@ describe("createRoomStore", () => {
     expect(state.revision).toBe(1);
     expect(typeof state.transact).toBe("function");
     expect(typeof state.createUndoRequest).toBe("function");
+    expect(typeof state.getLayoutWarnings).toBe("function");
     expect(state).not.toHaveProperty("setRoom");
     expect(state).not.toHaveProperty("moveItem");
     expect(state).not.toHaveProperty("undo");
     expect(store).not.toHaveProperty("setState");
   });
+
+  it.each([
+    {
+      name: "known custom reference",
+      resolvedCatalogId: "custom-catalog",
+      expectedWarnings: 0,
+    },
+    {
+      name: "catalog id mismatch",
+      resolvedCatalogId: "different-catalog",
+      expectedWarnings: 1,
+    },
+    {
+      name: "unknown custom reference",
+      resolvedCatalogId: undefined,
+      expectedWarnings: 1,
+    },
+  ])(
+    "derives current layout warnings from injected dependencies for $name",
+    ({ resolvedCatalogId, expectedWarnings }) => {
+      const item = makePlacedItem({
+        catalogRef: {
+          catalogId: "custom-catalog",
+          productId: "custom-chair",
+        },
+      });
+      const store = createRoomStore(makeRoom({ items: [item] }), {
+        resolveProduct: (productId) =>
+          resolvedCatalogId === undefined
+            ? undefined
+            : {
+                catalogRef: {
+                  catalogId: resolvedCatalogId,
+                  productId,
+                },
+                snapshot: item.snapshot,
+              },
+        createItemId: () => "item_generated_1",
+      });
+
+      const warnings = store.getState().getLayoutWarnings();
+
+      expect(warnings).toHaveLength(expectedWarnings);
+      if (expectedWarnings > 0) {
+        expect(warnings[0]).toMatchObject({
+          code: "CATALOG_UNAVAILABLE",
+          itemIds: [item.id],
+        });
+      }
+      expect(store.getState()).not.toHaveProperty("setLayoutWarnings");
+    },
+  );
 
   it("protects committed state from out-of-band mutation", () => {
     const initialRoom = getTemplate("living-room");

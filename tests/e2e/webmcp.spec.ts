@@ -157,7 +157,7 @@ test("inspect and apply visibly mutate the room while stale edits fail", async (
       .getByRole("region", { name: "Activity receipts" })
       .getByRole("listitem")
       .first(),
-  ).toContainText("AgentAcceptedApplied 1 room operationsRevision 2");
+  ).toContainText("Agent: Accepted. Applied 1 room operationsRevision 2");
 
   const chair = page.getByRole("button", { name: "Select Soft Lounge Chair" });
   const dragGeometry = await chair.evaluate((element) => {
@@ -223,7 +223,7 @@ test("inspect and apply visibly mutate the room while stale edits fail", async (
       .getByRole("region", { name: "Activity receipts" })
       .getByRole("listitem")
       .first(),
-  ).toContainText("HumanAcceptedApplied 1 room operationsRevision 3");
+  ).toContainText("Human: Accepted. Applied 1 room operationsRevision 3");
   await expect(page.getByLabel("Human edit result")).toHaveText(
     "Human edit attempt 1 accepted. Applied 1 room operations. Revision 3.",
   );
@@ -250,7 +250,7 @@ test("inspect and apply visibly mutate the room while stale edits fail", async (
       .getByRole("listitem")
       .first(),
   ).toContainText(
-    "AgentRejectedExpected revision 2, but the room is at revision 3Revision 3",
+    "Agent: Rejected. Expected revision 2, but the room is at revision 3Revision 3",
   );
   await page
     .getByRole("button", { name: "Select Linen Apartment Sofa" })
@@ -300,5 +300,5 @@ test("the room remains functional without modelContext", async ({ page }) => {
       .getByRole("region", { name: "Activity receipts" })
       .getByRole("listitem")
       .first(),
-  ).toContainText("HumanAcceptedApplied 1 room operationsRevision 2");
+  ).toContainText("Human: Accepted. Applied 1 room operationsRevision 2");
 });

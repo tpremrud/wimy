@@ -115,7 +115,7 @@ const isCatalogProductAvailable = (
   );
 };
 
-const layoutWarnings = (
+export const getRoomLayoutWarnings = (
   room: WimyRoomV1,
   dependencies: TransactionDependencies,
 ) =>
@@ -136,7 +136,7 @@ const rejectTransaction = (
     revision: state.revision,
     code,
     message,
-    warnings: layoutWarnings(state.room, dependencies),
+    warnings: getRoomLayoutWarnings(state.room, dependencies),
     receipt: {
       origin: request.origin,
       status: "rejected",
@@ -218,7 +218,7 @@ export function applyRoomTransaction(
         revision,
         applied: 1,
         affectedItemIds,
-        warnings: layoutWarnings(room, dependencies),
+        warnings: getRoomLayoutWarnings(room, dependencies),
         receipt,
       },
     };
@@ -342,7 +342,7 @@ export function applyRoomTransaction(
       operation.type === "remove" ? [operation.itemId] : [],
     ),
   };
-  const warnings = layoutWarnings(parsedRoom.data, dependencies);
+  const warnings = getRoomLayoutWarnings(parsedRoom.data, dependencies);
 
   return {
     state: { room: parsedRoom.data, revision },

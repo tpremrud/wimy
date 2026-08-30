@@ -73,6 +73,8 @@ export function RoomEditor2D({
   const dragRef = useRef<DragState | null>(null);
   const selectionRef = useRef<LocalSelection | null>(null);
   const pendingPointerClickRef = useRef<PendingPointerClick | null>(null);
+  const pendingFocusItemIdRef = useRef<EntityId | null>(null);
+  const roomPlanRef = useRef<SVGSVGElement>(null);
   const interactionOwnerRef = useRef(store);
   const [humanActionResult, setHumanActionResult] =
     useState<HumanActionResult | null>(null);
@@ -111,6 +113,25 @@ export function RoomEditor2D({
         const interactionWasInvalidated = (itemId: EntityId) =>
           receipt.changeType === "replace" ||
           receipt.removedItemIds.includes(itemId);
+        const activeElement = document.activeElement;
+        const focusedItemId =
+          activeElement instanceof Element
+            ? activeElement
+                .closest("[data-item-id]")
+                ?.getAttribute("data-item-id")
+            : null;
+        const focusedActionItemId =
+          activeElement instanceof Element &&
+          activeElement.closest(".room-item-actions") !== null
+            ? selectionRef.current?.itemId
+            : undefined;
+        const invalidatedFocusItemId = focusedItemId ?? focusedActionItemId;
+        if (
+          invalidatedFocusItemId &&
+          interactionWasInvalidated(invalidatedFocusItemId)
+        ) {
+          pendingFocusItemIdRef.current = invalidatedFocusItemId;
+        }
         const pendingPointerClick = pendingPointerClickRef.current;
         if (
           pendingPointerClick?.owner === store &&
@@ -142,6 +163,17 @@ export function RoomEditor2D({
       }),
     [store],
   );
+
+  useLayoutEffect(() => {
+    const itemId = pendingFocusItemIdRef.current;
+    if (!itemId) return;
+
+    pendingFocusItemIdRef.current = null;
+    const item = roomPlanRef.current?.querySelector<SVGGElement>(
+      `[data-item-id="${itemId}"]`,
+    );
+    (item ?? roomPlanRef.current)?.focus();
+  }, [room, selectedItemId]);
 
   const visibleRoom = useMemo(() => {
     if (
@@ -444,8 +476,10 @@ export function RoomEditor2D({
         <p>Drag items to move them. Select an item for more actions.</p>
       </div>
       <svg
+        ref={roomPlanRef}
         className="room-plan"
         role="group"
+        tabIndex={-1}
         aria-label={`${room.name} 2D room editor`}
         viewBox={`0 0 ${viewport.width} ${viewport.height}`}
       >
