@@ -11,8 +11,10 @@ describe("ReceiptPanel", () => {
             origin: "human",
             status: "accepted",
             revision: 2,
+            changeType: "edit",
             summary: "Moved the sofa",
             affectedItemIds: ["item_living_sofa"],
+            removedItemIds: [],
           },
         ]}
       />,
@@ -36,9 +38,11 @@ describe("ReceiptPanel", () => {
             origin: "webmcp",
             status: "rejected",
             revision: 7,
+            changeType: "edit",
             summary,
             code: "REVISION_CONFLICT",
             affectedItemIds: [],
+            removedItemIds: [],
           },
         ]}
       />,

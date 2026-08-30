@@ -74,6 +74,7 @@ const callTool = async (
 test("inspect and apply visibly mutate the room while stale edits fail", async ({
   page,
 }) => {
+  await page.setViewportSize({ width: 1_280, height: 720 });
   await installModelContextHarness(page);
   await page.goto("/");
 
@@ -141,11 +142,14 @@ test("inspect and apply visibly mutate the room while stale edits fail", async (
     page.getByRole("region", { name: "Living Room" }),
   ).toContainText("Revision 2");
   await expect(
-    page
-      .getByRole("list", { name: "Placed items" })
-      .getByRole("listitem")
-      .filter({ hasText: "Linen Apartment Sofa" }),
-  ).toContainText("x 2.2 m, y 0.6 m, rotation 0°");
+    page.getByRole("button", { name: "Select Linen Apartment Sofa" }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Select Linen Apartment Sofa" })
+    .focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByLabel("Selected item actions"))
+    .toContainText("Linen Apartment Sofa — x 2.2 m, y 0.6 m, rotation 0°");
   await expect(
     page
       .getByRole("region", { name: "Activity receipts" })
@@ -153,20 +157,65 @@ test("inspect and apply visibly mutate the room while stale edits fail", async (
       .first(),
   ).toContainText("AgentAcceptedApplied 1 room operationsRevision 2");
 
-  await page
-    .getByRole("button", {
-      name: "Nudge item_living_sofa right 0.1 meters",
-    })
-    .click();
+  const chair = page.getByRole("button", { name: "Select Soft Lounge Chair" });
+  const dragGeometry = await chair.evaluate((element) => {
+    const item = element as SVGGElement;
+    const svg = item.ownerSVGElement;
+    const footprint = item.querySelector<SVGRectElement>(
+      ".room-item-footprint",
+    );
+    const boundary = svg?.querySelector<SVGRectElement>(".room-boundary");
+    const matrix = svg?.getScreenCTM();
+    if (!svg || !footprint || !boundary || !matrix) {
+      throw new Error("expected rendered room geometry");
+    }
+
+    const roomScale = Number(boundary.getAttribute("width")) / 4.8;
+    const center = {
+      x:
+        Number(footprint.getAttribute("x")) +
+        Number(footprint.getAttribute("width")) / 2,
+      y:
+        Number(footprint.getAttribute("y")) +
+        Number(footprint.getAttribute("height")) / 2,
+    };
+    const start = new DOMPoint(center.x, center.y).matrixTransform(matrix);
+    const release = new DOMPoint(
+      center.x + roomScale * 0.5,
+      center.y + roomScale,
+    ).matrixTransform(matrix);
+    const bounds = svg.getBoundingClientRect();
+
+    return {
+      bounds: { width: bounds.width, height: bounds.height },
+      ctm: { a: matrix.a, d: matrix.d, e: matrix.e, f: matrix.f },
+      start: { x: start.x, y: start.y },
+      release: { x: release.x, y: release.y },
+    };
+  });
+
+  expect(dragGeometry.bounds.width).toBeGreaterThan(1_000);
+  expect(dragGeometry.bounds.height).toBeLessThanOrEqual(461);
+  expect(dragGeometry.ctm.a).toBeCloseTo(dragGeometry.ctm.d, 5);
+  expect(dragGeometry.ctm.a).toBeLessThan(
+    dragGeometry.bounds.width / 720,
+  );
+  expect(dragGeometry.ctm.e).toBeGreaterThan(0);
+  await page.mouse.move(dragGeometry.start.x, dragGeometry.start.y);
+  await page.mouse.down();
+  await page.mouse.move(dragGeometry.release.x, dragGeometry.release.y, {
+    steps: 4,
+  });
+  await page.mouse.up();
+
   await expect(
     page.getByRole("region", { name: "Living Room" }),
   ).toContainText("Revision 3");
-  await expect(
-    page
-      .getByRole("list", { name: "Placed items" })
-      .getByRole("listitem")
-      .filter({ hasText: "Linen Apartment Sofa" }),
-  ).toContainText("x 2.3 m, y 0.6 m, rotation 0°");
+  await expect(page.getByLabel("Selected item actions"))
+    .toContainText("Soft Lounge Chair — x 1.6 m, y 3.3 m, rotation 90°");
+  await expect(page.getByLabel("Selected item actions")).not.toContainText(
+    "x 1.388 m",
+  );
   await expect(
     page
       .getByRole("region", { name: "Activity receipts" })
@@ -201,12 +250,13 @@ test("inspect and apply visibly mutate the room while stale edits fail", async (
   ).toContainText(
     "AgentRejectedExpected revision 2, but the room is at revision 3Revision 3",
   );
+  await page
+    .getByRole("button", { name: "Select Linen Apartment Sofa" })
+    .focus();
+  await page.keyboard.press("Enter");
   await expect(
-    page
-      .getByRole("list", { name: "Placed items" })
-      .getByRole("listitem")
-      .filter({ hasText: "Linen Apartment Sofa" }),
-  ).toContainText("x 2.3 m, y 0.6 m, rotation 0°");
+    page.getByLabel("Selected item actions"),
+  ).toContainText("x 2.2 m, y 0.6 m, rotation 0°");
 
   const registrationCountAfterEdits = await page.evaluate(() => {
     const harness = (
@@ -231,14 +281,16 @@ test("the room remains functional without modelContext", async ({ page }) => {
   ).toContainText("Revision 1");
 
   await page
-    .getByRole("button", {
-      name: "Nudge item_living_sofa right 0.1 meters",
-    })
-    .click();
+    .getByRole("button", { name: "Select Soft Lounge Chair" })
+    .focus();
+  await page.keyboard.press("Enter");
+  await page.getByRole("button", { name: "Rotate 90 degrees" }).click();
 
   await expect(
     page.getByRole("region", { name: "Living Room" }),
   ).toContainText("Revision 2");
+  await expect(page.getByLabel("Selected item actions"))
+    .toContainText("rotation 180°");
   await expect(
     page
       .getByRole("region", { name: "Activity receipts" })

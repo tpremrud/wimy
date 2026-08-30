@@ -68,7 +68,15 @@ describe("createRoomStore", () => {
       },
     });
 
-    expect(result).toMatchObject({ ok: true, revision: 2, applied: 1 });
+    expect(result).toMatchObject({
+      ok: true,
+      revision: 2,
+      applied: 1,
+      receipt: {
+        changeType: "edit",
+        removedItemIds: [],
+      },
+    });
     const state = store.getState();
     expect(state.revision).toBe(2);
     expect(
@@ -246,6 +254,8 @@ describe("createRoomStore", () => {
           origin: "webmcp",
           status: "rejected",
           code: "REVISION_CONFLICT",
+          changeType: "edit",
+          removedItemIds: [],
         },
       });
       expect(outerResult).toMatchObject({ ok: true, revision: 2 });
@@ -596,7 +606,18 @@ describe("createRoomStore", () => {
     expect(result).toMatchObject({
       ok: true,
       revision: 2,
-      receipt: { origin: "template", status: "accepted" },
+      receipt: {
+        origin: "template",
+        status: "accepted",
+        changeType: "replace",
+        removedItemIds: [
+          "item_living_sofa",
+          "item_living_rug",
+          "item_living_table",
+          "item_living_chair",
+          "item_living_plant",
+        ],
+      },
     });
     expect(store.getState().selectedItemId).toBeNull();
   });
@@ -619,7 +640,14 @@ describe("createRoomStore", () => {
       },
     });
 
-    expect(result).toMatchObject({ ok: true, revision: 2 });
+    expect(result).toMatchObject({
+      ok: true,
+      revision: 2,
+      receipt: {
+        changeType: "edit",
+        removedItemIds: ["item_living_sofa"],
+      },
+    });
     expect(store.getState().selectedItemId).toBeNull();
   });
 });

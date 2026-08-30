@@ -47,6 +47,11 @@ describe("applyRoomTransaction", () => {
       "item_living_sofa",
       "item_living_rug",
     ]);
+    expect(outcome.result.receipt).toMatchObject({
+      status: "accepted",
+      changeType: "edit",
+      removedItemIds: ["item_living_rug"],
+    });
   });
 
   it("rolls every operation back when one fails", () => {
@@ -75,6 +80,11 @@ describe("applyRoomTransaction", () => {
       ok: false,
       code: "UNKNOWN_ITEM",
       revision: 4,
+      receipt: {
+        status: "rejected",
+        changeType: "edit",
+        removedItemIds: [],
+      },
     });
     expect(outcome.state).toBe(before);
     expect(outcome.state).toEqual(before);
@@ -495,7 +505,19 @@ describe("applyRoomTransaction", () => {
       revision: 6,
       applied: 1,
       affectedItemIds: ["item_chair_1", "item_chair_2"],
-      receipt: { origin: "import", status: "accepted", revision: 6 },
+      receipt: {
+        origin: "import",
+        status: "accepted",
+        revision: 6,
+        changeType: "replace",
+        removedItemIds: [
+          "item_living_sofa",
+          "item_living_rug",
+          "item_living_table",
+          "item_living_chair",
+          "item_living_plant",
+        ],
+      },
     });
     expect(outcome.state).toEqual({ room: replacement, revision: 6 });
     if (!outcome.result.ok) throw new Error("expected accepted replacement");
@@ -527,7 +549,13 @@ describe("applyRoomTransaction", () => {
       ok: false,
       code: "INVALID_DOCUMENT",
       revision: 5,
-      receipt: { origin: "import", status: "rejected", revision: 5 },
+      receipt: {
+        origin: "import",
+        status: "rejected",
+        revision: 5,
+        changeType: "replace",
+        removedItemIds: [],
+      },
     });
     expect(outcome.state).toBe(before);
   });

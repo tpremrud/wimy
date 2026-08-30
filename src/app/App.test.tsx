@@ -107,7 +107,7 @@ describe("App", () => {
     expect(app.getByText("Applied 1 room operations")).toBeVisible();
   });
 
-  it("nudges an item from the latest room state through one human transaction", () => {
+  it("edits the latest room through one accessible human editor transaction", () => {
     const store = createRoomStore(
       getTemplate("living-room"),
       TEST_TRANSACTION_DEPENDENCIES,
@@ -128,23 +128,26 @@ describe("App", () => {
     });
 
     render(<App store={store} />);
+    const chair = screen.getByRole("button", {
+      name: "Select Soft Lounge Chair",
+    });
+    chair.focus();
+    fireEvent.keyDown(chair, { key: "Enter" });
     fireEvent.click(
-      screen.getByRole("button", {
-        name: "Nudge item_living_sofa right 0.1 meters",
-      }),
+      screen.getByRole("button", { name: "Rotate 90 degrees" }),
     );
 
     expect(store.getState().revision).toBe(3);
     expect(
       store
         .getState()
-        .room.items.find(({ id }) => id === "item_living_sofa")?.pose,
-    ).toEqual({ x: 2.3, y: 0.6, rotationDeg: 0 });
+        .room.items.find(({ id }) => id === "item_living_chair")?.pose,
+    ).toEqual({ x: 1.1, y: 2.3, rotationDeg: 180 });
     expect(store.getState().receipts[0]).toMatchObject({
       origin: "human",
       status: "accepted",
       revision: 3,
-      affectedItemIds: ["item_living_sofa"],
+      affectedItemIds: ["item_living_chair"],
     });
     expect(
       within(screen.getByRole("region", { name: "Activity receipts" }))
@@ -153,20 +156,26 @@ describe("App", () => {
     expect(screen.getByLabelText("Human edit result")).toHaveTextContent(
       "Human edit attempt 1 accepted. Applied 1 room operations. Revision 3.",
     );
+    expect(
+      screen.queryByRole("button", { name: /Nudge/u }),
+    ).not.toBeInTheDocument();
   });
 
-  it("announces every rejected human nudge when the pose cannot change", () => {
+  it("announces every identical rejected human editor action", () => {
     const room = getTemplate("living-room");
     const plant = room.items.find(({ id }) => id === "item_living_plant");
     if (!plant) throw new Error("expected the living-room plant");
     plant.pose.x = 4.575;
+    plant.snapshot.dimensions.depth = 0.8;
     const store = createRoomStore(room, TEST_TRANSACTION_DEPENDENCIES);
 
     render(<App store={store} />);
+    fireEvent.keyDown(
+      screen.getByRole("button", { name: "Select Tall Leaf Plant" }),
+      { key: "Enter" },
+    );
     fireEvent.click(
-      screen.getByRole("button", {
-        name: "Nudge item_living_plant right 0.1 meters",
-      }),
+      screen.getByRole("button", { name: "Rotate 90 degrees" }),
     );
 
     expect(store.getState().revision).toBe(1);
@@ -181,9 +190,7 @@ describe("App", () => {
     );
 
     fireEvent.click(
-      screen.getByRole("button", {
-        name: "Nudge item_living_plant right 0.1 meters",
-      }),
+      screen.getByRole("button", { name: "Rotate 90 degrees" }),
     );
 
     expect(store.getState().revision).toBe(1);

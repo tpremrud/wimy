@@ -55,9 +55,11 @@ export type ActivityReceipt = {
   origin: TransactionOrigin;
   status: "accepted" | "rejected";
   revision: number;
+  changeType: RoomChange["type"];
   summary: string;
   code?: TransactionFailureCode;
   affectedItemIds: EntityId[];
+  removedItemIds: EntityId[];
 };
 
 export type RoomTransactionResult =
@@ -139,9 +141,11 @@ const rejectTransaction = (
       origin: request.origin,
       status: "rejected",
       revision: state.revision,
+      changeType: request.change.type,
       summary: message,
       code,
       affectedItemIds: [],
+      removedItemIds: [],
     },
   },
 });
@@ -196,8 +200,15 @@ export function applyRoomTransaction(
       origin: request.origin,
       status: "accepted",
       revision,
+      changeType: request.change.type,
       summary: `Replaced the room with ${room.name}`,
       affectedItemIds,
+      removedItemIds: state.room.items
+        .filter(
+          (existingItem) =>
+            !room.items.some(({ id }) => id === existingItem.id),
+        )
+        .map(({ id }) => id),
     };
 
     return {
@@ -317,8 +328,12 @@ export function applyRoomTransaction(
     origin: request.origin,
     status: "accepted",
     revision,
+    changeType: request.change.type,
     summary: `Applied ${request.change.operations.length} room operations`,
     affectedItemIds,
+    removedItemIds: request.change.operations.flatMap((operation) =>
+      operation.type === "remove" ? [operation.itemId] : [],
+    ),
   };
   const warnings = layoutWarnings(parsedRoom.data, dependencies);
 

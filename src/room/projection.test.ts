@@ -1,0 +1,283 @@
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import {
+  makeOpening,
+  makePlacedItem,
+  makeRoom,
+} from "../test/room-fixtures";
+import type { RotationDeg } from "./document";
+import { orientedFootprint } from "./placement";
+import {
+  clientPointToSvg,
+  planPointToRoom,
+  projectRoomToPlan,
+  screenPointToRoom,
+} from "./projection";
+
+const originalDOMPoint = globalThis.DOMPoint;
+
+class TestDOMPoint {
+  readonly x: number;
+  readonly y: number;
+
+  constructor(x = 0, y = 0) {
+    this.x = x;
+    this.y = y;
+  }
+
+  matrixTransform(matrix: DOMMatrix) {
+    return new TestDOMPoint(
+      matrix.a * this.x + matrix.c * this.y + matrix.e,
+      matrix.b * this.x + matrix.d * this.y + matrix.f,
+    );
+  }
+}
+
+beforeAll(() => {
+  Object.defineProperty(globalThis, "DOMPoint", {
+    configurable: true,
+    value: TestDOMPoint,
+  });
+});
+
+afterAll(() => {
+  Object.defineProperty(globalThis, "DOMPoint", {
+    configurable: true,
+    value: originalDOMPoint,
+  });
+});
+
+describe("orientedFootprint", () => {
+  it.each([
+    [0, 1.8, 0.85],
+    [90, 0.85, 1.8],
+    [180, 1.8, 0.85],
+    [270, 0.85, 1.8],
+  ] as const)(
+    "projects %i degrees to the expected footprint",
+    (rotationDeg, width, depth) => {
+      expect(
+        orientedFootprint(
+          { width: 1.8, depth: 0.85, height: 0.8 },
+          rotationDeg as RotationDeg,
+        ),
+      ).toEqual({ width, depth });
+    },
+  );
+});
+
+describe("projectRoomToPlan", () => {
+  it("uses a stable padded scale from the northwest room origin", () => {
+    const projection = projectRoomToPlan(makeRoom(), {
+      width: 500,
+      height: 400,
+      padding: 40,
+    });
+
+    expect(projection.scale).toBe(105);
+    expect(projection.origin).toEqual({ x: 40, y: 42.5 });
+    expect(projection.roomRect).toEqual({
+      x: 40,
+      y: 42.5,
+      width: 420,
+      height: 315,
+    });
+    expect(projection.dimensions).toEqual({
+      width: {
+        value: 4,
+        x: 250,
+        y: 377.5,
+      },
+      depth: {
+        value: 3,
+        x: 20,
+        y: 200,
+      },
+    });
+  });
+
+  it("projects item centers, quarter-turned rectangles, and label anchors", () => {
+    const room = makeRoom({
+      items: [
+        makePlacedItem({
+          pose: { x: 1, y: 1, rotationDeg: 90 },
+          snapshot: {
+            ...makePlacedItem().snapshot,
+            dimensions: { width: 1.2, depth: 0.6, height: 0.8 },
+          },
+        }),
+      ],
+    });
+
+    const projection = projectRoomToPlan(room, {
+      width: 500,
+      height: 400,
+      padding: 40,
+    });
+
+    expect(projection.items[0]).toEqual({
+      id: "item_chair_1",
+      center: { x: 145, y: 147.5 },
+      rect: { x: 113.5, y: 84.5, width: 63, height: 126 },
+      labelAnchor: { x: 145, y: 147.5 },
+    });
+  });
+
+  it("maps opening widths and offsets onto all four room walls", () => {
+    const room = makeRoom({
+      openings: [
+        makeOpening({
+          id: "opening_north",
+          wall: "north",
+          centerOffset: 1,
+          width: 0.8,
+        }),
+        makeOpening({
+          id: "opening_east",
+          kind: "window",
+          wall: "east",
+          centerOffset: 1.2,
+          width: 0.6,
+        }),
+        makeOpening({
+          id: "opening_south",
+          kind: "window",
+          wall: "south",
+          centerOffset: 3,
+          width: 1,
+        }),
+        makeOpening({
+          id: "opening_west",
+          wall: "west",
+          centerOffset: 2.2,
+          width: 0.4,
+        }),
+      ],
+    });
+
+    const projection = projectRoomToPlan(room, {
+      width: 500,
+      height: 400,
+      padding: 40,
+    });
+
+    expect(projection.openings).toEqual([
+      {
+        id: "opening_north",
+        start: { x: 103, y: 42.5 },
+        end: { x: 187, y: 42.5 },
+      },
+      {
+        id: "opening_east",
+        start: { x: 460, y: 137 },
+        end: { x: 460, y: 200 },
+      },
+      {
+        id: "opening_south",
+        start: { x: 302.5, y: 357.5 },
+        end: { x: 407.5, y: 357.5 },
+      },
+      {
+        id: "opening_west",
+        start: { x: 40, y: 252.5 },
+        end: { x: 40, y: 294.5 },
+      },
+    ]);
+  });
+
+  it("does not mutate the input room or viewport", () => {
+    const room = makeRoom({ items: [makePlacedItem()] });
+    const viewport = { width: 500, height: 400, padding: 40 };
+    const roomBefore = structuredClone(room);
+    const viewportBefore = structuredClone(viewport);
+
+    projectRoomToPlan(room, viewport);
+
+    expect(room).toEqual(roomBefore);
+    expect(viewport).toEqual(viewportBefore);
+  });
+});
+
+describe("plan coordinate conversion", () => {
+  it("converts client coordinates through SVG space back to room meters", () => {
+    const projection = projectRoomToPlan(makeRoom(), {
+      width: 500,
+      height: 400,
+      padding: 40,
+    });
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    Object.defineProperty(svg, "getScreenCTM", {
+      configurable: true,
+      value: () => ({
+        inverse: () => ({ a: 1, b: 0, c: 0, d: 1, e: -60, f: -20 }),
+      }),
+    });
+
+    expect(clientPointToSvg(svg, { x: 310, y: 220 })).toEqual({
+      x: 250,
+      y: 200,
+    });
+    expect(planPointToRoom(projection, { x: 250, y: 200 })).toEqual({
+      x: 2,
+      y: 1.5,
+    });
+    expect(
+      screenPointToRoom(svg, { x: 310, y: 220 }, projection),
+    ).toEqual({ x: 2, y: 1.5 });
+  });
+
+  it("inverts the rendered CTM when the responsive SVG is scaled and letterboxed", () => {
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    Object.defineProperty(svg, "getBoundingClientRect", {
+      configurable: true,
+      value: () => ({
+        x: 0,
+        y: 20,
+        left: 0,
+        top: 20,
+        right: 1_102,
+        bottom: 480.8,
+        width: 1_102,
+        height: 460.8,
+        toJSON: () => ({}),
+      }),
+    });
+    Object.defineProperty(svg, "getScreenCTM", {
+      configurable: true,
+      value: () => ({
+        inverse: () => ({
+          a: 1 / 0.882,
+          b: 0,
+          c: 0,
+          d: 1 / 0.882,
+          e: -233.48 / 0.882,
+          f: -20 / 0.882,
+        }),
+      }),
+    });
+
+    const point = clientPointToSvg(svg, {
+      x: 233.48 + 250 * 0.882,
+      y: 20 + 200 * 0.882,
+    });
+
+    expect(point?.x).toBeCloseTo(250, 10);
+    expect(point?.y).toBeCloseTo(200, 10);
+  });
+
+  it("fails closed when the SVG CTM is missing or not invertible", () => {
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+
+    expect(clientPointToSvg(svg, { x: 10, y: 20 })).toBeNull();
+
+    Object.defineProperty(svg, "getScreenCTM", {
+      configurable: true,
+      value: () => ({
+        inverse: () => {
+          throw new DOMException("The matrix is not invertible");
+        },
+      }),
+    });
+
+    expect(clientPointToSvg(svg, { x: 10, y: 20 })).toBeNull();
+  });
+});

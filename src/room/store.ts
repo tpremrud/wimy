@@ -94,9 +94,11 @@ export const createRoomStore = (
             origin: request.origin,
             status: "rejected",
             revision,
+            changeType: request.change.type,
             summary: message,
             code: "REVISION_CONFLICT",
             affectedItemIds: [],
+            removedItemIds: [],
           },
         };
         activeTransaction.reentrantReceipts.push(

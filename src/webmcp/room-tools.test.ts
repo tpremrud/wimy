@@ -624,9 +624,11 @@ describe("createRoomToolDefinitions", () => {
         origin: "webmcp" as const,
         status: "rejected" as const,
         revision: 1,
+        changeType: "edit" as const,
         summary: "oversized dependency failure",
         code: "UNKNOWN_ITEM" as const,
         affectedItemIds: [],
+        removedItemIds: [],
       },
     });
     const store: RoomStore = {

@@ -16,17 +16,179 @@ body {
 
 main {
   display: grid;
+  width: min(calc(100% - 2rem), 72rem);
   min-height: 100vh;
-  place-content: center;
-  padding: 2rem;
-  text-align: center;
+  margin: 0 auto;
+  padding: 2rem 0;
+  gap: 1.25rem;
 }
 
 h1,
+h2,
+h3,
 p {
   margin: 0;
 }
 
-p {
+header > p,
+section > p {
   margin-top: 0.75rem;
+}
+
+.room-editor {
+  margin-top: 1.25rem;
+}
+
+.room-editor-heading-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+  gap: 1rem;
+}
+
+.room-editor-heading-row p {
+  color: #555555;
+}
+
+.room-plan {
+  display: block;
+  width: 100%;
+  max-height: min(64vh, 42rem);
+  border: 1px solid #b9b9b9;
+  background: #ffffff;
+  touch-action: none;
+}
+
+.room-boundary {
+  fill: #f7f7f7;
+  stroke: #222222;
+  stroke-width: 5;
+}
+
+.room-name-label {
+  fill: #222222;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.room-dimension-label {
+  fill: #555555;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.room-dimension-label-depth {
+  writing-mode: vertical-rl;
+}
+
+.room-opening {
+  stroke-width: 9;
+  stroke-linecap: square;
+}
+
+.room-opening-door {
+  stroke: #b45309;
+}
+
+.room-opening-window {
+  stroke: #0369a1;
+}
+
+.room-item {
+  cursor: grab;
+}
+
+.room-item:active {
+  cursor: grabbing;
+}
+
+.room-item-footprint {
+  stroke: #333333;
+  stroke-width: 2;
+}
+
+.room-item:hover .room-item-footprint {
+  stroke-width: 3;
+}
+
+.room-item-focus {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 0;
+  pointer-events: none;
+}
+
+.room-item:focus-visible .room-item-focus {
+  stroke: #075985;
+  stroke-width: 7;
+}
+
+.room-item:focus-visible .room-item-footprint {
+  stroke: #111111;
+  stroke-width: 3;
+}
+
+.room-item-selection {
+  fill: none;
+  stroke: #b45309;
+  stroke-width: 4;
+  stroke-dasharray: 10 6;
+  pointer-events: none;
+}
+
+.room-item-label {
+  fill: #111111;
+  font-size: 12px;
+  font-weight: 700;
+  pointer-events: none;
+}
+
+.room-item-actions {
+  display: flex;
+  align-items: center;
+  margin-top: 0.75rem;
+  border: 1px solid #cccccc;
+  padding: 0.75rem;
+  gap: 0.75rem;
+}
+
+.room-item-actions p {
+  margin-right: auto;
+}
+
+.room-item-actions button {
+  border: 1px solid #555555;
+  border-radius: 0.25rem;
+  padding: 0.5rem 0.75rem;
+  color: #111111;
+  background: #ffffff;
+  font: inherit;
+  cursor: pointer;
+}
+
+.room-item-actions button:focus-visible {
+  outline: 3px solid #075985;
+  outline-offset: 2px;
+}
+
+.room-editor > p[aria-label="Human edit result"] {
+  min-height: 1.5rem;
+}
+
+@media (max-width: 42rem) {
+  main {
+    width: min(calc(100% - 1rem), 72rem);
+    padding: 0.75rem 0;
+  }
+
+  .room-editor-heading-row,
+  .room-item-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .room-item-actions p {
+    margin-right: 0;
+  }
 }
