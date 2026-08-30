@@ -360,7 +360,9 @@ Tools register once at the app root through `document.modelContext.registerTool`
 
 - Input: `expectedRevision` plus 1–8 add, transform, or remove operations.
 - Output: fixed status fields, current revision, applied count, warnings, app-generated IDs, and actionable failure codes.
-- Annotations: `readOnlyHint: false`, `untrustedContentHint: false`.
+- Annotations: `readOnlyHint: false`, `untrustedContentHint: true`, because
+  required results can echo caller/import-derived item identities and warning
+  identities.
 - No purchase, arbitrary URL, arbitrary HTML, file access, or irreversible operation is exposed.
 
 ## Module and file design
@@ -423,7 +425,10 @@ flowchart TD
 
 - Expected domain failures are typed results, not opaque exceptions.
 - File parse errors include a stable code plus a concise JSON path when safe.
-- Tool output is compact, JSON-serializable, and bounded.
+- Tool output is compact, JSON-serializable, and bounded: inspect and successful
+  apply return at most 50 deterministic warnings with `warningCount` and
+  `warningsTruncated`, and every structured result is limited to 128 KiB of
+  serialized UTF-8 JSON.
 - Imported strings render as text, never `innerHTML`.
 - External links, when present, require a deliberate user click and `noopener noreferrer`.
 - No imported URL, model, script, image, or asset is fetched automatically.
