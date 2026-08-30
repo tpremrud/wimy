@@ -205,6 +205,9 @@ describe("applyRoomTransaction", () => {
       revision: 3,
       applied: 1,
       affectedItemIds: ["item_generated_1"],
+      receipt: {
+        summary: "Added Test Chair",
+      },
     });
     expect(outcome.state.room.items).toEqual([
       {

@@ -9,6 +9,7 @@ import {
 } from "@testing-library/react";
 import { StrictMode } from "react";
 import { afterEach, describe, expect, it } from "vitest";
+import { resolveCatalogProduct } from "../room/catalog";
 import { createRoomStore } from "../room/store";
 import { getTemplate } from "../room/templates";
 import { TEST_TRANSACTION_DEPENDENCIES } from "../room/transaction";
@@ -61,6 +62,9 @@ const setModelContext = (modelContext: WebMCP.ModelContext | undefined) => {
   });
 };
 
+const getWebMcpStatus = () =>
+  screen.getByRole("status", { name: "WebMCP status" });
+
 afterEach(() => {
   cleanup();
   setModelContext(undefined);
@@ -71,6 +75,17 @@ describe("App", () => {
     render(<App />);
     expect(screen.getByRole("heading", { name: "Wimy" })).toBeVisible();
     expect(screen.getByText(/fit, find, and place/i)).toBeVisible();
+  });
+
+  it("names the catalog and activity complementary landmarks", () => {
+    render(<App />);
+
+    expect(
+      screen.getByRole("complementary", { name: "Furniture catalog" }),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("complementary", { name: "Activity receipts" }),
+    ).toBeVisible();
   });
 
   it("renders a supplied store's room, revision, and receipts", () => {
@@ -105,6 +120,40 @@ describe("App", () => {
       ),
     ).toBeVisible();
     expect(app.getByText("Applied 1 room operations")).toBeVisible();
+  });
+
+  it("adds a searched catalog fit through the transaction seam and renders it in 2D", () => {
+    const store = createRoomStore(getTemplate("living-room"), {
+      resolveProduct: resolveCatalogProduct,
+      createItemId: () => "item_catalog_app",
+    });
+    render(<App store={store} />);
+
+    fireEvent.change(screen.getByRole("combobox", { name: "Category" }), {
+      target: { value: "chair" },
+    });
+    fireEvent.change(screen.getByRole("textbox", { name: "Style tags" }), {
+      target: { value: "warm-modern" },
+    });
+    fireEvent.change(
+      screen.getByRole("spinbutton", { name: "Maximum price (USD)" }),
+      { target: { value: "600" } },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Search catalog" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add best fit" }));
+
+    expect(
+      within(screen.getByRole("region", { name: "Living Room" })).getByText(
+        "Revision 2",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "Select Ember Nest Chair" }),
+    ).toBeVisible();
+    expect(
+      within(screen.getByRole("region", { name: "Activity receipts" }))
+        .getAllByRole("listitem")[0],
+    ).toHaveTextContent("HumanAcceptedAdded Ember Nest ChairRevision 2");
   });
 
   it("edits the latest room through one accessible human editor transaction", () => {
@@ -205,11 +254,11 @@ describe("App", () => {
 
     render(<App />);
 
-    expect(screen.getByRole("status")).toHaveTextContent(
+    expect(getWebMcpStatus()).toHaveTextContent(
       "WebMCP registration pending",
     );
     await waitFor(() =>
-      expect(screen.getByRole("status")).toHaveTextContent(
+      expect(getWebMcpStatus()).toHaveTextContent(
         "WebMCP unavailable — human room access remains available",
       ),
     );
@@ -227,7 +276,7 @@ describe("App", () => {
     const view = render(<App store={store} />);
 
     await waitFor(() =>
-      expect(screen.getByRole("status")).toHaveTextContent(
+      expect(getWebMcpStatus()).toHaveTextContent(
         "WebMCP ready — 2 tools registered",
       ),
     );
@@ -281,7 +330,7 @@ describe("App", () => {
     );
 
     await waitFor(() =>
-      expect(screen.getByRole("status")).toHaveTextContent(
+      expect(getWebMcpStatus()).toHaveTextContent(
         "WebMCP ready — 2 tools registered",
       ),
     );
@@ -310,14 +359,14 @@ describe("App", () => {
     render(<App />);
 
     await waitFor(() =>
-      expect(screen.getByRole("status")).toHaveTextContent(
+      expect(getWebMcpStatus()).toHaveTextContent(
         "WebMCP degraded — 1 of 2 tools registered",
       ),
     );
-    expect(screen.getByRole("status")).toHaveTextContent(
+    expect(getWebMcpStatus()).toHaveTextContent(
       "inspect_room: client refused inspect",
     );
-    expect(screen.getByRole("status")).not.toHaveTextContent("WebMCP ready");
+    expect(getWebMcpStatus()).not.toHaveTextContent("WebMCP ready");
   });
 
   it("renders pending immediately while replacement-store tools register", async () => {
@@ -341,17 +390,17 @@ describe("App", () => {
 
     const view = render(<App store={firstStore} />);
     await waitFor(() =>
-      expect(screen.getByRole("status")).toHaveTextContent(
+      expect(getWebMcpStatus()).toHaveTextContent(
         "WebMCP ready — 2 tools registered",
       ),
     );
 
     view.rerender(<App store={secondStore} />);
 
-    expect(screen.getByRole("status")).toHaveTextContent(
+    expect(getWebMcpStatus()).toHaveTextContent(
       "WebMCP registration pending",
     );
-    expect(screen.getByRole("status")).not.toHaveTextContent("WebMCP ready");
+    expect(getWebMcpStatus()).not.toHaveTextContent("WebMCP ready");
     await waitFor(() => expect(modelContext.definitions).toHaveLength(4));
     expect(modelContext.options.slice(0, 2).every(
       ({ signal } = {}) => signal?.aborted,
@@ -359,13 +408,13 @@ describe("App", () => {
 
     inspectSecondStore.resolve();
     await act(() => Promise.resolve());
-    expect(screen.getByRole("status")).toHaveTextContent(
+    expect(getWebMcpStatus()).toHaveTextContent(
       "WebMCP registration pending",
     );
 
     applySecondStore.resolve();
     await waitFor(() =>
-      expect(screen.getByRole("status")).toHaveTextContent(
+      expect(getWebMcpStatus()).toHaveTextContent(
         "WebMCP ready — 2 tools registered",
       ),
     );

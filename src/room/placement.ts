@@ -10,6 +10,16 @@ import type {
 
 const PLACEMENT_EPSILON_METERS = 1e-9;
 
+type DeepReadonly<T> = T extends (...args: never[]) => unknown
+  ? T
+  : T extends readonly (infer Item)[]
+    ? readonly DeepReadonly<Item>[]
+    : T extends object
+      ? { readonly [Key in keyof T]: DeepReadonly<T[Key]> }
+      : T;
+
+export type PreparedPlacementRoom = DeepReadonly<WimyRoomV1>;
+
 export type Footprint = Pick<Dimensions, "width" | "depth">;
 
 type Rectangle = {
@@ -17,6 +27,33 @@ type Rectangle = {
   right: number;
   top: number;
   bottom: number;
+};
+
+const preparedPlacementContextBrand = Symbol("prepared-placement-context");
+
+export type PreparedPlacementContext = {
+  readonly [preparedPlacementContextBrand]: true;
+  readonly room: PreparedPlacementRoom;
+};
+
+type PreparedPlacementContextValue = PreparedPlacementContext & {
+  readonly blockingRectangles: readonly {
+    readonly id: EntityId;
+    readonly rectangle: Rectangle;
+  }[];
+  readonly doorClearanceRectangles: readonly {
+    readonly id: EntityId;
+    readonly rectangle: Rectangle;
+  }[];
+};
+
+const deepFreeze = <T>(value: T): DeepReadonly<T> => {
+  if (value !== null && typeof value === "object" && !Object.isFrozen(value)) {
+    Object.values(value).forEach((child) => deepFreeze(child));
+    Object.freeze(value);
+  }
+
+  return value as DeepReadonly<T>;
 };
 
 export type PlacementFailureCode =
@@ -41,14 +78,17 @@ type CatalogRef = NonNullable<PlacedItem["catalogRef"]>;
 export type CatalogAvailability = (catalogRef: CatalogRef) => boolean;
 
 export const orientedFootprint = (
-  dimensions: Dimensions,
+  dimensions: Readonly<Dimensions>,
   rotationDeg: RotationDeg,
 ): Footprint =>
   rotationDeg === 90 || rotationDeg === 270
     ? { width: dimensions.depth, depth: dimensions.width }
     : { width: dimensions.width, depth: dimensions.depth };
 
-const rectangleFor = (item: PlacedItem, pose: Pose): Rectangle => {
+const rectangleFor = (
+  item: DeepReadonly<PlacedItem>,
+  pose: Readonly<Pose>,
+): Rectangle => {
   const footprint = orientedFootprint(item.snapshot.dimensions, pose.rotationDeg);
   return {
     left: pose.x - footprint.width / 2,
@@ -65,8 +105,8 @@ const rectanglesOverlap = (first: Rectangle, second: Rectangle) =>
   first.bottom > second.top + PLACEMENT_EPSILON_METERS;
 
 const doorClearanceRectangle = (
-  opening: Opening,
-  room: WimyRoomV1,
+  opening: DeepReadonly<Opening>,
+  room: PreparedPlacementRoom,
 ): Rectangle | undefined => {
   if (opening.kind !== "door") {
     return undefined;
@@ -109,11 +149,67 @@ const doorClearanceRectangle = (
   return undefined;
 };
 
+const createPreparedPlacementContext = (
+  room: PreparedPlacementRoom,
+): PreparedPlacementContextValue => {
+  const preparedRoom = deepFreeze(structuredClone(room));
+  const blockingRectangles = preparedRoom.items
+    .filter(({ snapshot }) => snapshot.category !== "rug")
+    .map((item) => ({
+      id: item.id,
+      rectangle: rectangleFor(item, item.pose),
+    }));
+  const doorClearanceRectangles = preparedRoom.openings.flatMap((opening) => {
+    const rectangle = doorClearanceRectangle(opening, preparedRoom);
+    return rectangle === undefined
+      ? []
+      : [
+          {
+            id: opening.id,
+            rectangle,
+          },
+        ];
+  });
+
+  const context: PreparedPlacementContextValue = {
+    [preparedPlacementContextBrand]: true,
+    room: preparedRoom,
+    blockingRectangles,
+    doorClearanceRectangles,
+  };
+
+  return context;
+};
+
+export const preparePlacementContext = (
+  room: PreparedPlacementRoom,
+): PreparedPlacementContext => createPreparedPlacementContext(room);
+
+const preparedContextForRoom = (
+  room: PreparedPlacementRoom,
+  context: PreparedPlacementContext,
+): PreparedPlacementContextValue => {
+  const prepared = context as PreparedPlacementContextValue;
+  if (prepared.room !== room) {
+    throw new TypeError(
+      "Prepared placement context must belong to the validated room",
+    );
+  }
+
+  return prepared;
+};
+
 export const validatePlacement = (
-  room: WimyRoomV1,
-  item: PlacedItem,
-  pose: Pose,
+  room: PreparedPlacementRoom,
+  item: DeepReadonly<PlacedItem>,
+  pose: Readonly<Pose>,
+  preparedContext?: PreparedPlacementContext,
 ): PlacementValidation => {
+  const suppliedContext =
+    preparedContext === undefined
+      ? undefined
+      : preparedContextForRoom(room, preparedContext);
+
   if (
     item.snapshot.dimensions.height >
     room.dimensions.height + PLACEMENT_EPSILON_METERS
@@ -143,40 +239,40 @@ export const validatePlacement = (
   }
 
   const candidateRectangle = rectangleFor(item, pose);
-  const blockingItem =
-    item.snapshot.category === "rug"
-      ? undefined
-      : room.items.find(
-          (existingItem) =>
-            existingItem.id !== item.id &&
-            existingItem.snapshot.category !== "rug" &&
-            rectanglesOverlap(
-              candidateRectangle,
-              rectangleFor(existingItem, existingItem.pose),
-            ),
-        );
-  if (blockingItem) {
+  const context =
+    suppliedContext ?? createPreparedPlacementContext(room);
+  let blockingItemId: EntityId | undefined;
+  if (item.snapshot.category !== "rug") {
+    for (const blockingItem of context.blockingRectangles) {
+      if (
+        blockingItem.id !== item.id &&
+        rectanglesOverlap(candidateRectangle, blockingItem.rectangle)
+      ) {
+        blockingItemId = blockingItem.id;
+        break;
+      }
+    }
+  }
+  if (blockingItemId) {
     return {
       ok: false,
       code: "COLLISION",
-      message: `The placed item overlaps ${blockingItem.id}`,
+      message: `The placed item overlaps ${blockingItemId}`,
     };
   }
 
-  const blockedDoor = room.openings.find(
-    (opening) => {
-      const clearance = doorClearanceRectangle(opening, room);
-      return (
-        clearance !== undefined &&
-        rectanglesOverlap(candidateRectangle, clearance)
-      );
-    },
-  );
-  if (blockedDoor) {
+  let blockedDoorId: EntityId | undefined;
+  for (const doorClearance of context.doorClearanceRectangles) {
+    if (rectanglesOverlap(candidateRectangle, doorClearance.rectangle)) {
+      blockedDoorId = doorClearance.id;
+      break;
+    }
+  }
+  if (blockedDoorId) {
     return {
       ok: false,
       code: "DOOR_CLEARANCE",
-      message: `The placed item blocks door clearance at ${blockedDoor.id}`,
+      message: `The placed item blocks door clearance at ${blockedDoorId}`,
     };
   }
 

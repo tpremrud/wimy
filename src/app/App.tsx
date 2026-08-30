@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useStore } from "zustand";
 import { roomStore, type RoomStore } from "../room/store";
+import { CatalogPanel } from "../ui/CatalogPanel";
 import { ReceiptPanel } from "../ui/ReceiptPanel";
 import { RoomEditor2D } from "../ui/RoomEditor2D";
 import {
@@ -84,16 +85,32 @@ export function App({ store = roomStore }: AppProps) {
       <header>
         <h1>Wimy</h1>
         <p>Fit, find, and place furniture with your browser agent.</p>
-        <p role="status" aria-live="polite">
+        <p role="status" aria-label="WebMCP status" aria-live="polite">
           {registrationStatusText(visibleRegistration)}
         </p>
       </header>
-      <section aria-labelledby="current-room-heading">
-        <h2 id="current-room-heading">{room.name}</h2>
-        <p>Revision {revision}</p>
-        <RoomEditor2D store={store} />
-      </section>
-      <ReceiptPanel receipts={receipts} />
+      <div className="workspace-grid">
+        <aside
+          className="workspace-catalog"
+          aria-labelledby="catalog-heading"
+        >
+          <CatalogPanel store={store} />
+        </aside>
+        <section
+          className="workspace-room"
+          aria-labelledby="current-room-heading"
+        >
+          <h2 id="current-room-heading">{room.name}</h2>
+          <p>Revision {revision}</p>
+          <RoomEditor2D store={store} />
+        </section>
+        <aside
+          className="workspace-activity"
+          aria-labelledby="activity-receipts-heading"
+        >
+          <ReceiptPanel receipts={receipts} />
+        </aside>
+      </div>
     </main>
   );
 }

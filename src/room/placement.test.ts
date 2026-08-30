@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, expectTypeOf, it } from "vitest";
 import {
   makeOpening,
   makePlacedItem,
@@ -7,6 +7,7 @@ import {
 import {
   findLayoutWarnings,
   orientedFootprint,
+  preparePlacementContext,
   validatePlacement,
 } from "./placement";
 
@@ -19,6 +20,154 @@ describe("orientedFootprint", () => {
 });
 
 describe("validatePlacement", () => {
+  it("keeps prepared validation in parity without mutating inputs", () => {
+    const baseItem = makePlacedItem();
+    const room = makeRoom({
+      dimensions: { width: 4, depth: 3, height: 2.7 },
+      openings: [
+        makeOpening({
+          id: "door_north",
+          wall: "north",
+          centerOffset: 2,
+        }),
+        makeOpening({
+          id: "window_south",
+          kind: "window",
+          wall: "south",
+          centerOffset: 1,
+          bottom: 0.8,
+        }),
+      ],
+      items: [
+        makePlacedItem({
+          id: "item_blocker",
+          pose: { x: 3, y: 2, rotationDeg: 0 },
+        }),
+        makePlacedItem({
+          id: "item_rug",
+          snapshot: { ...baseItem.snapshot, category: "rug" },
+          pose: { x: 1, y: 2, rotationDeg: 0 },
+        }),
+      ],
+    });
+    const probes = [
+      {
+        item: makePlacedItem({ id: "candidate_bounds" }),
+        pose: { x: 0.1, y: 1, rotationDeg: 0 as const },
+      },
+      {
+        item: makePlacedItem({ id: "candidate_door" }),
+        pose: { x: 2, y: 0.4, rotationDeg: 0 as const },
+      },
+      {
+        item: makePlacedItem({ id: "candidate_collision" }),
+        pose: { x: 3, y: 2, rotationDeg: 0 as const },
+      },
+      {
+        item: makePlacedItem({ id: "candidate_legal" }),
+        pose: { x: 1, y: 1, rotationDeg: 0 as const },
+      },
+      {
+        item: makePlacedItem({ id: "item_blocker" }),
+        pose: { x: 3, y: 2, rotationDeg: 0 as const },
+      },
+      {
+        item: makePlacedItem({
+          id: "candidate_rug",
+          snapshot: { ...baseItem.snapshot, category: "rug" },
+        }),
+        pose: { x: 3, y: 2, rotationDeg: 0 as const },
+      },
+      {
+        item: makePlacedItem({
+          id: "candidate_tall",
+          snapshot: {
+            ...baseItem.snapshot,
+            dimensions: {
+              ...baseItem.snapshot.dimensions,
+              height: 2.8,
+            },
+          },
+        }),
+        pose: { x: 1, y: 1, rotationDeg: 0 as const },
+      },
+    ];
+    const roomBefore = structuredClone(room);
+    const probesBefore = structuredClone(probes);
+    const preparedContext = preparePlacementContext(room);
+    const preparedContextKeysBefore = Reflect.ownKeys(preparedContext);
+    const preparedContextDataBefore = structuredClone(
+      Object.fromEntries(Object.entries(preparedContext)),
+    );
+
+    const directResults = probes.map(({ item, pose }) =>
+      validatePlacement(room, item, pose),
+    );
+    const preparedResults = probes.map(({ item, pose }) =>
+      validatePlacement(preparedContext.room, item, pose, preparedContext),
+    );
+
+    expect(directResults).toEqual([
+      expect.objectContaining({ ok: false, code: "OUT_OF_BOUNDS" }),
+      expect.objectContaining({ ok: false, code: "DOOR_CLEARANCE" }),
+      expect.objectContaining({ ok: false, code: "COLLISION" }),
+      { ok: true },
+      { ok: true },
+      { ok: true },
+      expect.objectContaining({ ok: false, code: "OUT_OF_BOUNDS" }),
+    ]);
+    expect(preparedResults).toEqual(directResults);
+    expect(room).toEqual(roomBefore);
+    expect(probes).toEqual(probesBefore);
+    expect(Reflect.ownKeys(preparedContext)).toEqual(
+      preparedContextKeysBefore,
+    );
+    expect(Object.fromEntries(Object.entries(preparedContext))).toEqual(
+      preparedContextDataBefore,
+    );
+  });
+
+  it("rejects a prepared context bound to a different room object", () => {
+    const room = makeRoom();
+    const context = preparePlacementContext(room);
+
+    expect(() =>
+      validatePlacement(
+        structuredClone(room),
+        makePlacedItem(),
+        makePlacedItem().pose,
+        context,
+      ),
+    ).toThrow(/prepared placement context.*room/iu);
+  });
+
+  it("binds prepared geometry to an immutable room snapshot", () => {
+    const room = makeRoom();
+    const context = preparePlacementContext(room);
+    const candidate = makePlacedItem({ id: "candidate_snapshot" });
+
+    room.items.push(makePlacedItem({ id: "item_late_blocker" }));
+
+    expect(() =>
+      validatePlacement(room, candidate, candidate.pose, context),
+    ).toThrow(/prepared placement context.*room/iu);
+    expect(
+      validatePlacement(context.room, candidate, candidate.pose, context),
+    ).toEqual({ ok: true });
+    expect(validatePlacement(room, candidate, candidate.pose)).toMatchObject({
+      ok: false,
+      code: "COLLISION",
+    });
+    expect(Object.isFrozen(context.room)).toBe(true);
+    expect(Object.isFrozen(context.room.items)).toBe(true);
+    type PreparedItemsExposePush = typeof context.room.items extends {
+      push: unknown;
+    }
+      ? true
+      : false;
+    expectTypeOf<PreparedItemsExposePush>().toEqualTypeOf<false>();
+  });
+
   it("rejects a footprint outside the room", () => {
     const room = makeRoom();
     const item = makePlacedItem();

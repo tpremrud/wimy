@@ -78,7 +78,9 @@ test("inspect and apply visibly mutate the room while stale edits fail", async (
   await installModelContextHarness(page);
   await page.goto("/");
 
-  await expect(page.getByRole("status")).toContainText(
+  await expect(
+    page.getByRole("status", { name: "WebMCP status" }),
+  ).toContainText(
     "WebMCP ready — 2 tools registered",
   );
   const discovered = await page.evaluate(() => {
@@ -194,7 +196,7 @@ test("inspect and apply visibly mutate the room while stale edits fail", async (
     };
   });
 
-  expect(dragGeometry.bounds.width).toBeGreaterThan(1_000);
+  expect(dragGeometry.bounds.width).toBeGreaterThan(600);
   expect(dragGeometry.bounds.height).toBeLessThanOrEqual(461);
   expect(dragGeometry.ctm.a).toBeCloseTo(dragGeometry.ctm.d, 5);
   expect(dragGeometry.ctm.a).toBeLessThan(
@@ -272,7 +274,9 @@ test("inspect and apply visibly mutate the room while stale edits fail", async (
 test("the room remains functional without modelContext", async ({ page }) => {
   await page.goto("/");
 
-  await expect(page.getByRole("status")).toContainText(
+  await expect(
+    page.getByRole("status", { name: "WebMCP status" }),
+  ).toContainText(
     "WebMCP unavailable — human room access remains available",
   );
   await expect(page.getByRole("heading", { name: "Living Room" })).toBeVisible();

@@ -226,6 +226,7 @@ export function applyRoomTransaction(
 
   const nextRoom = structuredClone(state.room);
   const affectedItemIds: EntityId[] = [];
+  let singleAddedProductName: string | undefined;
 
   for (const operation of request.change.operations) {
     if (operation.type === "add") {
@@ -272,6 +273,9 @@ export function applyRoomTransaction(
       }
       nextRoom.items.push(item);
       affectedItemIds.push(item.id);
+      if (request.change.operations.length === 1) {
+        singleAddedProductName = resolved.snapshot.name;
+      }
       continue;
     }
 
@@ -329,7 +333,10 @@ export function applyRoomTransaction(
     status: "accepted",
     revision,
     changeType: request.change.type,
-    summary: `Applied ${request.change.operations.length} room operations`,
+    summary:
+      singleAddedProductName === undefined
+        ? `Applied ${request.change.operations.length} room operations`
+        : `Added ${singleAddedProductName}`,
     affectedItemIds,
     removedItemIds: request.change.operations.flatMap((operation) =>
       operation.type === "remove" ? [operation.itemId] : [],

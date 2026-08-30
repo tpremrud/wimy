@@ -1,4 +1,5 @@
 import { createStore, type StoreApi } from "zustand/vanilla";
+import { resolveCatalogProduct } from "./catalog";
 import type { EntityId, WimyRoomV1 } from "./document";
 import { getTemplate } from "./templates";
 import type {
@@ -236,7 +237,7 @@ export const createRoomStore = (
 };
 
 const APPLICATION_TRANSACTION_DEPENDENCIES: TransactionDependencies = {
-  resolveProduct: () => undefined,
+  resolveProduct: resolveCatalogProduct,
   createItemId: () => `item_${globalThis.crypto.randomUUID()}`,
 };
 

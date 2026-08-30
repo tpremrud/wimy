@@ -16,7 +16,7 @@ body {
 
 main {
   display: grid;
-  width: min(calc(100% - 2rem), 72rem);
+  width: min(calc(100% - 2rem), 96rem);
   min-height: 100vh;
   margin: 0 auto;
   padding: 2rem 0;
@@ -33,6 +33,98 @@ p {
 header > p,
 section > p {
   margin-top: 0.75rem;
+}
+
+.workspace-grid {
+  display: grid;
+  align-items: start;
+  gap: 1.25rem;
+}
+
+.workspace-room {
+  min-width: 0;
+}
+
+.catalog-panel,
+.catalog-panel-heading,
+.catalog-filters,
+.catalog-results {
+  display: grid;
+}
+
+.catalog-panel {
+  gap: 0.875rem;
+}
+
+.catalog-search-summary {
+  min-height: 1.25rem;
+}
+
+.catalog-panel-heading,
+.catalog-results {
+  gap: 0.5rem;
+}
+
+.catalog-panel-heading p,
+.catalog-results span {
+  color: #555555;
+}
+
+.catalog-filters {
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: 0.75rem;
+}
+
+.catalog-filters label {
+  display: grid;
+  align-content: start;
+  gap: 0.35rem;
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+.catalog-filters input,
+.catalog-filters select,
+.catalog-filters button,
+.catalog-panel > button {
+  min-height: 2.5rem;
+  border: 1px solid #777777;
+  border-radius: 0.25rem;
+  padding: 0.5rem 0.625rem;
+  color: #111111;
+  background: #ffffff;
+  font: inherit;
+}
+
+.catalog-filters button,
+.catalog-panel > button {
+  align-self: end;
+  border-color: #075985;
+  color: #ffffff;
+  background: #075985;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.catalog-filters input:focus-visible,
+.catalog-filters select:focus-visible,
+.catalog-filters button:focus-visible,
+.catalog-panel > button:focus-visible {
+  outline: 3px solid #b45309;
+  outline-offset: 2px;
+}
+
+.catalog-results {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.catalog-results li {
+  display: grid;
+  padding: 0.625rem 0;
+  border-bottom: 1px solid #d6d6d6;
+  gap: 0.25rem;
 }
 
 .room-editor {
@@ -176,6 +268,19 @@ section > p {
   min-height: 1.5rem;
 }
 
+@media (min-width: 70rem) {
+  .workspace-grid {
+    grid-template-columns:
+      minmax(14rem, 17rem)
+      minmax(0, 1fr)
+      minmax(14rem, 17rem);
+  }
+
+  .catalog-filters {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (max-width: 42rem) {
   main {
     width: min(calc(100% - 1rem), 72rem);
@@ -190,5 +295,9 @@ section > p {
 
   .room-item-actions p {
     margin-right: 0;
+  }
+
+  .catalog-filters {
+    grid-template-columns: 1fr;
   }
 }

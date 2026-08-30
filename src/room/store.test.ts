@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { makePlacedItem, makeRoom } from "../test/room-fixtures";
 import { getTemplate } from "./templates";
-import { createRoomStore, type RoomStore } from "./store";
+import { createRoomStore, roomStore, type RoomStore } from "./store";
 import {
   TEST_TRANSACTION_DEPENDENCIES,
   type RoomTransactionResult,
@@ -649,5 +649,45 @@ describe("createRoomStore", () => {
       },
     });
     expect(store.getState().selectedItemId).toBeNull();
+  });
+});
+
+describe("roomStore production dependencies", () => {
+  it("resolves a demo catalog add while retaining app-owned identity generation", () => {
+    const before = roomStore.getState();
+
+    const result = before.transact({
+      expectedRevision: before.revision,
+      origin: "human",
+      change: {
+        type: "edit",
+        operations: [
+          {
+            type: "add",
+            productId: "ember-nest-chair",
+            pose: { x: 0.3, y: 0.3, rotationDeg: 0 },
+          },
+        ],
+      },
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      revision: before.revision + 1,
+      applied: 1,
+      receipt: { summary: "Added Ember Nest Chair" },
+    });
+    if (!result.ok) throw new Error("expected the catalog add to succeed");
+    const addedItem = roomStore
+      .getState()
+      .room.items.find(({ id }) => result.affectedItemIds.includes(id));
+    expect(addedItem).toMatchObject({
+      id: expect.stringMatching(/^item_[A-Fa-f0-9-]+$/u),
+      catalogRef: {
+        catalogId: "wimy-demo-v1",
+        productId: "ember-nest-chair",
+      },
+      snapshot: { name: "Ember Nest Chair" },
+    });
   });
 });
