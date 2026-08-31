@@ -279,6 +279,19 @@ test("inspect, find, and apply visibly collaborate while stale edits recover", a
       .first(),
   ).toContainText("Agent: Accepted. Applied 1 room operationsRevision 4");
 
+  const editorItemCount = await page.locator(".room-item").count();
+  await page.getByRole("button", { name: "Preview in 3D" }).click();
+  const preview = page.getByRole("region", {
+    name: "3D preview of Living Room",
+  });
+  await expect(preview).toBeVisible();
+  await expect(
+    preview
+      .getByRole("list", { name: "Placed items in Living Room" })
+      .getByRole("listitem"),
+  ).toHaveCount(editorItemCount);
+  await expect(preview).toContainText("Ember Nest Chair");
+
   const registrationCountAfterEdits = await page.evaluate(() => {
     const harness = (
       window as typeof window & {

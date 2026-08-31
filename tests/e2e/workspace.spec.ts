@@ -74,6 +74,11 @@ const createMaximumTokenRoom = (source: string) => {
   };
 };
 
+const itemIdentityAndPoses = (source: string) => {
+  const envelope = JSON.parse(source) as PortableRoomFile;
+  return envelope.room.items.map(({ id, pose }) => ({ id, pose }));
+};
+
 for (const viewport of [
   { width: 1_280, height: 900 },
   { width: 1_024, height: 900 },
@@ -259,6 +264,125 @@ for (const viewport of [
   expect(popups).toEqual([]);
   });
 }
+
+test("moves a placed item with an actual pointer drag", async ({ page }) => {
+  await page.setViewportSize({ width: 1_280, height: 900 });
+  await page.goto("/");
+
+  const before = await exportRoom(page);
+  const beforeEnvelope = JSON.parse(before.text) as PortableRoomFile;
+  const sofaBefore = beforeEnvelope.room.items.find(
+    ({ id }) => id === "item_living_sofa",
+  );
+  if (!sofaBefore) throw new Error("expected the living-room sofa");
+
+  const sofa = page.locator('[data-item-id="item_living_sofa"]');
+  const sofaBox = await sofa.boundingBox();
+  const roomPlanBox = await page
+    .getByRole("group", { name: "Living Room 2D room editor" })
+    .boundingBox();
+  if (!sofaBox || !roomPlanBox) {
+    throw new Error("expected a visible sofa and room plan");
+  }
+
+  const start = {
+    x: sofaBox.x + sofaBox.width / 2,
+    y: sofaBox.y + sofaBox.height / 2,
+  };
+  const delta = {
+    x: Math.min(48, Math.max(16, roomPlanBox.width / 12)),
+    y: Math.min(32, Math.max(12, roomPlanBox.height / 16)),
+  };
+  await page.mouse.move(start.x, start.y);
+  await page.mouse.down();
+  await page.mouse.move(start.x + delta.x, start.y + delta.y, { steps: 8 });
+  await page.mouse.up();
+
+  await expect(revisionText(page, "Living Room")).toHaveText("Revision 2");
+  await expect(page.getByLabel("Selected item actions")).toContainText(
+    "Linen Apartment Sofa",
+  );
+  await expect(page.getByLabel("Human edit result")).toHaveText(
+    "Human edit attempt 1 accepted. Applied 1 room operations. Revision 2.",
+  );
+  await expect(
+    page
+      .getByRole("region", { name: "Activity receipts" })
+      .getByRole("listitem")
+      .first(),
+  ).toContainText("Human: Accepted. Applied 1 room operationsRevision 2");
+
+  const after = await exportRoom(page);
+  const afterEnvelope = JSON.parse(after.text) as PortableRoomFile;
+  const sofaAfter = afterEnvelope.room.items.find(
+    ({ id }) => id === "item_living_sofa",
+  );
+  if (!sofaAfter) throw new Error("expected the moved living-room sofa");
+  expect(sofaAfter.pose.rotationDeg).toBe(sofaBefore.pose.rotationDeg);
+  expect(sofaAfter.pose.x !== sofaBefore.pose.x || sofaAfter.pose.y !== sofaBefore.pose.y).toBe(
+    true,
+  );
+});
+
+test("round-trips a searched placement through export, blank, and import", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1_280, height: 900 });
+  await page.goto("/");
+
+  await page.getByRole("combobox", { name: "Category" }).selectOption("chair");
+  await page.getByRole("textbox", { name: "Style tags" }).fill("warm-modern");
+  await page
+    .getByRole("spinbutton", { name: "Maximum price (USD)" })
+    .fill("600");
+  await page.getByRole("button", { name: "Search catalog" }).click();
+  await expect(page.getByRole("list", { name: "Catalog results" })).toContainText(
+    "Ember Nest Chair",
+  );
+
+  await page.getByRole("button", { name: "Add best fit" }).click();
+  await expect(revisionText(page, "Living Room")).toHaveText("Revision 2");
+  const exported = await exportRoom(page);
+  const expectedItems = itemIdentityAndPoses(exported.text);
+  expect(expectedItems).toHaveLength(6);
+  expect(expectedItems.some(({ id }) => id.startsWith("item_"))).toBe(true);
+
+  await page
+    .getByRole("combobox", { name: "Load room template" })
+    .selectOption("blank-room");
+  await expect(revisionText(page, "Blank Room")).toHaveText("Revision 3");
+  await expect(page.locator(".room-item")).toHaveCount(0);
+
+  await page.getByLabel("Import .wimy file").setInputFiles({
+    name: exported.filename,
+    mimeType: "application/json",
+    buffer: Buffer.from(exported.text),
+  });
+  await expect(revisionText(page, "Living Room")).toHaveText("Revision 4");
+
+  const restored = await exportRoom(page);
+  const restoredItems = itemIdentityAndPoses(restored.text);
+  expect(restoredItems.map(({ id }) => id)).toEqual(
+    expectedItems.map(({ id }) => id),
+  );
+  expect(restoredItems.map(({ pose }) => pose)).toEqual(
+    expectedItems.map(({ pose }) => pose),
+  );
+  expect(restored.text).toBe(exported.text);
+
+  const editorItemCount = await page.locator(".room-item").count();
+  expect(editorItemCount).toBe(expectedItems.length);
+  await page.getByRole("button", { name: "Preview in 3D" }).click();
+  const preview = page.getByRole("region", {
+    name: "3D preview of Living Room",
+  });
+  await expect(preview).toBeVisible();
+  const previewItems = preview
+    .getByRole("list", { name: "Placed items in Living Room" })
+    .getByRole("listitem");
+  await expect(previewItems).toHaveCount(editorItemCount);
+  await expect(preview).toContainText("Ember Nest Chair");
+});
 
 test("fails closed on malformed and stale imports and never opens snapshot URLs", async ({
   page,

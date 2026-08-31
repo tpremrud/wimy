@@ -208,6 +208,21 @@ export function App({
         <p role="status" aria-label="WebMCP status" aria-live="polite">
           {registrationStatusText(visibleRegistration)}
         </p>
+        <section
+          aria-labelledby="webmcp-workflow-heading"
+          className="agent-workflow"
+        >
+          <h2 id="webmcp-workflow-heading">Work with a browser agent</h2>
+          <p>
+            WebMCP lets your agent inspect the room, find a catalog fit, and
+            apply one exact edit while you review each change.
+          </p>
+          <ol>
+            <li>Inspect the room dimensions and placed items.</li>
+            <li>Find a catalog item that fits the room.</li>
+            <li>Apply one exact placement at the current revision.</li>
+          </ol>
+        </section>
         <FileAndTemplateControls store={store} />
       </header>
       <div className="workspace-grid">

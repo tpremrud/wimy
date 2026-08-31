@@ -129,6 +129,29 @@ describe("App", () => {
     expect(screen.getByText(/fit, find, and place/i)).toBeVisible();
   });
 
+  it("explains the inspect-find-apply agent workflow on first load", () => {
+    render(<App />);
+
+    const workflow = screen.getByRole("region", {
+      name: "Work with a browser agent",
+    });
+    expect(workflow).toBeVisible();
+    expect(
+      within(workflow).getByRole("heading", {
+        name: "Work with a browser agent",
+      }),
+    ).toBeVisible();
+    expect(
+      within(workflow)
+        .getAllByRole("listitem")
+        .map((item) => item.textContent),
+    ).toEqual([
+      "Inspect the room dimensions and placed items.",
+      "Find a catalog item that fits the room.",
+      "Apply one exact placement at the current revision.",
+    ]);
+  });
+
   it("does not evaluate the 3D module until preview activation", async () => {
     const user = userEvent.setup();
     const store = createRoomStore(
