@@ -265,6 +265,18 @@ for (const viewport of [
   });
 }
 
+test("skips header controls to the room workspace", async ({ page }) => {
+  await page.goto("/");
+
+  await page.locator("body").focus();
+  await page.keyboard.press("Tab");
+  await expect(
+    page.getByRole("link", { name: "Skip to room workspace" }),
+  ).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(page.locator("#room-workspace")).toBeFocused();
+});
+
 test("moves a placed item with an actual pointer drag", async ({ page }) => {
   await page.setViewportSize({ width: 1_280, height: 900 });
   await page.goto("/");

@@ -31,6 +31,27 @@ p {
   margin: 0;
 }
 
+.skip-link {
+  position: absolute;
+  top: 0.75rem;
+  left: 0.75rem;
+  z-index: 1;
+  transform: translateY(-200%);
+  border: 2px solid #075985;
+  border-radius: 0.25rem;
+  padding: 0.625rem 0.75rem;
+  color: #ffffff;
+  background: #075985;
+  font-weight: 700;
+}
+
+.skip-link:focus,
+.skip-link:focus-visible {
+  transform: translateY(0);
+  outline: 3px solid #b45309;
+  outline-offset: 2px;
+}
+
 header > p,
 section > p {
   margin-top: 0.75rem;
@@ -40,6 +61,11 @@ section > p {
   display: grid;
   align-items: start;
   gap: 1.25rem;
+}
+
+.workspace-grid:focus {
+  outline: 3px solid #075985;
+  outline-offset: 0.5rem;
 }
 
 .workspace-room {

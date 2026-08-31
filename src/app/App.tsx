@@ -202,6 +202,9 @@ export function App({
 
   return (
     <main>
+      <a className="skip-link" href="#room-workspace">
+        Skip to room workspace
+      </a>
       <header>
         <h1>Wimy</h1>
         <p>Fit, find, and place furniture with your browser agent.</p>
@@ -225,7 +228,7 @@ export function App({
         </section>
         <FileAndTemplateControls store={store} />
       </header>
-      <div className="workspace-grid">
+      <div className="workspace-grid" id="room-workspace" tabIndex={-1}>
         <aside
           className="workspace-catalog"
           aria-labelledby="catalog-heading"

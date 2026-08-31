@@ -152,6 +152,19 @@ describe("App", () => {
     ]);
   });
 
+  it("provides keyboard users a skip link to the room workspace", () => {
+    render(<App />);
+
+    const skipLink = screen.getByRole("link", {
+      name: "Skip to room workspace",
+    });
+    expect(skipLink).toHaveAttribute("href", "#room-workspace");
+    expect(document.getElementById("room-workspace")).toHaveAttribute(
+      "tabindex",
+      "-1",
+    );
+  });
+
   it("does not evaluate the 3D module until preview activation", async () => {
     const user = userEvent.setup();
     const store = createRoomStore(
