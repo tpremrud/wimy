@@ -77,6 +77,7 @@ export type SceneItem = {
   rotationDeg: number;
   rotationY: number;
   size: SceneVector3;
+  styleTags: string[];
 };
 
 export type SceneProjection = {
@@ -189,6 +190,7 @@ export const projectRoomToScene = (
         item.snapshot.dimensions.height,
         item.snapshot.dimensions.depth,
       ],
+      styleTags: [...item.snapshot.styleTags],
     })),
   };
 };

@@ -120,6 +120,7 @@ type FurnitureSpherePart = {
   color: string;
   position: SceneVector3;
   radius: number;
+  scale?: SceneVector3;
 };
 
 export type FurniturePrimitivePart =
@@ -199,10 +200,107 @@ export const projectFurniturePrimitiveLayout = (
       radius,
     };
   };
+  const ellipsoid = (
+    color: string,
+    position: SceneVector3,
+    requestedSize: SceneVector3,
+  ): FurnitureSpherePart => {
+    const boundedSize: SceneVector3 = [
+      Math.min(requestedSize[0], width),
+      Math.min(requestedSize[1], height),
+      Math.min(requestedSize[2], depth),
+    ];
+    return {
+      kind: "sphere",
+      color,
+      position: containedPosition(position, boundedSize),
+      radius: 0.5,
+      scale: boundedSize,
+    };
+  };
   const baseHeight = Math.min(height * 0.55, 0.5);
   const topHeight = Math.min(Math.max(height * 0.12, 0.05), height);
   const legOffsetX = Math.max(width / 2 - 0.08, 0);
   const legOffsetZ = Math.max(depth / 2 - 0.08, 0);
+  const hasStyleTags = (...required: string[]) =>
+    required.every((styleTag) => item.styleTags.includes(styleTag));
+
+  if (item.category === "chair" && hasStyleTags("molded-shell", "lounge")) {
+    const seatHeight = height * 0.1;
+    const seatWorldY = height * 0.43;
+    const seatZ = depth * 0.06;
+    const legHeight = height * 0.38;
+    const legRadiusBottom = Math.min(width, depth) * 0.075;
+    const legRadiusTop = Math.min(width, depth) * 0.05;
+
+    return [
+      ellipsoid(
+        item.color,
+        [-width * 0.06, localY(height * 0.62), -depth * 0.16],
+        [width * 0.78, height * 0.58, depth * 0.28],
+      ),
+      ellipsoid(
+        item.color,
+        [width * 0.24, localY(height * 0.5), -depth * 0.04],
+        [width * 0.28, height * 0.38, depth * 0.32],
+      ),
+      box(
+        "#f1d5bd",
+        [0, localY(seatWorldY), seatZ],
+        [width * 0.68, seatHeight, depth * 0.55],
+      ),
+      ...[-width * 0.24, width * 0.24].flatMap((x) =>
+        [seatZ - depth * 0.15, seatZ + depth * 0.15].map((z) =>
+          cylinder(
+            item.color,
+            [x, localY(legHeight / 2), z],
+            legRadiusBottom,
+            legRadiusTop,
+            legHeight,
+          ),
+        ),
+      ),
+    ];
+  }
+
+  if (item.category === "sofa" && hasStyleTags("modular", "low-profile")) {
+    const platformHeight = height * 0.16;
+    const seatHeight = height * 0.34;
+    const moduleWidth = width * 0.29;
+    const moduleOffsets = [-width * 0.325, 0, width * 0.325];
+    const backHeight = height * 0.5;
+    const backDepth = depth * 0.16;
+
+    return [
+      box(
+        item.color,
+        [0, localY(platformHeight / 2), 0],
+        [width, platformHeight, depth * 0.92],
+      ),
+      ...moduleOffsets.map((x, index) =>
+        box(
+          "#93a3ad",
+          [
+            x,
+            localY(platformHeight + seatHeight / 2),
+            index === 2 ? -depth * 0.04 : depth * 0.08,
+          ],
+          [
+            moduleWidth,
+            seatHeight,
+            index === 2 ? depth * 0.86 : depth * 0.55,
+          ],
+        ),
+      ),
+      ...moduleOffsets.map((x) =>
+        box(
+          item.color,
+          [x, localY(height - backHeight / 2), depth * 0.38],
+          [moduleWidth, backHeight, backDepth],
+        ),
+      ),
+    ];
+  }
 
   switch (item.category) {
     case "rug":
@@ -364,7 +462,7 @@ const FurniturePrimitive = ({ item }: { item: SceneItem }) => {
       );
     }
     return (
-      <mesh key={index} position={part.position}>
+      <mesh key={index} position={part.position} scale={part.scale}>
         <sphereGeometry args={[part.radius, 16, 12]} />
         <meshStandardMaterial color={part.color} />
       </mesh>

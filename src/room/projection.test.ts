@@ -216,6 +216,26 @@ describe("projectRoomToScene", () => {
     });
   });
 
+  it("copies portable style tags into the derived scene without aliasing the Room Document", () => {
+    const item = makePlacedItem({
+      snapshot: {
+        ...makePlacedItem().snapshot,
+        styleTags: ["molded-shell", "lounge"],
+      },
+    });
+    const room = makeRoom({ items: [item] });
+
+    const scene = projectRoomToScene(room);
+
+    expect(scene.items[0]?.styleTags).toEqual(["molded-shell", "lounge"]);
+    expect(scene.items[0]?.styleTags).not.toBe(item.snapshot.styleTags);
+    scene.items[0]?.styleTags.push("derived-only");
+    expect(room.items[0]?.snapshot.styleTags).toEqual([
+      "molded-shell",
+      "lounge",
+    ]);
+  });
+
   it.each([
     [0, 0],
     [90, -1.5707963267948966],

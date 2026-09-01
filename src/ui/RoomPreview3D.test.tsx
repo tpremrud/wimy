@@ -90,6 +90,7 @@ const makeSceneItem = (category: SceneItem["category"]): SceneItem => ({
   rotationDeg: 0,
   rotationY: 0,
   size: [1.2, 0.8, 0.9],
+  styleTags: [],
 });
 
 const StorePreview = ({ store }: { store: RoomStore }) => {
@@ -128,7 +129,9 @@ const verticalBounds = (
   const itemCenterY = item.size[1] / 2;
   const bounds = parts.map((part) => {
     const halfHeight =
-      part.kind === "sphere" ? part.radius : part.size[1] / 2;
+      part.kind === "sphere"
+        ? part.radius * (part.scale?.[1] ?? 1)
+        : part.size[1] / 2;
     return {
       bottom: itemCenterY + part.position[1] - halfHeight,
       top: itemCenterY + part.position[1] + halfHeight,
@@ -149,7 +152,13 @@ const partEnvelope = (
   const bounds = parts.map((part) => {
     const halfSize: SceneItem["size"] =
       part.kind === "sphere"
-        ? [part.radius, part.radius, part.radius]
+        ? part.scale
+          ? [
+              part.radius * part.scale[0],
+              part.radius * part.scale[1],
+              part.radius * part.scale[2],
+            ]
+          : [part.radius, part.radius, part.radius]
         : part.kind === "cylinder"
           ? [
               Math.max(part.radiusBottom, part.radiusTop),
@@ -178,6 +187,41 @@ const partEnvelope = (
         envelope.map((value, index) => Math.max(value, bounds[index])),
     ),
   };
+};
+
+const primitiveSignature = (
+  parts: ReturnType<typeof projectFurniturePrimitiveLayout>,
+) => {
+  const roundedVector = (vector: SceneItem["size"]) =>
+    vector.map((value) => Number(value.toFixed(4)));
+
+  return parts.map((part) => {
+    if (part.kind === "sphere") {
+      return {
+        kind: part.kind,
+        color: part.color,
+        position: roundedVector(part.position),
+        radius: Number(part.radius.toFixed(4)),
+        ...(part.scale ? { scale: roundedVector(part.scale) } : {}),
+      };
+    }
+    if (part.kind === "cylinder") {
+      return {
+        kind: part.kind,
+        color: part.color,
+        position: roundedVector(part.position),
+        radiusBottom: Number(part.radiusBottom.toFixed(4)),
+        radiusTop: Number(part.radiusTop.toFixed(4)),
+        size: roundedVector(part.size),
+      };
+    }
+    return {
+      kind: part.kind,
+      color: part.color,
+      position: roundedVector(part.position),
+      size: roundedVector(part.size),
+    };
+  });
 };
 
 describe("projectFurniturePrimitiveLayout", () => {
@@ -286,6 +330,204 @@ describe("projectFurniturePrimitiveLayout", () => {
       bottom: 0,
       top: 1.3,
     });
+  });
+
+  it("uses molded-shell lounge tags for an original bucket lounger silhouette", () => {
+    const item: SceneItem = {
+      ...makeSceneItem("chair"),
+      name: "Original test lounger",
+      color: "#c87852",
+      size: [0.84, 0.82, 0.88],
+      styleTags: ["organic", "molded-shell", "lounge"],
+    };
+
+    const parts = projectFurniturePrimitiveLayout(item);
+
+    expect(primitiveSignature(parts)).toEqual([
+      {
+        kind: "sphere",
+        color: "#c87852",
+        position: [-0.0504, 0.0984, -0.1408],
+        radius: 0.5,
+        scale: [0.6552, 0.4756, 0.2464],
+      },
+      {
+        kind: "sphere",
+        color: "#c87852",
+        position: [0.2016, 0, -0.0352],
+        radius: 0.5,
+        scale: [0.2352, 0.3116, 0.2816],
+      },
+      {
+        kind: "box",
+        color: "#f1d5bd",
+        position: [0, -0.0574, 0.0528],
+        size: [0.5712, 0.082, 0.484],
+      },
+      ...[-0.2016, 0.2016].flatMap((x) =>
+        [-0.0792, 0.1848].map((z) => ({
+          kind: "cylinder",
+          color: "#c87852",
+          position: [x, -0.2542, z],
+          radiusBottom: 0.063,
+          radiusTop: 0.042,
+          size: [0.126, 0.3116, 0.126],
+        })),
+      ),
+    ]);
+    const shells = parts.slice(0, 2);
+    const seat = parts[2];
+    const legs = parts.slice(3);
+    const itemCenterY = item.size[1] / 2;
+    expect(seat?.kind).toBe("box");
+    if (seat?.kind !== "box") throw new Error("expected a lounge seat");
+    expect(
+      shells.some((shell) => {
+        if (shell.kind !== "sphere") return false;
+        const shellHalfSize = shell.scale
+          ? shell.scale.map((axisScale) => shell.radius * axisScale)
+          : [shell.radius, shell.radius, shell.radius];
+        return seat.position.every(
+          (value, index) =>
+            Math.abs(value - shell.position[index]) <=
+            (shellHalfSize[index] ?? 0) + (seat.size[index] ?? 0) / 2,
+        );
+      }),
+    ).toBe(true);
+    const seatBottom = itemCenterY + seat.position[1] - seat.size[1] / 2;
+    for (const leg of legs) {
+      expect(leg.kind).toBe("cylinder");
+      if (leg.kind !== "cylinder") throw new Error("expected a lounge leg");
+      const legTop = itemCenterY + leg.position[1] + leg.size[1] / 2;
+      expect(legTop).toBeCloseTo(seatBottom, 9);
+      expect(Math.abs(leg.position[0] - seat.position[0]) + leg.radiusTop)
+        .toBeLessThan(seat.size[0] / 2);
+      expect(Math.abs(leg.position[2] - seat.position[2]) + leg.radiusTop)
+        .toBeLessThan(seat.size[2] / 2);
+    }
+    const envelope = partEnvelope(item, parts);
+    expect(envelope.min[0]).toBeGreaterThanOrEqual(-0.42);
+    expect(envelope.min[1]).toBeGreaterThanOrEqual(-1e-9);
+    expect(envelope.min[2]).toBeGreaterThanOrEqual(-0.44);
+    expect(envelope.max[0]).toBeLessThanOrEqual(0.42);
+    expect(envelope.max[1]).toBeLessThanOrEqual(0.82);
+    expect(envelope.max[2]).toBeLessThanOrEqual(0.44);
+  });
+
+  it("uses modular low-profile tags for a sectional sofa silhouette", () => {
+    const item: SceneItem = {
+      ...makeSceneItem("sofa"),
+      name: "Original test sectional",
+      color: "#6e7f8d",
+      size: [2.1, 0.72, 0.95],
+      styleTags: ["soft", "modular", "low-profile"],
+    };
+
+    const parts = projectFurniturePrimitiveLayout(item);
+
+    expect(primitiveSignature(parts)).toEqual([
+      {
+        kind: "box",
+        color: "#6e7f8d",
+        position: [0, -0.3024, 0],
+        size: [2.1, 0.1152, 0.874],
+      },
+      {
+        kind: "box",
+        color: "#93a3ad",
+        position: [-0.6825, -0.1224, 0.076],
+        size: [0.609, 0.2448, 0.5225],
+      },
+      {
+        kind: "box",
+        color: "#93a3ad",
+        position: [0, -0.1224, 0.076],
+        size: [0.609, 0.2448, 0.5225],
+      },
+      {
+        kind: "box",
+        color: "#93a3ad",
+        position: [0.6825, -0.1224, -0.038],
+        size: [0.609, 0.2448, 0.817],
+      },
+      ...[-0.6825, 0, 0.6825].map((x) => ({
+        kind: "box",
+        color: "#6e7f8d",
+        position: [x, 0.18, 0.361],
+        size: [0.609, 0.36, 0.152],
+      })),
+    ]);
+    const [platform, ...modules] = parts;
+    const seats = modules.slice(0, 3);
+    const backs = modules.slice(3);
+    expect(platform?.kind).toBe("box");
+    if (platform?.kind !== "box") throw new Error("expected a sofa platform");
+    const itemCenterY = item.size[1] / 2;
+    const platformTop =
+      itemCenterY + platform.position[1] + platform.size[1] / 2;
+    seats.forEach((seat, index) => {
+      const back = backs[index];
+      expect(seat?.kind).toBe("box");
+      expect(back?.kind).toBe("box");
+      if (seat?.kind !== "box" || back?.kind !== "box") {
+        throw new Error("expected matching sofa seat and back modules");
+      }
+      const seatBottom = itemCenterY + seat.position[1] - seat.size[1] / 2;
+      const seatTop = itemCenterY + seat.position[1] + seat.size[1] / 2;
+      const backBottom = itemCenterY + back.position[1] - back.size[1] / 2;
+      expect(seatBottom).toBeCloseTo(platformTop, 9);
+      expect(backBottom).toBeCloseTo(seatTop, 9);
+      expect(Math.abs(seat.position[0] - back.position[0])).toBeLessThan(
+        (seat.size[0] + back.size[0]) / 2,
+      );
+      expect(Math.abs(seat.position[2] - back.position[2])).toBeLessThan(
+        (seat.size[2] + back.size[2]) / 2,
+      );
+    });
+    const envelope = partEnvelope(item, parts);
+    expect(envelope.min[0]).toBeGreaterThanOrEqual(-1.05);
+    expect(envelope.min[1]).toBeGreaterThanOrEqual(-1e-9);
+    expect(envelope.min[2]).toBeGreaterThanOrEqual(-0.475);
+    expect(envelope.max[0]).toBeLessThanOrEqual(1.05);
+    expect(envelope.max[1]).toBeLessThanOrEqual(0.72);
+    expect(envelope.max[2]).toBeLessThanOrEqual(0.475);
+  });
+
+  it("ignores tag order and safely falls back for partial or unknown combinations", () => {
+    const chair = makeSceneItem("chair");
+    const sofa = makeSceneItem("sofa");
+
+    expect(
+      primitiveSignature(
+        projectFurniturePrimitiveLayout({
+          ...chair,
+          styleTags: ["lounge", "organic", "molded-shell"],
+        }),
+      ),
+    ).toEqual(
+      primitiveSignature(
+        projectFurniturePrimitiveLayout({
+          ...chair,
+          styleTags: ["molded-shell", "lounge"],
+        }),
+      ),
+    );
+    expect(
+      primitiveSignature(
+        projectFurniturePrimitiveLayout({
+          ...chair,
+          styleTags: ["molded-shell"],
+        }),
+      ),
+    ).toEqual(primitiveSignature(projectFurniturePrimitiveLayout(chair)));
+    expect(
+      primitiveSignature(
+        projectFurniturePrimitiveLayout({
+          ...sofa,
+          styleTags: ["modular", "unknown-style"],
+        }),
+      ),
+    ).toEqual(primitiveSignature(projectFurniturePrimitiveLayout(sofa)));
   });
 });
 
