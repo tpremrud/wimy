@@ -230,6 +230,63 @@ describe("projectFurniturePrimitiveLayout", () => {
     expect(envelope.max[1]).toBeLessThanOrEqual(0.02);
     expect(envelope.max[2]).toBeLessThanOrEqual(0.01);
   });
+
+  it("joins a table's floor-standing legs to the underside of its top", () => {
+    const item = {
+      ...makeSceneItem("table"),
+      size: [1, 0.4, 0.55] as SceneItem["size"],
+    };
+
+    const [top, ...legs] = projectFurniturePrimitiveLayout(item);
+    expect(top?.kind).toBe("box");
+    expect(legs).toHaveLength(4);
+    if (top?.kind !== "box") throw new Error("expected a table top");
+
+    const itemCenterY = item.size[1] / 2;
+    const topUnderside = itemCenterY + top.position[1] - top.size[1] / 2;
+    for (const leg of legs) {
+      expect(leg.kind).toBe("box");
+      if (leg.kind !== "box") throw new Error("expected a table leg");
+      const legBottom = itemCenterY + leg.position[1] - leg.size[1] / 2;
+      const legTop = itemCenterY + leg.position[1] + leg.size[1] / 2;
+      expect(legBottom).toBeCloseTo(0, 9);
+      expect(legTop).toBeCloseTo(topUnderside, 9);
+    }
+  });
+
+  it("builds a connected pot, stem, and layered canopy for a tall plant", () => {
+    const item = {
+      ...makeSceneItem("plant"),
+      size: [0.45, 1.3, 0.45] as SceneItem["size"],
+    };
+
+    const [pot, stem, ...canopy] = projectFurniturePrimitiveLayout(item);
+    expect(pot?.kind).toBe("cylinder");
+    expect(stem?.kind).toBe("cylinder");
+    expect(canopy).toHaveLength(3);
+    expect(canopy.every((part) => part.kind === "sphere")).toBe(true);
+    if (pot?.kind !== "cylinder" || stem?.kind !== "cylinder") {
+      throw new Error("expected a plant pot and stem");
+    }
+
+    const itemCenterY = item.size[1] / 2;
+    const potTop = itemCenterY + pot.position[1] + pot.size[1] / 2;
+    const stemBottom = itemCenterY + stem.position[1] - stem.size[1] / 2;
+    const stemTop = itemCenterY + stem.position[1] + stem.size[1] / 2;
+    const canopyBottom = Math.min(
+      ...canopy.map((part) => {
+        if (part.kind !== "sphere") throw new Error("expected foliage");
+        return itemCenterY + part.position[1] - part.radius;
+      }),
+    );
+
+    expect(stemBottom).toBeLessThanOrEqual(potTop);
+    expect(stemTop).toBeGreaterThanOrEqual(canopyBottom);
+    expect(verticalBounds(item, [pot, stem, ...canopy])).toEqual({
+      bottom: 0,
+      top: 1.3,
+    });
+  });
 });
 
 describe("RoomPreview3D", () => {

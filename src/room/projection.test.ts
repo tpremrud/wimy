@@ -273,8 +273,8 @@ describe("projectRoomToScene", () => {
         id: "window_east",
         kind: "window",
         wall: "east",
-        position: [6, 1.35, 1.5],
-        size: [0.08, 1.1, 1.2],
+        position: [5.945, 1.35, 1.5],
+        size: [0.02, 1.1, 1.2],
       },
     ]);
     expect(scene.items[0]).toMatchObject({
@@ -282,6 +282,69 @@ describe("projectRoomToScene", () => {
       color: "#8a8a8a",
       size: [0.6, 0.8, 0.6],
     });
+  });
+
+  it("projects opening hints onto separate interior surfaces on every wall", () => {
+    const scene = projectRoomToScene(
+      makeRoom({
+        dimensions: { width: 6, depth: 5, height: 3 },
+        openings: [
+          makeOpening({
+            id: "opening_north",
+            wall: "north",
+            centerOffset: 1.5,
+            height: 2,
+          }),
+          makeOpening({
+            id: "opening_east",
+            wall: "east",
+            centerOffset: 1.5,
+            height: 2,
+          }),
+          makeOpening({
+            id: "opening_south",
+            wall: "south",
+            centerOffset: 1.5,
+            height: 2,
+          }),
+          makeOpening({
+            id: "opening_west",
+            wall: "west",
+            centerOffset: 1.5,
+            height: 2,
+          }),
+        ],
+      }),
+    );
+
+    expect(
+      scene.openings.map(({ position, size, wall }) => ({
+        position,
+        size,
+        wall,
+      })),
+    ).toEqual([
+      {
+        wall: "north",
+        position: [1.5, 1, 0.055],
+        size: [0.9, 2, 0.02],
+      },
+      {
+        wall: "east",
+        position: [5.945, 1, 1.5],
+        size: [0.02, 2, 0.9],
+      },
+      {
+        wall: "south",
+        position: [1.5, 1, 4.945],
+        size: [0.9, 2, 0.02],
+      },
+      {
+        wall: "west",
+        position: [0.055, 1, 1.5],
+        size: [0.02, 2, 0.9],
+      },
+    ]);
   });
 });
 

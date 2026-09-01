@@ -167,18 +167,21 @@ export const projectFurniturePrimitiveLayout = (
     radiusTop: number,
     cylinderHeight: number,
   ): FurnitureCylinderPart => {
-    const radius = Math.min(radiusBottom, radiusTop, width / 2, depth / 2);
+    const maximumRadius = Math.min(width / 2, depth / 2);
+    const boundedRadiusBottom = Math.min(radiusBottom, maximumRadius);
+    const boundedRadiusTop = Math.min(radiusTop, maximumRadius);
+    const envelopeRadius = Math.max(boundedRadiusBottom, boundedRadiusTop);
     const boundedSize: SceneVector3 = [
-      radius * 2,
+      envelopeRadius * 2,
       Math.min(cylinderHeight, height),
-      radius * 2,
+      envelopeRadius * 2,
     ];
     return {
       kind: "cylinder",
       color,
       position: containedPosition(position, boundedSize),
-      radiusBottom: radius,
-      radiusTop: radius,
+      radiusBottom: boundedRadiusBottom,
+      radiusTop: boundedRadiusTop,
       size: boundedSize,
     };
   };
@@ -197,8 +200,7 @@ export const projectFurniturePrimitiveLayout = (
     };
   };
   const baseHeight = Math.min(height * 0.55, 0.5);
-  const legHeight = Math.min(height * 0.25, 0.2);
-  const topHeight = Math.max(height * 0.12, 0.05);
+  const topHeight = Math.min(Math.max(height * 0.12, 0.05), height);
   const legOffsetX = Math.max(width / 2 - 0.08, 0);
   const legOffsetZ = Math.max(depth / 2 - 0.08, 0);
 
@@ -206,16 +208,52 @@ export const projectFurniturePrimitiveLayout = (
     case "rug":
       return [box(item.color, [0, localY(0.02), 0], [width, 0.04, depth])];
     case "plant": {
-      const radius = Math.min(Math.max(width, depth) * 0.36, height * 0.38);
+      const potHeight = height * 0.3;
+      const canopyRadius = Math.min(
+        width * 0.28,
+        depth * 0.28,
+        height * 0.18,
+      );
+      const lowerCanopyY = height - canopyRadius * 2.55;
+      const stemHeight = lowerCanopyY - potHeight;
       return [
         cylinder(
           item.color,
-          [0, localY(height * 0.16), 0],
-          width * 0.3,
-          width * 0.22,
-          height * 0.32,
+          [0, localY(potHeight / 2), 0],
+          Math.min(width, depth) * 0.25,
+          Math.min(width, depth) * 0.32,
+          potHeight,
         ),
-        sphere("#426b45", [0, localY(height - radius), 0], radius),
+        cylinder(
+          "#6b4f35",
+          [0, localY(potHeight + stemHeight / 2), 0],
+          Math.min(width, depth) * 0.045,
+          Math.min(width, depth) * 0.045,
+          stemHeight,
+        ),
+        sphere(
+          "#426b45",
+          [0, localY(height - canopyRadius), 0],
+          canopyRadius,
+        ),
+        sphere(
+          "#4f7d50",
+          [
+            -width * 0.18,
+            localY(lowerCanopyY),
+            depth * 0.07,
+          ],
+          canopyRadius,
+        ),
+        sphere(
+          "#365f3b",
+          [
+            width * 0.18,
+            localY(lowerCanopyY),
+            -depth * 0.07,
+          ],
+          canopyRadius,
+        ),
       ];
     }
     case "chair":
@@ -254,7 +292,8 @@ export const projectFurniturePrimitiveLayout = (
           [Math.max(width * 0.14, 0.05), height * 0.5, depth],
         ),
       ];
-    case "table":
+    case "table": {
+      const legHeight = height - topHeight;
       return [
         box(
           item.color,
@@ -268,9 +307,14 @@ export const projectFurniturePrimitiveLayout = (
           [legOffsetX, legHeight / 2, legOffsetZ],
         ].map(
           ([x, worldY, z]) =>
-            box(item.color, [x, localY(worldY), z], [0.08, legHeight, 0.08]),
+            box(
+              item.color,
+              [x, localY(worldY), z],
+              [0.08, legHeight, 0.08],
+            ),
         ),
       ];
+    }
     case "bed":
       return [
         box(

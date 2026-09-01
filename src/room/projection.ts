@@ -90,14 +90,18 @@ export type SceneProjection = {
 const NEUTRAL_SCENE_COLOR = "#8a8a8a";
 const SAFE_HEX_COLOR = /^#[0-9a-f]{6}$/iu;
 const WALL_THICKNESS = 0.08;
+const OPENING_HINT_THICKNESS = 0.02;
+const OPENING_HINT_WALL_GAP = 0.005;
+const OPENING_HINT_INSET =
+  WALL_THICKNESS / 2 + OPENING_HINT_THICKNESS / 2 + OPENING_HINT_WALL_GAP;
 
 const sceneColor = (color: string) =>
   SAFE_HEX_COLOR.test(color) ? color : NEUTRAL_SCENE_COLOR;
 
 const openingSceneSize = (opening: DeepReadonly<Opening>): SceneVector3 =>
   opening.wall === "north" || opening.wall === "south"
-    ? [opening.width, opening.height, WALL_THICKNESS]
-    : [WALL_THICKNESS, opening.height, opening.width];
+    ? [opening.width, opening.height, OPENING_HINT_THICKNESS]
+    : [OPENING_HINT_THICKNESS, opening.height, opening.width];
 
 const openingScenePosition = (
   opening: DeepReadonly<Opening>,
@@ -107,13 +111,21 @@ const openingScenePosition = (
 
   switch (opening.wall) {
     case "north":
-      return [opening.centerOffset, height, 0];
+      return [opening.centerOffset, height, OPENING_HINT_INSET];
     case "east":
-      return [room.dimensions.width, height, opening.centerOffset];
+      return [
+        room.dimensions.width - OPENING_HINT_INSET,
+        height,
+        opening.centerOffset,
+      ];
     case "south":
-      return [opening.centerOffset, height, room.dimensions.depth];
+      return [
+        opening.centerOffset,
+        height,
+        room.dimensions.depth - OPENING_HINT_INSET,
+      ];
     case "west":
-      return [0, height, opening.centerOffset];
+      return [OPENING_HINT_INSET, height, opening.centerOffset];
   }
 };
 
