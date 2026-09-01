@@ -114,6 +114,10 @@ for (const viewport of [
   await page.locator("body").focus();
   await page.keyboard.press("Tab");
   await expect(
+    page.getByRole("link", { name: "Skip to room workspace" }),
+  ).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(
     page.getByRole("combobox", { name: "Load room template" }),
   ).toBeFocused();
   await page.keyboard.press("Tab");
@@ -644,6 +648,7 @@ test("accepts real user orbit input while the 3D preview remains visible", async
   const initialPosition = await canvas.getAttribute("data-wimy-camera-position");
   if (!initialPosition) throw new Error("expected an initial 3D camera position");
 
+  await canvas.scrollIntoViewIfNeeded();
   const canvasBox = await canvas.boundingBox();
   if (!canvasBox) throw new Error("expected a visible 3D canvas");
   await page.mouse.move(canvasBox.x + canvasBox.width / 2, canvasBox.y + canvasBox.height / 2);

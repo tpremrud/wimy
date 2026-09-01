@@ -204,7 +204,7 @@ test("inspect, find, and apply visibly collaborate while stale edits recover", a
       .getByRole("region", { name: "Activity receipts" })
       .getByRole("listitem")
       .first(),
-  ).toContainText("Agent: Accepted. Applied 1 room operationsRevision 2");
+  ).toContainText("Agent: Accepted. Added Ember Nest ChairRevision 2");
 
   await page.getByRole("button", { name: "Rotate 90 degrees" }).click();
 
