@@ -8,6 +8,7 @@ import { FurnitureSnapshotSchema } from "./document";
 import { getTemplate } from "./templates";
 import {
   findFurniture,
+  rankCatalogRelations,
   resolveCatalogProduct,
   type CatalogItem,
 } from "./catalog";
@@ -720,5 +721,23 @@ describe("demo catalog integrity", () => {
 
     expect(resolveCatalogProduct("ember-nest-chair")).toEqual(second);
     expect(resolveCatalogProduct("missing-product")).toBeUndefined();
+  });
+
+  it("ranks contextual catalog relations from local facts with stable tie breaks", () => {
+    const source = DEMO_CATALOG.find(
+      ({ catalogRef }) => catalogRef.productId === "hearthline-sofa",
+    );
+    if (!source) throw new Error("expected the source catalog item");
+
+    expect(
+      rankCatalogRelations(source, DEMO_CATALOG, "similar").map(
+        ({ catalogRef }) => catalogRef.productId,
+      ),
+    ).toEqual(["tidal-modular-sofa", "cedar-arc-chair", "ember-nest-chair"]);
+    expect(
+      rankCatalogRelations(source, DEMO_CATALOG, "goes-well-with").map(
+        ({ catalogRef }) => catalogRef.productId,
+      ),
+    ).toEqual(["saffron-loom-rug", "juniper-rise-plant", "orbit-side-table"]);
   });
 });

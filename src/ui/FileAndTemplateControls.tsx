@@ -241,15 +241,16 @@ export function FileAndTemplateControls({
           ))}
         </select>
       </label>
-      <label>
-        Import .wimy file
-        <input
-          type="file"
-          onChange={(event) => void importFile(event)}
-        />
-      </label>
-      <button type="button" onClick={exportRoom}>
-        Export .wimy
+        <label>
+          <span>Import Wimy File</span>
+          <input
+            aria-label="Import .wimy file"
+            type="file"
+            onChange={(event) => void importFile(event)}
+          />
+        </label>
+      <button aria-label="Export .wimy" type="button" onClick={exportRoom}>
+        Download Wimy File
       </button>
       <button
         ref={undoButtonRef}

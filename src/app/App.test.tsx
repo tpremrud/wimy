@@ -123,6 +123,108 @@ afterEach(() => {
 });
 
 describe("App", () => {
+  it("presents the room in a two-pane shell with accessible secondary tabs", () => {
+    render(<App />);
+
+    expect(screen.getByRole("tablist", { name: "Room tools" })).toBeVisible();
+    expect(screen.getByRole("tab", { name: "Add" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(screen.getByRole("tab", { name: "Placed" })).toHaveAttribute(
+      "aria-selected",
+      "false",
+    );
+    expect(screen.getByRole("tab", { name: "Favorites" })).toHaveAttribute(
+      "aria-selected",
+      "false",
+    );
+    expect(screen.getByRole("region", { name: "Living Room" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Share room" })).toBeVisible();
+  });
+
+  it("moves through room tool tabs with the arrow keys", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    const addTab = screen.getByRole("tab", { name: "Add" });
+    addTab.focus();
+    await user.keyboard("{ArrowRight}");
+    expect(screen.getByRole("tab", { name: "Placed" })).toHaveFocus();
+    expect(screen.getByRole("tab", { name: "Placed" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+
+    await user.keyboard("{End}");
+    expect(screen.getByRole("tab", { name: "Favorites" })).toHaveFocus();
+    expect(screen.getByRole("tab", { name: "Favorites" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+  });
+
+  it("keeps placed items live and exposes transaction-backed actions", async () => {
+    const user = userEvent.setup();
+    const store = createRoomStore(
+      getTemplate("living-room"),
+      TEST_TRANSACTION_DEPENDENCIES,
+    );
+    render(<App store={store} />);
+
+    await user.click(screen.getByRole("tab", { name: "Placed" }));
+
+    const placed = screen.getByRole("tabpanel", { name: "Placed" });
+    expect(within(placed).getByText("Tall Leaf Plant")).toBeVisible();
+    await user.click(
+      within(placed).getByRole("button", { name: "Rotate Tall Leaf Plant" }),
+    );
+    expect(store.getState().revision).toBe(2);
+    expect(store.getState().receipts[0]?.origin).toBe("human");
+  });
+
+  it("keeps favorites out of the canonical room and export receipts", async () => {
+    const user = userEvent.setup();
+    const store = createRoomStore(
+      getTemplate("living-room"),
+      { ...TEST_TRANSACTION_DEPENDENCIES, resolveProduct: resolveCatalogProduct },
+    );
+    const before = store.getState();
+    render(<App store={store} />);
+
+    await user.click(screen.getByRole("tab", { name: "Add" }));
+    await user.click(
+      screen.getByRole("button", { name: "Add Ember Nest Chair to favorites" }),
+    );
+    await user.click(screen.getByRole("tab", { name: "Favorites" }));
+
+    expect(
+      within(screen.getByRole("tabpanel", { name: "Favorites" })).getByText(
+        "Ember Nest Chair",
+      ),
+    ).toBeVisible();
+    expect(store.getState()).toMatchObject({
+      room: before.room,
+      revision: before.revision,
+      receipts: before.receipts,
+    });
+  });
+
+  it("opens the accountless share panel and returns focus on close", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    const shareButton = screen.getByRole("button", { name: "Share room" });
+    await user.click(shareButton);
+    expect(screen.getByRole("dialog", { name: "Share room" })).toBeVisible();
+    expect(screen.getByText(/No account or network is required/i)).toBeVisible();
+    expect(screen.getByText("Import Wimy File")).toBeVisible();
+    expect(screen.getByText("Download Wimy File")).toBeVisible();
+
+    await user.click(screen.getByRole("button", { name: "Close share room" }));
+    expect(shareButton).toHaveFocus();
+  });
+
   it("introduces the shared room workspace", () => {
     render(<App />);
     expect(screen.getByRole("heading", { name: "Wimy" })).toBeVisible();

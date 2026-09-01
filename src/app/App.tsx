@@ -7,23 +7,24 @@ import {
   useRef,
   useState,
   type ComponentType,
+  type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
 } from "react";
 import { useStore } from "zustand";
 import { roomStore, type RoomStore } from "../room/store";
 import { CatalogPanel } from "../ui/CatalogPanel";
-import {
-  FileAndTemplateControls,
-  RoomWarnings,
-} from "../ui/FileAndTemplateControls";
+import { RoomWarnings } from "../ui/FileAndTemplateControls";
 import { ReceiptPanel } from "../ui/ReceiptPanel";
 import { RoomEditor2D } from "../ui/RoomEditor2D";
+import { FavoritesPanel, PlacedPanel } from "../ui/RoomRailPanels";
+import { ShareRoomPanel } from "../ui/ShareRoomPanel";
 import {
   registerRoomTools,
   type WebMcpRegistrationStatus,
 } from "../webmcp/room-tools";
 
 type ViewMode = "2d" | "3d";
+type RailTab = "add" | "placed" | "favorites";
 
 type PreviewProps = {
   room: ReturnType<RoomStore["getState"]>["room"];
@@ -138,6 +139,10 @@ export function App({
 }: AppProps) {
   const { room, revision, receipts } = useStore(store);
   const [viewMode, setViewMode] = useState<ViewMode>("2d");
+  const [railTab, setRailTab] = useState<RailTab>("add");
+  const [favoriteIds, setFavoriteIds] = useState<Set<string>>(
+    () => new Set(),
+  );
   const Preview3D = previewLoadFailure
     ? RejectedRoomPreview3D
     : RoomPreview3D;
@@ -200,40 +205,110 @@ export function App({
     );
   }, [store]);
 
+  const toggleFavorite = (key: string) => {
+    setFavoriteIds((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const tabs: readonly { id: RailTab; label: string }[] = [
+    { id: "add", label: "Add" },
+    { id: "placed", label: "Placed" },
+    { id: "favorites", label: "Favorites" },
+  ];
+
+  const moveRailTab = (event: ReactKeyboardEvent<HTMLButtonElement>) => {
+    if (!["ArrowRight", "ArrowLeft", "Home", "End"].includes(event.key)) {
+      return;
+    }
+    event.preventDefault();
+    const currentIndex = tabs.findIndex(
+      ({ id }) => id === event.currentTarget.id.replace(/-tab$/u, ""),
+    );
+    const nextIndex =
+      event.key === "Home"
+        ? 0
+        : event.key === "End"
+          ? tabs.length - 1
+          : (currentIndex + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) %
+            tabs.length;
+    const nextTab = tabs[nextIndex];
+    if (!nextTab) return;
+    setRailTab(nextTab.id);
+    document.getElementById(`${nextTab.id}-tab`)?.focus();
+  };
+
   return (
-    <main>
+    <main className="app-shell">
       <a className="skip-link" href="#room-workspace">
         Skip to room workspace
       </a>
-      <header>
-        <h1>Wimy</h1>
-        <p>Fit, find, and place furniture with your browser agent.</p>
-        <p role="status" aria-label="WebMCP status" aria-live="polite">
-          {registrationStatusText(visibleRegistration)}
-        </p>
-        <section
-          aria-labelledby="webmcp-workflow-heading"
-          className="agent-workflow"
-        >
-          <h2 id="webmcp-workflow-heading">Work with a browser agent</h2>
-          <p>
-            WebMCP lets your agent inspect the room, find a catalog fit, and
-            apply one exact edit while you review each change.
+      <header className="app-header">
+        <div className="brand-lockup">
+          <h1>Wimy</h1>
+          <p>Fit, find, and place furniture with a human or browser agent.</p>
+        </div>
+        <div className="header-actions">
+          <p role="status" aria-label="WebMCP status" aria-live="polite">
+            {registrationStatusText(visibleRegistration)}
           </p>
+          <ShareRoomPanel store={store} />
+        </div>
+      </header>
+      <section aria-labelledby="webmcp-workflow-heading" className="agent-workflow">
+        <details open>
+          <summary><h2 id="webmcp-workflow-heading">Work with a browser agent</h2></summary>
+          <p>WebMCP can inspect the room, find a catalog fit, and apply one exact edit while you review each change.</p>
           <ol>
             <li>Inspect the room dimensions and placed items.</li>
             <li>Find a catalog item that fits the room.</li>
             <li>Apply one exact placement at the current revision.</li>
           </ol>
-        </section>
-        <FileAndTemplateControls store={store} />
-      </header>
+        </details>
+      </section>
       <div className="workspace-grid" id="room-workspace" tabIndex={-1}>
         <aside
           className="workspace-catalog"
           aria-labelledby="catalog-heading"
         >
-          <CatalogPanel store={store} />
+          <nav className="rail-navigation" aria-label="Room tools">
+            <div className="rail-title">
+              <span>Room tools</span>
+              <small>{room.items.length} placed</small>
+            </div>
+            <div className="rail-tabs" role="tablist" aria-label="Room tools">
+              {tabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  id={`${tab.id}-tab`}
+                  type="button"
+                  role="tab"
+                  aria-label={tab.label}
+                  aria-selected={railTab === tab.id}
+                  aria-controls={`${tab.id}-panel`}
+                  tabIndex={railTab === tab.id ? 0 : -1}
+                  onClick={() => setRailTab(tab.id)}
+                  onKeyDown={moveRailTab}
+                >
+                  {tab.label}
+                  {tab.id === "placed" ? <span aria-hidden="true">{room.items.length}</span> : null}
+                  {tab.id === "favorites" ? <span aria-hidden="true">{favoriteIds.size}</span> : null}
+                </button>
+              ))}
+            </div>
+          </nav>
+          <div id="add-panel" role="tabpanel" aria-labelledby="add-tab" hidden={railTab !== "add"}>
+            <CatalogPanel favoriteIds={favoriteIds} onToggleFavorite={toggleFavorite} store={store} />
+          </div>
+          <div id="placed-panel" role="tabpanel" aria-labelledby="placed-tab" hidden={railTab !== "placed"}>
+            <PlacedPanel store={store} />
+          </div>
+          <div id="favorites-panel" role="tabpanel" aria-labelledby="favorites-tab" hidden={railTab !== "favorites"}>
+            <FavoritesPanel favoriteIds={favoriteIds} onToggleFavorite={toggleFavorite} store={store} />
+          </div>
         </aside>
         <section
           className="workspace-room"
@@ -241,8 +316,10 @@ export function App({
         >
           <div className="workspace-room-header">
             <div className="workspace-room-heading">
+              <p className="room-kicker">Current room</p>
               <h2 id="current-room-heading">{room.name}</h2>
-              <p>Revision {revision}</p>
+              <p className="room-revision">Revision {revision}</p>
+              <p className="room-item-count">{room.items.length} placed item{room.items.length === 1 ? "" : "s"}</p>
             </div>
             <div
               aria-label="Room view"
@@ -282,12 +359,12 @@ export function App({
             </PreviewLoadBoundary>
           )}
         </section>
-        <aside
-          className="workspace-activity"
-          aria-labelledby="activity-receipts-heading"
-        >
-          <RoomWarnings store={store} />
-          <ReceiptPanel receipts={receipts} />
+        <aside className="workspace-activity" aria-labelledby="activity-receipts-heading">
+          <details open>
+            <summary>Warnings and activity</summary>
+            <RoomWarnings store={store} />
+            <ReceiptPanel receipts={receipts} />
+          </details>
         </aside>
       </div>
     </main>

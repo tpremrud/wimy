@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-test("shows all workspace rails at 1280 and stacks them on mobile", async ({
+test("keeps the room dominant and stacks secondary surfaces on mobile", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1_280, height: 900 });
@@ -25,13 +25,13 @@ test("shows all workspace rails at 1280 and stacks them on mobile", async ({
 
   expect(desktopCatalog.y).toBeLessThan(900);
   expect(desktopRoom.y).toBeLessThan(900);
-  expect(desktopActivity.y).toBeLessThan(900);
   expect(Math.abs(desktopCatalog.y - desktopRoom.y)).toBeLessThan(2);
-  expect(Math.abs(desktopRoom.y - desktopActivity.y)).toBeLessThan(2);
   expect(desktopCatalog.x + desktopCatalog.width).toBeLessThan(
     desktopRoom.x,
   );
-  expect(desktopRoom.x + desktopRoom.width).toBeLessThan(desktopActivity.x);
+  expect(desktopActivity.x).toBe(desktopRoom.x);
+  expect(desktopActivity.y).toBeGreaterThan(desktopRoom.y + desktopRoom.height - 2);
+  expect(desktopRoom.width).toBeGreaterThan(desktopCatalog.width * 2);
 
   await page.setViewportSize({ width: 390, height: 844 });
   const mobileBoxes = await Promise.all([
@@ -44,7 +44,7 @@ test("shows all workspace rails at 1280 and stacks them on mobile", async ({
     throw new Error("expected rendered mobile workspace regions");
   }
 
-  expect(mobileCatalog.y + mobileCatalog.height).toBeLessThan(mobileRoom.y);
+  expect(mobileRoom.y).toBeLessThan(mobileCatalog.y);
   expect(mobileRoom.y + mobileRoom.height).toBeLessThan(mobileActivity.y);
   expect(await page.evaluate(() => document.documentElement.scrollWidth))
     .toBeLessThanOrEqual(390);

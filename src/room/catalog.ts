@@ -44,6 +44,11 @@ export type CatalogMatch = CatalogItem & {
   suggestedPose: Pose;
 };
 
+export type CatalogRelation = "similar" | "goes-well-with";
+
+export const catalogItemKey = (catalogRef: CatalogItem["catalogRef"]) =>
+  `${catalogRef.catalogId}:${catalogRef.productId}`;
+
 const ROTATION_ORDER: readonly RotationDeg[] = [0, 90, 180, 270];
 const GRID_SCALE = 10;
 
@@ -152,6 +157,69 @@ export const findFurniture = (
   }
 
   return matches;
+};
+
+const sharedStyleCount = (first: CatalogItem, second: CatalogItem) =>
+  second.snapshot.styleTags.filter((styleTag) =>
+    first.snapshot.styleTags.includes(styleTag),
+  ).length;
+
+const complementaryCategories: Partial<
+  Record<FurnitureSnapshot["category"], readonly FurnitureSnapshot["category"][]>
+> = {
+  bed: ["dresser", "plant", "rug"],
+  chair: ["desk", "table", "rug"],
+  desk: ["chair", "plant", "rug"],
+  dresser: ["bed", "plant", "rug"],
+  plant: ["table", "dresser", "sofa", "chair"],
+  rug: ["sofa", "chair", "table", "bed"],
+  sofa: ["table", "rug", "plant"],
+  table: ["chair", "sofa", "plant", "rug"],
+};
+
+/**
+ * Ranks local catalog facts only. Keeping this pure makes the contextual view
+ * deterministic and prevents recommendations from becoming room state.
+ */
+export const rankCatalogRelations = (
+  source: CatalogItem,
+  catalog: readonly CatalogItem[],
+  relation: CatalogRelation,
+  limit = 3,
+) => {
+  if (!Number.isInteger(limit) || limit < 1) {
+    throw new RangeError("Catalog relation limit must be a positive integer");
+  }
+
+  const ranked = catalog
+    .filter(
+      (candidate) =>
+        candidate.catalogRef.productId !== source.catalogRef.productId,
+    )
+    .map((candidate) => {
+      const sharedStyles = sharedStyleCount(source, candidate);
+      const sameCategory = candidate.snapshot.category === source.snapshot.category;
+      const complementary =
+        complementaryCategories[source.snapshot.category]?.includes(
+          candidate.snapshot.category,
+        ) ?? false;
+      const score =
+        relation === "similar"
+          ? (sameCategory ? 100 : 0) + sharedStyles * 10
+          : (complementary ? 100 : 0) + sharedStyles * 10;
+
+      return { candidate, score };
+    })
+    .filter(({ score }) => score > 0)
+    .sort(
+      (first, second) =>
+        second.score - first.score ||
+        first.candidate.catalogRef.productId.localeCompare(
+          second.candidate.catalogRef.productId,
+        ),
+    );
+
+  return ranked.slice(0, limit).map(({ candidate }) => structuredClone(candidate));
 };
 
 export const resolveCatalogProduct = (

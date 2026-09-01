@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
+  catalogItemKey,
   findFurniture,
+  rankCatalogRelations,
   type CatalogMatch,
   type CatalogQuery,
 } from "../room/catalog";
@@ -21,6 +23,8 @@ const CATEGORIES: readonly FurnitureSnapshot["category"][] = [
 ];
 
 type CatalogPanelProps = {
+  favoriteIds?: ReadonlySet<string>;
+  onToggleFavorite?: (key: string) => void;
   store: RoomStore;
 };
 
@@ -58,7 +62,11 @@ const searchSummary = (
   return `Search ${attempt} ${phase}: ${matches.length} ${matchLabel}. Best match: ${bestMatch.snapshot.name} at x ${x} m, y ${y} m, rotation ${rotationDeg}°.`;
 };
 
-export function CatalogPanel({ store }: CatalogPanelProps) {
+export function CatalogPanel({
+  favoriteIds = new Set<string>(),
+  onToggleFavorite,
+  store,
+}: CatalogPanelProps) {
   const [category, setCategory] = useState("");
   const [styleTags, setStyleTags] = useState("");
   const [maxPrice, setMaxPrice] = useState("");
@@ -69,6 +77,7 @@ export function CatalogPanel({ store }: CatalogPanelProps) {
   const searchButtonRef = useRef<HTMLButtonElement>(null);
   const visibleSearch = searchState?.owner === store ? searchState : null;
   const visibleAction = actionState?.owner === store ? actionState : null;
+  const catalog = store.readCatalog();
 
   useEffect(
     () =>
@@ -208,8 +217,39 @@ export function CatalogPanel({ store }: CatalogPanelProps) {
     <section className="catalog-panel" aria-labelledby="catalog-heading">
       <div className="catalog-panel-heading">
         <h2 id="catalog-heading">Furniture catalog</h2>
-        <p>Search the local fictional demo catalog for a geometric fit.</p>
+        <p>Find a local catalog item that fits the current room.</p>
       </div>
+      <section className="catalog-browse" aria-labelledby="catalog-browse-heading">
+        <div className="catalog-subheading">
+          <h3 id="catalog-browse-heading">Browse the catalog</h3>
+          <span>{catalog.length} local choices</span>
+        </div>
+        <ul className="catalog-browse-list" aria-label="Available catalog items">
+          {catalog.map((item) => {
+            const key = catalogItemKey(item.catalogRef);
+            const favorite = favoriteIds.has(key);
+            return (
+              <li key={key}>
+                <span>
+                  <strong>{item.snapshot.name}</strong>
+                  <small>{item.snapshot.category} · {item.snapshot.dimensions.width} × {item.snapshot.dimensions.depth} m</small>
+                </span>
+                {onToggleFavorite ? (
+                  <button
+                    type="button"
+                    className="favorite-toggle"
+                    aria-pressed={favorite}
+                    aria-label={`${favorite ? "Remove" : "Add"} ${item.snapshot.name} ${favorite ? "from" : "to"} favorites`}
+                    onClick={() => onToggleFavorite(key)}
+                  >
+                    {favorite ? "Saved" : "Save"}
+                  </button>
+                ) : null}
+              </li>
+            );
+          })}
+        </ul>
+      </section>
       <form className="catalog-filters" onSubmit={search}>
         <label>
           Category
@@ -292,9 +332,38 @@ export function CatalogPanel({ store }: CatalogPanelProps) {
                 <span>
                   {`Best fit: x ${match.suggestedPose.x} m, y ${match.suggestedPose.y} m, rotation ${match.suggestedPose.rotationDeg}°`}
                 </span>
+                {onToggleFavorite ? (
+                  <button
+                    type="button"
+                    className="favorite-toggle"
+                    aria-pressed={favoriteIds.has(catalogItemKey(match.catalogRef))}
+                    aria-label={`${favoriteIds.has(catalogItemKey(match.catalogRef)) ? "Remove" : "Add"} ${match.snapshot.name} ${favoriteIds.has(catalogItemKey(match.catalogRef)) ? "from" : "to"} favorites`}
+                    onClick={() => onToggleFavorite(catalogItemKey(match.catalogRef))}
+                  >
+                    {favoriteIds.has(catalogItemKey(match.catalogRef)) ? "Saved" : "Save"}
+                  </button>
+                ) : null}
               </li>
             ))}
           </ol>
+          {(() => {
+            const source = visibleSearch.matches[0];
+            if (!source) return null;
+            const similar = rankCatalogRelations(source, catalog, "similar");
+            const companions = rankCatalogRelations(source, catalog, "goes-well-with");
+            return (
+              <section className="catalog-relations" aria-label="Similar and goes well with">
+                <div>
+                  <h3>Similar</h3>
+                  <p>{similar.map(({ snapshot }) => snapshot.name).join(" · ") || "No local matches yet."}</p>
+                </div>
+                <div>
+                  <h3>Goes well with</h3>
+                  <p>{companions.map(({ snapshot }) => snapshot.name).join(" · ") || "No local pairings yet."}</p>
+                </div>
+              </section>
+            );
+          })()}
           <button type="button" onClick={addBestFit}>
             Add best fit
           </button>
