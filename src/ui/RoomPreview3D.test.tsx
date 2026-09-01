@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { useState, type ReactNode } from "react";
+import { Children, useState, type ReactNode } from "react";
 import { useStore } from "zustand";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SceneItem } from "../room/projection";
@@ -52,7 +52,9 @@ vi.mock("@react-three/fiber", () => ({
     canvasHarness.mounts += 1;
     canvasHarness.cameras.push(camera);
     canvasHarness.frameloops.push(frameloop);
-    return <div data-testid="three-canvas-host">{children}</div>;
+    // Keep R3F host primitives inside its custom renderer, not React DOM/jsdom.
+    const [cameraFramer] = Children.toArray(children);
+    return <div data-testid="three-canvas-host">{cameraFramer}</div>;
   },
   useThree: () => ({
     camera: canvasHarness.camera,
@@ -302,6 +304,7 @@ describe("RoomPreview3D", () => {
   });
 
   it("reframes Canvas from the current room dimensions", () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
     const { rerender } = render(<RoomPreview3D room={makeRoom()} />);
 
     rerender(
@@ -316,6 +319,7 @@ describe("RoomPreview3D", () => {
     expect(canvasHarness.cameras[1]).not.toEqual(canvasHarness.cameras[0]);
     expect(canvasHarness.frameloops).toEqual(["demand", "demand"]);
     expect(canvasHarness.invalidate).toHaveBeenCalledTimes(2);
+    expect(consoleError).not.toHaveBeenCalled();
   });
 
   it("remounts Canvas when the room framing dimensions change", () => {
