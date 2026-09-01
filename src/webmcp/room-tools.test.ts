@@ -246,7 +246,7 @@ describe("createRoomToolDefinitions", () => {
             name: "Imported Sofa",
             category: "sofa",
             dimensions: { width: 1.8, depth: 0.85, height: 0.8 },
-            pose: { x: 2.4, y: 0.55, rotationDeg: 0 },
+            pose: { x: 2.4, y: 0.55, rotationDeg: 180 },
           }),
         ]),
       },
@@ -265,6 +265,42 @@ describe("createRoomToolDefinitions", () => {
     );
     expect(JSON.stringify(output)).not.toContain("retailer.example");
     expect(output).not.toHaveProperty("room.items.0.commerce");
+  });
+
+  it("reports semantic furniture direction and truthful v1 door uncertainty", async () => {
+    const room = getTemplate("living-room");
+    const sofa = room.items.find(({ snapshot }) => snapshot.category === "sofa");
+    if (!sofa) throw new Error("expected a living-room sofa");
+    sofa.pose.rotationDeg = 180;
+    const store = createRoomStore(room, TEST_TRANSACTION_DEPENDENCIES);
+
+    const output = (await execute("inspect_room", store)) as {
+      room: {
+        openings: Array<{ kind: string; swing: string; label: string }>;
+        items: Array<{
+          category: string;
+          orientation: {
+            cue: string;
+            direction: string | null;
+            label: string;
+            rotationDeg: number;
+          };
+        }>;
+      };
+    };
+
+    expect(output.room.items.find(({ category }) => category === "sofa")?.orientation).toEqual({
+      cue: "facing",
+      direction: "south",
+      directionVector: [0, 1],
+      label: "Facing south",
+      rotationDeg: 180,
+    });
+    expect(output.room.openings[0]).toMatchObject({
+      kind: "door",
+      swing: "unspecified",
+      label: "Door on west wall — swing unspecified",
+    });
   });
 
   it("bounds deterministic inspection output for a maximum-warning room", async () => {

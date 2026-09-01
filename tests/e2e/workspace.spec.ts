@@ -229,6 +229,9 @@ for (const viewport of [
   await expect(page.getByLabel("Selected item actions")).toContainText(
     maximumRoom.itemNames[0] ?? "",
   );
+  await expect(page.getByLabel("Selected item actions")).toContainText(
+    "Facing south",
+  );
   await expect(
     page.getByText(
       `${maximumRoom.itemIds[0]} overlaps ${maximumRoom.itemIds[2]}`,

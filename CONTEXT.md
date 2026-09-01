@@ -59,3 +59,12 @@ _Avoid_: Preset, shared room
 **Wimy File**:
 A versioned, human-readable export of a Room Document that can be shared and imported without an account.
 _Avoid_: Save file, project file
+
+**Plan North**:
+The top edge of the 2D plan and the room-local north direction; it is not a claim about geographic north.
+
+**Orientation Cue**:
+The meaningful side of a Placed Item that a person should understand, such as a seating front, bed head, or use side; symmetric items have no fixed direction.
+
+**Door Swing**:
+The hinge side and opening direction of a door; a v1 Opening may truthfully report this as unspecified when the Room Document does not carry those facts.

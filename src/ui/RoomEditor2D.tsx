@@ -204,6 +204,9 @@ export function RoomEditor2D({
     [room.items],
   );
   const selectedItem = room.items.find(({ id }) => id === selectedItemId);
+  const selectedPlanItem = projection.items.find(
+    ({ id }) => id === selectedItemId,
+  );
 
   const announceResult = (result: RoomTransactionResult) => {
     const status = result.ok ? "accepted" : "rejected";
@@ -483,6 +486,19 @@ export function RoomEditor2D({
         aria-label={`${room.name} 2D room editor`}
         viewBox={`0 0 ${viewport.width} ${viewport.height}`}
       >
+        <defs>
+          <marker
+            id="room-item-orientation-arrow"
+            markerHeight="6"
+            markerUnits="strokeWidth"
+            markerWidth="6"
+            orient="auto"
+            refX="5"
+            refY="3"
+          >
+            <path d="M 0 0 L 6 3 L 0 6 z" />
+          </marker>
+        </defs>
         <rect
           className="room-boundary"
           x={projection.roomRect.x}
@@ -496,6 +512,14 @@ export function RoomEditor2D({
           y={projection.roomRect.y - 14}
         >
           {room.name}
+        </text>
+        <text
+          className="room-plan-north"
+          x={projection.roomRect.x + projection.roomRect.width}
+          y={projection.roomRect.y - 14}
+          textAnchor="end"
+        >
+          Plan North ↑
         </text>
         <text
           className="room-dimension-label"
@@ -519,12 +543,17 @@ export function RoomEditor2D({
             <line
               key={opening.id}
               className={`room-opening room-opening-${content.kind}`}
-              aria-label={`${content.kind} on ${content.wall} wall`}
+              aria-label={opening.label.toLowerCase()}
+              data-opening-id={opening.id}
+              data-opening-kind={content.kind}
+              data-opening-swing={opening.swing}
               x1={opening.start.x}
               y1={opening.start.y}
               x2={opening.end.x}
               y2={opening.end.y}
-            />
+            >
+              <title>{opening.label}</title>
+            </line>
           ) : null;
         })}
         {projection.items.map((item) => {
@@ -548,7 +577,7 @@ export function RoomEditor2D({
               onPointerCancel={cancelDrag}
               onLostPointerCapture={cancelDrag}
             >
-              <title>{`${content.snapshot.name}, ${content.snapshot.category}`}</title>
+              <title>{`${content.snapshot.name}, ${content.snapshot.category}, ${item.orientation.label}, rotation ${item.orientation.rotationDeg}°`}</title>
               <rect
                 className="room-item-footprint"
                 x={item.rect.x}
@@ -575,6 +604,38 @@ export function RoomEditor2D({
                   height={item.rect.height + 8}
                 />
               ) : null}
+              {selected && item.orientation.direction ? (
+                <line
+                  className="room-item-orientation-cue"
+                  data-direction={item.orientation.direction}
+                  data-orientation-cue={item.orientation.cue}
+                  aria-hidden="true"
+                  markerEnd="url(#room-item-orientation-arrow)"
+                  x1={item.center.x}
+                  y1={item.center.y}
+                  x2={
+                    item.center.x +
+                    item.orientation.directionVector[0] *
+                      Math.max(14, Math.min(item.rect.width, item.rect.height) * 0.35)
+                  }
+                  y2={
+                    item.center.y +
+                    item.orientation.directionVector[1] *
+                      Math.max(14, Math.min(item.rect.width, item.rect.height) * 0.35)
+                  }
+                />
+              ) : null}
+              {selected ? (
+                <text
+                  className="room-item-orientation-label"
+                  aria-hidden="true"
+                  x={item.center.x}
+                  y={item.rect.y - 12}
+                  textAnchor="middle"
+                >
+                  {item.orientation.label}
+                </text>
+              ) : null}
               <text
                 className="room-item-label"
                 x={item.labelAnchor.x}
@@ -592,7 +653,7 @@ export function RoomEditor2D({
         <div className="room-item-actions" aria-label="Selected item actions">
           <p>
             <strong>{selectedItem.snapshot.name}</strong>
-            {` — x ${selectedItem.pose.x} m, y ${selectedItem.pose.y} m, rotation ${selectedItem.pose.rotationDeg}°`}
+            {` — x ${selectedItem.pose.x} m, y ${selectedItem.pose.y} m, rotation ${selectedItem.pose.rotationDeg}°, ${selectedPlanItem?.orientation.label ?? "No fixed direction"}`}
           </p>
           <button
             type="button"

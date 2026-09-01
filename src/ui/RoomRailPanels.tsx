@@ -4,6 +4,7 @@ import {
   type CatalogItem,
 } from "../room/catalog";
 import type { EntityId, RotationDeg } from "../room/document";
+import { projectFurnitureOrientation } from "../room/orientation";
 import type { RoomStore } from "../room/store";
 
 type PlacedPanelProps = {
@@ -57,6 +58,13 @@ export function PlacedPanel({ store }: PlacedPanelProps) {
                 <strong>{item.snapshot.name}</strong>
                 <small>
                   {item.snapshot.category} · x {item.pose.x} m · y {item.pose.y} m
+                </small>
+                <small>
+                  {projectFurnitureOrientation(
+                    item.snapshot.category,
+                    item.pose.rotationDeg,
+                    item.snapshot.dimensions,
+                  ).label}{" "}({item.pose.rotationDeg}°)
                 </small>
               </div>
               <div className="placed-item-actions">

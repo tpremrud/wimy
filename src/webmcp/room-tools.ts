@@ -7,6 +7,8 @@ import {
   PoseSchema,
   type WimyRoomV1,
 } from "../room/document";
+import { projectFurnitureOrientation } from "../room/orientation";
+import { projectOpeningSemantics } from "../room/opening";
 import { findLayoutWarnings, type RoomWarning } from "../room/placement";
 import type { RoomStore } from "../room/store";
 import { LOCAL_CATALOG_TRANSACTION } from "../room/transaction";
@@ -276,17 +278,26 @@ const inspectRoom = (
     room: {
       name: projectUntrustedText(room.name),
       dimensions: { ...room.dimensions },
-      openings: room.openings.map((opening) => ({ ...opening })),
+      openings: room.openings.map((opening) => ({
+        ...opening,
+        ...projectOpeningSemantics(opening),
+      })),
       items: room.items.map((item) => ({
         id: item.id,
         name: projectUntrustedText(item.snapshot.name),
         category: item.snapshot.category,
         dimensions: { ...item.snapshot.dimensions },
         pose: { ...item.pose },
+        orientation: projectFurnitureOrientation(
+          item.snapshot.category,
+          item.pose.rotationDeg,
+          item.snapshot.dimensions,
+        ),
       })),
     },
     coordinateConvention: {
       origin: "northwest interior floor corner",
+      planNorth: "top of the plan (room-local, not geographic north)",
       xAxis: "east/right",
       yAxis: "south/down",
       rotation: "clockwise quarter turns in degrees",

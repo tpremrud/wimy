@@ -27,6 +27,16 @@ describe("room templates", () => {
     expect(new Set(names).size).toBe(TEMPLATE_IDS.length);
   });
 
+  it("points default seating and desk use edges into the room", () => {
+    const livingRoom = getTemplate("living-room");
+    const sofa = livingRoom.items.find(({ snapshot }) => snapshot.category === "sofa");
+    expect(sofa?.pose.rotationDeg).toBe(180);
+
+    const bedroom = getTemplate("compact-bedroom");
+    const desk = bedroom.items.find(({ snapshot }) => snapshot.category === "desk");
+    expect(desk?.pose.rotationDeg).toBe(180);
+  });
+
   it("preserves stable, document-unique fixture IDs", () => {
     for (const templateId of TEMPLATE_IDS) {
       const firstRoom = getTemplate(templateId);

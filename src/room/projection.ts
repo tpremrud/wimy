@@ -4,6 +4,14 @@ import type {
   Opening,
   WimyRoomV1,
 } from "./document";
+import {
+  projectFurnitureOrientation,
+  type FurnitureOrientation,
+} from "./orientation";
+import {
+  projectOpeningSemantics,
+  type OpeningSwing,
+} from "./opening";
 import { orientedFootprint } from "./placement";
 
 type DeepReadonly<T> = T extends readonly (infer Item)[]
@@ -23,6 +31,9 @@ export type PlanViewport = {
 
 export type PlanOpeningMark = {
   id: EntityId;
+  kind: Opening["kind"];
+  swing: OpeningSwing;
+  label: string;
   start: PlanPoint;
   end: PlanPoint;
 };
@@ -32,6 +43,7 @@ export type PlanItem = {
   center: PlanPoint;
   rect: PlanRect;
   labelAnchor: PlanPoint;
+  orientation: FurnitureOrientation;
 };
 
 export type PlanProjection = {
@@ -64,6 +76,8 @@ export type SceneOpeningHint = {
   id: EntityId;
   kind: Opening["kind"];
   wall: Opening["wall"];
+  swing: OpeningSwing;
+  label: string;
   position: SceneVector3;
   size: SceneVector3;
 };
@@ -78,6 +92,7 @@ export type SceneItem = {
   rotationY: number;
   size: SceneVector3;
   styleTags: string[];
+  orientation: FurnitureOrientation;
 };
 
 export type SceneProjection = {
@@ -165,7 +180,7 @@ export const projectRoomToScene = (
     ],
     openings: room.openings.map((opening) => ({
       id: opening.id,
-      kind: opening.kind,
+      ...projectOpeningSemantics(opening),
       wall: opening.wall,
       position: openingScenePosition(opening, room),
       size: openingSceneSize(opening),
@@ -191,6 +206,11 @@ export const projectRoomToScene = (
         item.snapshot.dimensions.depth,
       ],
       styleTags: [...item.snapshot.styleTags],
+      orientation: projectFurnitureOrientation(
+        item.snapshot.category,
+        item.pose.rotationDeg,
+        item.snapshot.dimensions,
+      ),
     })),
   };
 };
@@ -215,6 +235,7 @@ const projectOpening = (
 
   return {
     id: opening.id,
+    ...projectOpeningSemantics(opening),
     start: horizontal
       ? { x: origin.x + startOffset * scale, y: wallCoordinate }
       : { x: wallCoordinate, y: origin.y + startOffset * scale },
@@ -265,6 +286,11 @@ export const projectRoomToPlan = (
         height: footprint.depth * scale,
       },
       labelAnchor: { ...center },
+      orientation: projectFurnitureOrientation(
+        item.snapshot.category,
+        item.pose.rotationDeg,
+        item.snapshot.dimensions,
+      ),
     };
   });
 

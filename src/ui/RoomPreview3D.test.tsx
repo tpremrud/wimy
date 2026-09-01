@@ -2,7 +2,8 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { Children, useState, type ReactNode } from "react";
 import { useStore } from "zustand";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { SceneItem } from "../room/projection";
+import { projectRoomToScene, type SceneItem } from "../room/projection";
+import { projectFurnitureOrientation } from "../room/orientation";
 import { createRoomStore, type RoomStore } from "../room/store";
 import { TEST_TRANSACTION_DEPENDENCIES } from "../room/transaction";
 import { makePlacedItem, makeRoom } from "../test/room-fixtures";
@@ -91,6 +92,10 @@ const makeSceneItem = (category: SceneItem["category"]): SceneItem => ({
   rotationY: 0,
   size: [1.2, 0.8, 0.9],
   styleTags: [],
+  orientation: projectFurnitureOrientation(category, 0, {
+    width: 1.2,
+    depth: 0.9,
+  }),
 });
 
 const StorePreview = ({ store }: { store: RoomStore }) => {
@@ -347,7 +352,7 @@ describe("projectFurniturePrimitiveLayout", () => {
       {
         kind: "sphere",
         color: "#c87852",
-        position: [-0.0504, 0.0984, -0.1408],
+        position: [-0.0504, 0.0984, 0.1408],
         radius: 0.5,
         scale: [0.6552, 0.4756, 0.2464],
       },
@@ -361,11 +366,11 @@ describe("projectFurniturePrimitiveLayout", () => {
       {
         kind: "box",
         color: "#f1d5bd",
-        position: [0, -0.0574, 0.0528],
+        position: [0, -0.0574, -0.0528],
         size: [0.5712, 0.082, 0.484],
       },
       ...[-0.2016, 0.2016].flatMap((x) =>
-        [-0.0792, 0.1848].map((z) => ({
+        [-0.1848, 0.0792].map((z) => ({
           kind: "cylinder",
           color: "#c87852",
           position: [x, -0.2542, z],
@@ -412,6 +417,24 @@ describe("projectFurniturePrimitiveLayout", () => {
     expect(envelope.max[0]).toBeLessThanOrEqual(0.42);
     expect(envelope.max[1]).toBeLessThanOrEqual(0.82);
     expect(envelope.max[2]).toBeLessThanOrEqual(0.44);
+  });
+
+  it("keeps the molded-shell back behind the seat while the front opens toward local negative Z", () => {
+    const item: SceneItem = {
+      ...makeSceneItem("chair"),
+      color: "#c87852",
+      size: [0.84, 0.82, 0.88],
+      styleTags: ["organic", "molded-shell", "lounge"],
+    };
+
+    const parts = projectFurniturePrimitiveLayout(item);
+    const back = parts[0];
+    const seat = parts[2];
+    expect(back?.kind).toBe("sphere");
+    expect(seat?.kind).toBe("box");
+    expect(back?.position[2]).toBeGreaterThan(0);
+    expect(seat?.position[2]).toBeLessThan(0);
+    expect(back?.position[2]).toBeGreaterThan(seat?.position[2] ?? 0);
   });
 
   it("uses modular low-profile tags for a sectional sofa silhouette", () => {
@@ -532,6 +555,35 @@ describe("projectFurniturePrimitiveLayout", () => {
 });
 
 describe("RoomPreview3D", () => {
+  it("uses the same semantic heading and clockwise turn as the 2D projection", () => {
+    const room = makeRoom({
+      items: [
+        makePlacedItem({
+          id: "item_sofa",
+          pose: { x: 1, y: 1, rotationDeg: 180 },
+          snapshot: { ...makePlacedItem().snapshot, category: "sofa" },
+        }),
+        makePlacedItem({
+          id: "item_bed",
+          pose: { x: 3, y: 1, rotationDeg: 90 },
+          snapshot: { ...makePlacedItem().snapshot, category: "bed" },
+        }),
+      ],
+    });
+    const scene = projectRoomToScene(room);
+
+    expect(scene.items.map(({ orientation, rotationY }) => ({ orientation, rotationY }))).toEqual([
+      {
+        orientation: expect.objectContaining({ cue: "facing", direction: "south" }),
+        rotationY: -Math.PI,
+      },
+      {
+        orientation: expect.objectContaining({ cue: "head", direction: "west" }),
+        rotationY: -Math.PI / 2,
+      },
+    ]);
+  });
+
   it("releases its detached WebGL preflight context", () => {
     expect(probeWebGL2PreviewSupport()).toBe(true);
     expect(webglContextHarness.loseContext).toHaveBeenCalledTimes(1);

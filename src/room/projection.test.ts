@@ -120,6 +120,35 @@ describe("projectRoomToPlan", () => {
       center: { x: 145, y: 147.5 },
       rect: { x: 113.5, y: 84.5, width: 63, height: 126 },
       labelAnchor: { x: 145, y: 147.5 },
+      orientation: {
+        cue: "facing",
+        direction: "east",
+        directionVector: [1, 0],
+        label: "Facing east",
+        rotationDeg: 90,
+      },
+    });
+  });
+
+  it("projects a selected item's semantic orientation from the canonical pose", () => {
+    const room = makeRoom({
+      items: [
+        makePlacedItem({
+          pose: { x: 1, y: 1, rotationDeg: 180 },
+          snapshot: { ...makePlacedItem().snapshot, category: "sofa" },
+        }),
+      ],
+    });
+
+    expect(
+      projectRoomToPlan(room, { width: 500, height: 400, padding: 40 }).items[0]
+        ?.orientation,
+    ).toEqual({
+      cue: "facing",
+      direction: "south",
+      directionVector: [0, 1],
+      label: "Facing south",
+      rotationDeg: 180,
     });
   });
 
@@ -164,21 +193,33 @@ describe("projectRoomToPlan", () => {
     expect(projection.openings).toEqual([
       {
         id: "opening_north",
+        kind: "door",
+        swing: "unspecified",
+        label: "Door on north wall — swing unspecified",
         start: { x: 103, y: 42.5 },
         end: { x: 187, y: 42.5 },
       },
       {
         id: "opening_east",
+        kind: "window",
+        swing: "not-applicable",
+        label: "Window on east wall",
         start: { x: 460, y: 137 },
         end: { x: 460, y: 200 },
       },
       {
         id: "opening_south",
+        kind: "window",
+        swing: "not-applicable",
+        label: "Window on south wall",
         start: { x: 302.5, y: 357.5 },
         end: { x: 407.5, y: 357.5 },
       },
       {
         id: "opening_west",
+        kind: "door",
+        swing: "unspecified",
+        label: "Door on west wall — swing unspecified",
         start: { x: 40, y: 252.5 },
         end: { x: 40, y: 294.5 },
       },
@@ -213,6 +254,12 @@ describe("projectRoomToScene", () => {
     expect(scene.items[0]).toMatchObject({
       position: [1.2, 0.35, 2.3],
       rotationY: -Math.PI / 2,
+      orientation: {
+        cue: "facing",
+        direction: "east",
+        label: "Facing east",
+        rotationDeg: 90,
+      },
     });
   });
 
@@ -293,6 +340,8 @@ describe("projectRoomToScene", () => {
         id: "window_east",
         kind: "window",
         wall: "east",
+        swing: "not-applicable",
+        label: "Window on east wall",
         position: [5.945, 1.35, 1.5],
         size: [0.02, 1.1, 1.2],
       },
@@ -338,29 +387,44 @@ describe("projectRoomToScene", () => {
     );
 
     expect(
-      scene.openings.map(({ position, size, wall }) => ({
+      scene.openings.map(({ position, size, wall, kind, swing, label }) => ({
         position,
         size,
         wall,
+        kind,
+        swing,
+        label,
       })),
     ).toEqual([
       {
         wall: "north",
+        kind: "door",
+        swing: "unspecified",
+        label: "Door on north wall — swing unspecified",
         position: [1.5, 1, 0.055],
         size: [0.9, 2, 0.02],
       },
       {
         wall: "east",
+        kind: "door",
+        swing: "unspecified",
+        label: "Door on east wall — swing unspecified",
         position: [5.945, 1, 1.5],
         size: [0.02, 2, 0.9],
       },
       {
         wall: "south",
+        kind: "door",
+        swing: "unspecified",
+        label: "Door on south wall — swing unspecified",
         position: [1.5, 1, 4.945],
         size: [0.9, 2, 0.02],
       },
       {
         wall: "west",
+        kind: "door",
+        swing: "unspecified",
+        label: "Door on west wall — swing unspecified",
         position: [0.055, 1, 1.5],
         size: [0.02, 2, 0.9],
       },

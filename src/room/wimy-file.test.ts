@@ -56,6 +56,19 @@ describe("serializeWimyRoom", () => {
       `Wimy files must be at most ${MAX_WIMY_FILE_BYTES} bytes`,
     );
   });
+
+  it("keeps v1 orientation in pose rotation without adding a second field", async () => {
+    const room = makeRoom({
+      items: [makePlacedItem({ pose: { x: 1, y: 1, rotationDeg: 180 } })],
+    });
+    const text = serializeWimyRoom(room);
+    const parsed = await parseWimyFile(text);
+
+    expect(text).not.toContain("facingDeg");
+    expect(text).not.toContain('"orientation"');
+    expect(parsed).toEqual({ ok: true, room });
+    if (parsed.ok) expect(serializeWimyRoom(parsed.room)).toBe(text);
+  });
 });
 
 describe("parseWimyFile", () => {

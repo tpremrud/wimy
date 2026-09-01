@@ -107,9 +107,39 @@ describe("RoomEditor2D selection", () => {
     expect(screen.getByText("Test Room")).toBeVisible();
     expect(screen.getByText("4 m wide")).toBeVisible();
     expect(screen.getByText("3 m deep")).toBeVisible();
-    expect(screen.getByLabelText("door on west wall")).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("door on west wall — swing unspecified"),
+    ).toBeInTheDocument();
     expect(screen.getByLabelText("window on north wall")).toBeInTheDocument();
     expect(screen.getByText("chair")).toBeVisible();
+  });
+
+  it("shows one readable facing cue only for the selected item", () => {
+    const first = makePlacedItem({
+      snapshot: { ...makePlacedItem().snapshot, category: "sofa" },
+      pose: { x: 1, y: 1, rotationDeg: 180 },
+    });
+    const second = makePlacedItem({
+      id: "item_chair_2",
+      pose: { x: 3, y: 2, rotationDeg: 0 },
+      snapshot: { ...makePlacedItem().snapshot, name: "Second Chair" },
+    });
+    renderEditor(makeRoom({ items: [first, second] }));
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Select Test Chair" }),
+      { detail: 0 },
+    );
+
+    expect(screen.getByText("Facing south")).toBeVisible();
+    expect(
+      screen.getByText(/x 1 m, y 1 m, rotation 180°, Facing south/u),
+    ).toBeVisible();
+    expect(document.querySelectorAll(".room-item-orientation-cue")).toHaveLength(1);
+    expect(document.querySelector(".room-item-orientation-cue")).toHaveAttribute(
+      "data-direction",
+      "south",
+    );
   });
 
   it("keeps pointer and keyboard selection local to the current editor", () => {

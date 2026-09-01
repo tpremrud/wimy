@@ -228,7 +228,7 @@ export const projectFurniturePrimitiveLayout = (
   if (item.category === "chair" && hasStyleTags("molded-shell", "lounge")) {
     const seatHeight = height * 0.1;
     const seatWorldY = height * 0.43;
-    const seatZ = depth * 0.06;
+    const seatZ = -depth * 0.06;
     const legHeight = height * 0.38;
     const legRadiusBottom = Math.min(width, depth) * 0.075;
     const legRadiusTop = Math.min(width, depth) * 0.05;
@@ -236,7 +236,7 @@ export const projectFurniturePrimitiveLayout = (
     return [
       ellipsoid(
         item.color,
-        [-width * 0.06, localY(height * 0.62), -depth * 0.16],
+        [-width * 0.06, localY(height * 0.62), depth * 0.16],
         [width * 0.78, height * 0.58, depth * 0.28],
       ),
       ellipsoid(
@@ -554,14 +554,16 @@ const PreviewScene = ({ scene }: { scene: SceneProjection }) => {
         </mesh>
       ))}
       {scene.openings.map((opening) => (
-        <mesh key={opening.id} position={opening.position}>
-          <boxGeometry args={opening.size} />
-          <meshStandardMaterial
-            color={opening.kind === "door" ? "#b45309" : "#0369a1"}
-            opacity={0.82}
-            transparent
-          />
-        </mesh>
+        <group key={opening.id} name={opening.label}>
+          <mesh position={opening.position}>
+            <boxGeometry args={opening.size} />
+            <meshStandardMaterial
+              color={opening.kind === "door" ? "#b45309" : "#0369a1"}
+              opacity={opening.kind === "door" ? 0.9 : 0.55}
+              transparent
+            />
+          </mesh>
+        </group>
       ))}
       {scene.items.map((item) => (
         <group
@@ -621,10 +623,20 @@ export function RoomPreview3D({
         {scene.items.map((item) => (
           <li key={item.id}>
             {item.name} — x {item.position[0]} m, y {item.position[2]} m,
-            {" "}rotation {item.rotationDeg}°
+            {" "}rotation {item.rotationDeg}° — {item.orientation.label}
           </li>
         ))}
       </ul>
+      {scene.openings.length > 0 ? (
+        <ul
+          aria-label={`Openings in ${room.name}`}
+          className="room-preview-openings"
+        >
+          {scene.openings.map((opening) => (
+            <li key={opening.id}>{opening.label}</li>
+          ))}
+        </ul>
+      ) : null}
     </section>
   );
 }

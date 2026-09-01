@@ -83,7 +83,7 @@ export const COMPACT_BEDROOM_TEMPLATE: WimyFileV1 = {
       },
       {
         id: "item_bedroom_desk",
-        pose: { x: 2.85, y: 0.45, rotationDeg: 0 },
+        pose: { x: 2.85, y: 0.45, rotationDeg: 180 },
         snapshot: {
           name: "Slim Writing Desk",
           category: "desk",
@@ -145,7 +145,7 @@ export const LIVING_ROOM_TEMPLATE: WimyFileV1 = {
     items: [
       {
         id: "item_living_sofa",
-        pose: { x: 2.4, y: 0.55, rotationDeg: 0 },
+        pose: { x: 2.4, y: 0.55, rotationDeg: 180 },
         snapshot: {
           name: "Linen Apartment Sofa",
           category: "sofa",

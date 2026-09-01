@@ -116,7 +116,13 @@ test("inspect, find, and apply visibly collaborate while stale edits recover", a
       items: expect.arrayContaining([
         expect.objectContaining({
           id: "item_living_sofa",
-          pose: { x: 2.4, y: 0.55, rotationDeg: 0 },
+          pose: { x: 2.4, y: 0.55, rotationDeg: 180 },
+          orientation: expect.objectContaining({
+            cue: "facing",
+            direction: "south",
+            label: "Facing south",
+            rotationDeg: 180,
+          }),
         }),
       ]),
     },
