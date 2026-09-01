@@ -122,4 +122,26 @@ export const DEMO_CATALOG: readonly CatalogItem[] = deepFreeze([
       commerce: { price: { amount: 189, currency: "USD" } },
     },
   },
+  {
+    catalogRef: { catalogId: CATALOG_ID, productId: "dune-shell-lounger" },
+    snapshot: {
+      name: "Dune Shell Lounger",
+      category: "chair",
+      dimensions: { width: 0.84, depth: 0.88, height: 0.82 },
+      appearance: { color: "#C87852" },
+      styleTags: ["organic", "molded-shell", "lounge"],
+      commerce: { price: { amount: 579, currency: "USD" } },
+    },
+  },
+  {
+    catalogRef: { catalogId: CATALOG_ID, productId: "tidal-modular-sofa" },
+    snapshot: {
+      name: "Tidal Modular Sofa",
+      category: "sofa",
+      dimensions: { width: 2.1, depth: 0.95, height: 0.72 },
+      appearance: { color: "#6E7F8D" },
+      styleTags: ["soft", "modular", "low-profile"],
+      commerce: { price: { amount: 1299, currency: "USD" } },
+    },
+  },
 ]);

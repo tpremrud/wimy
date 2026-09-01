@@ -1249,8 +1249,8 @@ describe("createRoomToolDefinitions", () => {
     });
     const found = (await execute("find_furniture", store, {
       category: "chair",
-      styleTags: ["warm-modern"],
-      maxPrice: 600,
+      styleTags: ["molded-shell", "lounge"],
+      maxPrice: 579,
       limit: 1,
     })) as {
       revision: number;
@@ -1290,15 +1290,15 @@ describe("createRoomToolDefinitions", () => {
       id: "item_agent_generated_1",
       catalogRef: {
         catalogId: "wimy-demo-v1",
-        productId: "ember-nest-chair",
+        productId: "dune-shell-lounger",
       },
-      snapshot: { name: "Ember Nest Chair" },
+      snapshot: { name: "Dune Shell Lounger" },
       pose: match.suggestedPose,
     });
     expect(store.getState().receipts[0]).toMatchObject({
       origin: "webmcp",
       status: "accepted",
-      summary: "Added Ember Nest Chair",
+      summary: "Added Dune Shell Lounger",
     });
   });
 

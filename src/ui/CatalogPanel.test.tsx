@@ -127,6 +127,54 @@ describe("CatalogPanel", () => {
     expect(searchButton).toHaveFocus();
   });
 
+  it("exposes style metadata and adds a targeted fictional record", async () => {
+    const store = createCatalogStore(getTemplate("blank-room"));
+    render(<CatalogPanel store={store} />);
+    const user = userEvent.setup();
+
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "Category" }),
+      "chair",
+    );
+    await user.type(
+      screen.getByRole("textbox", { name: "Style tags" }),
+      "molded-shell, lounge",
+    );
+    await user.click(screen.getByRole("button", { name: "Search catalog" }));
+
+    const results = screen.getByRole("list", { name: "Catalog results" });
+    expect(within(results).getByText("Dune Shell Lounger")).toBeVisible();
+    expect(
+      within(results).getByText("Styles: organic, molded-shell, lounge"),
+    ).toBeVisible();
+
+    await user.click(screen.getByRole("button", { name: "Add best fit" }));
+
+    expect(store.getState()).toMatchObject({
+      revision: 2,
+      receipts: [
+        {
+          origin: "human",
+          status: "accepted",
+          summary: "Added Dune Shell Lounger",
+          affectedItemIds: ["item_catalog_added"],
+        },
+      ],
+    });
+    expect(
+      store
+        .getState()
+        .room.items.find(({ id }) => id === "item_catalog_added"),
+    ).toMatchObject({
+      catalogRef: {
+        catalogId: "wimy-demo-v1",
+        productId: "dune-shell-lounger",
+      },
+      snapshot: { name: "Dune Shell Lounger" },
+      pose: { x: 0.5, y: 0.5, rotationDeg: 0 },
+    });
+  });
+
   it("adds exactly one latest best fit through a Human transaction", async () => {
     const store = createCatalogStore();
     const itemCountBefore = store.getState().room.items.length;

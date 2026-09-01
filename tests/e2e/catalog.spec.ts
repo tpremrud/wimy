@@ -57,17 +57,20 @@ test("searches the fictional catalog and adds its deterministic best fit", async
   await page.goto("/");
 
   await page.getByRole("combobox", { name: "Category" }).selectOption("chair");
-  await page.getByRole("textbox", { name: "Style tags" }).fill("warm-modern");
+  await page
+    .getByRole("textbox", { name: "Style tags" })
+    .fill("molded-shell, lounge");
   await page
     .getByRole("spinbutton", { name: "Maximum price (USD)" })
-    .fill("600");
+    .fill("579");
   await page.getByRole("button", { name: "Search catalog" }).click();
 
   const results = page.getByRole("list", { name: "Catalog results" });
-  await expect(results).toContainText("Ember Nest Chair");
-  await expect(results).toContainText("$499 USD");
+  await expect(results).toContainText("Dune Shell Lounger");
+  await expect(results).toContainText("Styles: organic, molded-shell, lounge");
+  await expect(results).toContainText("$579 USD");
   await expect(results).toContainText(
-    "Best fit: x 0.3 m, y 0.3 m, rotation 0°",
+    "Best fit: x 0.5 m, y 0.5 m, rotation 0°",
   );
 
   await page.getByRole("button", { name: "Add best fit" }).click();
@@ -76,19 +79,19 @@ test("searches the fictional catalog and adds its deterministic best fit", async
     page.getByRole("region", { name: "Living Room" }),
   ).toContainText("Revision 2");
   await expect(
-    page.getByRole("button", { name: "Select Ember Nest Chair" }),
+    page.getByRole("button", { name: "Select Dune Shell Lounger" }),
   ).toBeVisible();
   await expect(
     page
       .getByRole("region", { name: "Activity receipts" })
       .getByRole("listitem")
       .first(),
-  ).toContainText("Human: Accepted. Added Ember Nest ChairRevision 2");
+  ).toContainText("Human: Accepted. Added Dune Shell LoungerRevision 2");
   await expect(page.getByRole("status").filter({ hasText: "Accepted:" }))
-    .toHaveText("Accepted: Added Ember Nest Chair. Revision 2.");
+    .toHaveText("Accepted: Added Dune Shell Lounger. Revision 2.");
   await expect(
     page.getByRole("status", { name: "Catalog search result" }),
   ).toHaveText(
-    "Search 1 results refreshed: 2 matches. Best match: Ember Nest Chair at x 0.9 m, y 0.3 m, rotation 0°.",
+    "Search 1 results refreshed: 1 match. Best match: Dune Shell Lounger at x 3.8 m, y 1.3 m, rotation 0°.",
   );
 });

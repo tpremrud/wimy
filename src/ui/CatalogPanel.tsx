@@ -287,6 +287,7 @@ export function CatalogPanel({ store }: CatalogPanelProps) {
                 <span>
                   {`${match.snapshot.category} · ${match.snapshot.dimensions.width} × ${match.snapshot.dimensions.depth} m`}
                 </span>
+                <span>{`Styles: ${match.snapshot.styleTags.join(", ")}`}</span>
                 <span>{`$${match.snapshot.commerce.price.amount} USD`}</span>
                 <span>
                   {`Best fit: x ${match.suggestedPose.x} m, y ${match.suggestedPose.y} m, rotation ${match.suggestedPose.rotationDeg}°`}

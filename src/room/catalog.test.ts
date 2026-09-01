@@ -576,7 +576,7 @@ describe("demo catalog integrity", () => {
   it("exports 8–12 deeply frozen, schema-valid fictional USD records", () => {
     expect(CATALOG_ID).toBe("wimy-demo-v1");
     expect(DEMO_CATALOG_PROVENANCE).toBe("fictional");
-    expect(DEMO_CATALOG).toHaveLength(10);
+    expect(DEMO_CATALOG).toHaveLength(12);
     expect(Object.isFrozen(DEMO_CATALOG)).toBe(true);
 
     const productIds = DEMO_CATALOG.map(
@@ -615,6 +615,9 @@ describe("demo catalog integrity", () => {
       DEMO_CATALOG,
     );
 
+    expect(
+      matches.map(({ catalogRef }) => catalogRef.productId),
+    ).toEqual(["ember-nest-chair", "cedar-arc-chair"]);
     expect(matches[0]).toMatchObject({
       catalogRef: {
         catalogId: "wimy-demo-v1",
@@ -625,6 +628,78 @@ describe("demo catalog integrity", () => {
         commerce: { price: { amount: 499, currency: "USD" } },
       },
       suggestedPose: { x: 0.3, y: 0.3, rotationDeg: 0 },
+    });
+  });
+
+  it("appends two original fictional records without disturbing stable catalog order", () => {
+    expect(
+      DEMO_CATALOG.map(({ catalogRef }) => catalogRef.productId),
+    ).toEqual([
+      "ember-nest-chair",
+      "cedar-arc-chair",
+      "lumen-fold-desk",
+      "hearthline-sofa",
+      "pebble-drum-table",
+      "juniper-rise-plant",
+      "saffron-loom-rug",
+      "harbor-slat-bed",
+      "vale-drawer-dresser",
+      "orbit-side-table",
+      "dune-shell-lounger",
+      "tidal-modular-sofa",
+    ]);
+
+    expect(
+      findFurniture(
+        getTemplate("blank-room"),
+        {
+          category: "chair",
+          styleTags: ["molded-shell", "lounge"],
+          maxPrice: 579,
+        },
+        DEMO_CATALOG,
+      )[0],
+    ).toMatchObject({
+      catalogRef: { productId: "dune-shell-lounger" },
+      snapshot: { name: "Dune Shell Lounger" },
+      suggestedPose: { x: 0.5, y: 0.5, rotationDeg: 0 },
+    });
+
+    expect(
+      findFurniture(
+        getTemplate("blank-room"),
+        {
+          category: "sofa",
+          styleTags: ["modular", "low-profile"],
+          maxPrice: 1299,
+        },
+        DEMO_CATALOG,
+      )[0],
+    ).toMatchObject({
+      catalogRef: { productId: "tidal-modular-sofa" },
+      snapshot: { name: "Tidal Modular Sofa" },
+      suggestedPose: { x: 1.1, y: 0.5, rotationDeg: 0 },
+    });
+
+    expect(resolveCatalogProduct("dune-shell-lounger")).toMatchObject({
+      catalogRef: {
+        catalogId: CATALOG_ID,
+        productId: "dune-shell-lounger",
+      },
+      snapshot: {
+        name: "Dune Shell Lounger",
+        styleTags: ["organic", "molded-shell", "lounge"],
+      },
+    });
+    expect(resolveCatalogProduct("tidal-modular-sofa")).toMatchObject({
+      catalogRef: {
+        catalogId: CATALOG_ID,
+        productId: "tidal-modular-sofa",
+      },
+      snapshot: {
+        name: "Tidal Modular Sofa",
+        styleTags: ["soft", "modular", "low-profile"],
+      },
     });
   });
 
