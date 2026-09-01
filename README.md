@@ -12,7 +12,7 @@ Built for [The WebMCP Challenge](https://webmcp.devpost.com/). The repository is
 - Human selection, keyboard activation, drag-to-move, quarter-turn rotation, add, and remove actions. Accepted changes show a visible activity receipt and advance the runtime revision.
 - A read-only procedural 3D preview derived from the same committed room. It uses room geometry and item snapshots to draw floors, walls, openings, and category-shaped primitives; it never edits the room. If WebGL or the preview chunk is unavailable, the room summary and placed-item list remain usable.
 - Three independent room templates: Blank Room, Compact Bedroom, and Living Room.
-- A ten-item local fictional catalog. Category, style tags, fictional USD price snapshots, and maximum footprint filters are deterministic. A fit search tries quarter-turns in `0`, `90`, `180`, `270` degree order and scans a fixed 0.1 m grid, returning the first legal pose for each result.
+- A twelve-item local fictional catalog. Category, style tags, fictional USD price snapshots, and maximum footprint filters are deterministic. A fit search tries quarter-turns in `0`, `90`, `180`, `270` degree order and scans a fixed 0.1 m grid, returning the first legal pose for each result.
 - Three imperative WebMCP tools that share the human editor's committed state: `inspect_room`, `find_furniture`, and `apply_room_edit`.
 - A versioned `.wimy` file for no-account export/import. The file is UTF-8 JSON, intentionally human-readable and strict; a custom Markdown-like room language is not part of v1.
 

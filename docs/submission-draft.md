@@ -25,7 +25,7 @@ Room planning usually splits the human's spatial reasoning from the shopping ass
 Wimy exposes exactly three imperative tools through `document.modelContext`:
 
 - `inspect_room({})` returns the current revision, meter dimensions, openings, placed-item IDs, poses, coordinate convention, and bounded layout warnings. It is read-only and projects imported names as untrusted text without returning commerce URLs.
-- `find_furniture(...)` accepts explicit category, style-tag, maximum-price, and maximum-footprint constraints plus a result limit from 1–5. It searches Wimy's ten-item local fictional catalog without changing the room and returns the snapshot facts and first legal deterministic pose for each match.
+- `find_furniture(...)` accepts explicit category, style-tag, maximum-price, and maximum-footprint constraints plus a result limit from 1–5. It searches Wimy's twelve-item local fictional catalog without changing the room and returns the snapshot facts and first legal deterministic pose for each match.
 - `apply_room_edit(...)` accepts an `expectedRevision` and 1–8 exact add, transform, or remove operations. It generates new placed-item IDs, checks bounds/overlap/door clearance, commits all operations or none, and returns a new revision or an actionable rejection such as `REVISION_CONFLICT`.
 
 The agent does not receive a parallel model-specific scene. It reads and writes the same room state the person sees. Read-only calls leave the revision and activity receipts unchanged; accepted agent edits appear in the 2D editor, the receipt panel, the item list, and the derived 3D view. If the host has no WebMCP context, the human editor and file workflow remain available.

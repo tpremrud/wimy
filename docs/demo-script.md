@@ -33,12 +33,12 @@ Start from the built-in **Living Room** at revision 1. Keep the browser viewport
 
 **Action:** Ask the browser agent:
 
-> Inspect the current Wimy room. Find one chair with the `warm-modern` style tag priced at no more than 600 USD that fits the current room. Apply the first suggested pose using the revision you inspected. Report the product ID, placed-item ID, and new revision.
+> Inspect the current Wimy room. Find one chair with the `molded-shell` and `lounge` style tags priced at no more than 579 USD that fits the current room. Apply the first suggested pose using the revision you inspected. Report the product ID, placed-item ID, and new revision.
 
 **Expected tool sequence:**
 
 1. `inspect_room({})` reads the current revision, meter dimensions, openings, placed items, coordinate convention, and warnings. The room and receipt list do not change.
-2. `find_furniture({ category: "chair", styleTags: ["warm-modern"], maxPrice: 600, limit: 1 })` reads the local fictional catalog and returns **Ember Nest Chair** (`ember-nest-chair`) first, with its dimensions, fictional price snapshot, and a legal suggested pose. The room and revision still do not change.
+2. `find_furniture({ category: "chair", styleTags: ["molded-shell", "lounge"], maxPrice: 579, limit: 1 })` reads the local fictional catalog and returns **Dune Shell Lounger** (`dune-shell-lounger`) first, with its dimensions, fictional price snapshot, and a legal suggested pose. The room and revision still do not change.
 3. `apply_room_edit({ expectedRevision, operations: [{ type: "add", productId, pose: suggestedPose }] })` adds one placed item through the shared transaction seam. Wimy generates the item ID, checks bounds/collision/door clearance, increments the revision once, and publishes an agent receipt.
 
 **Say:**
@@ -49,7 +49,7 @@ Start from the built-in **Living Room** at revision 1. Keep the browser viewport
 
 ### 1:30–1:55 — human adjustment and derived 3D
 
-**Action:** Select **Ember Nest Chair**, use **Rotate 90°**, then choose **Preview in 3D**.
+**Action:** Select **Dune Shell Lounger**, use **Rotate 90°**, then choose **Preview in 3D**.
 
 **Say:**
 
