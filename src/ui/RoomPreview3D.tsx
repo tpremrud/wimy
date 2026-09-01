@@ -13,6 +13,11 @@ import {
   type SceneProjection,
   type SceneVector3,
 } from "../room/projection";
+import { resolveCatalogPresentationKey } from "../room/catalog-presentation";
+import {
+  projectCatalogProceduralLayout,
+  type FurniturePrimitivePart,
+} from "./catalog-procedural-layout";
 import {
   deriveRoomPreviewCamera,
   ROOM_PREVIEW_CAMERA_FOV,
@@ -123,10 +128,7 @@ type FurnitureSpherePart = {
   scale?: SceneVector3;
 };
 
-export type FurniturePrimitivePart =
-  | FurnitureBoxPart
-  | FurnitureCylinderPart
-  | FurnitureSpherePart;
+export type { FurniturePrimitivePart } from "./catalog-procedural-layout";
 
 // eslint-disable-next-line react-refresh/only-export-components -- pure layout seam used by renderer and regression tests
 export const projectFurniturePrimitiveLayout = (
@@ -222,10 +224,11 @@ export const projectFurniturePrimitiveLayout = (
   const topHeight = Math.min(Math.max(height * 0.12, 0.05), height);
   const legOffsetX = Math.max(width / 2 - 0.08, 0);
   const legOffsetZ = Math.max(depth / 2 - 0.08, 0);
-  const hasStyleTags = (...required: string[]) =>
-    required.every((styleTag) => item.styleTags.includes(styleTag));
+  const appearanceKey = resolveCatalogPresentationKey(
+    item.catalogRef ?? item.catalogProductId,
+  );
 
-  if (item.category === "chair" && hasStyleTags("molded-shell", "lounge")) {
+  if (item.category === "chair" && appearanceKey === "molded-shell-lounge") {
     const seatHeight = height * 0.1;
     const seatWorldY = height * 0.43;
     const seatZ = depth * 0.06;
@@ -263,7 +266,7 @@ export const projectFurniturePrimitiveLayout = (
     ];
   }
 
-  if (item.category === "sofa" && hasStyleTags("modular", "low-profile")) {
+  if (item.category === "sofa" && appearanceKey === "modular-sofa") {
     const platformHeight = height * 0.16;
     const seatHeight = height * 0.34;
     const moduleWidth = width * 0.29;
@@ -301,6 +304,14 @@ export const projectFurniturePrimitiveLayout = (
       ),
     ];
   }
+
+  const catalogVariant = projectCatalogProceduralLayout(item, appearanceKey, {
+    box,
+    cylinder,
+    ellipsoid,
+    localY,
+  });
+  if (catalogVariant) return catalogVariant;
 
   switch (item.category) {
     case "rug":

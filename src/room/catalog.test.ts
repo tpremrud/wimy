@@ -574,10 +574,10 @@ describe("findFurniture", () => {
 });
 
 describe("demo catalog integrity", () => {
-  it("exports 8–12 deeply frozen, schema-valid fictional USD records", () => {
+  it("exports 17 deeply frozen, schema-valid fictional USD records", () => {
     expect(CATALOG_ID).toBe("wimy-demo-v1");
     expect(DEMO_CATALOG_PROVENANCE).toBe("fictional");
-    expect(DEMO_CATALOG).toHaveLength(12);
+    expect(DEMO_CATALOG).toHaveLength(17);
     expect(Object.isFrozen(DEMO_CATALOG)).toBe(true);
 
     const productIds = DEMO_CATALOG.map(
@@ -632,7 +632,7 @@ describe("demo catalog integrity", () => {
     });
   });
 
-  it("appends two original fictional records without disturbing stable catalog order", () => {
+  it("appends five original fictional records without disturbing stable catalog order", () => {
     expect(
       DEMO_CATALOG.map(({ catalogRef }) => catalogRef.productId),
     ).toEqual([
@@ -648,6 +648,11 @@ describe("demo catalog integrity", () => {
       "orbit-side-table",
       "dune-shell-lounger",
       "tidal-modular-sofa",
+      "cove-shell-chair",
+      "tideline-corner-sofa",
+      "arclet-dining-table",
+      "reed-dining-chair",
+      "harbor-console",
     ]);
 
     expect(
@@ -702,6 +707,32 @@ describe("demo catalog integrity", () => {
         styleTags: ["soft", "modular", "low-profile"],
       },
     });
+    expect(resolveCatalogProduct("cove-shell-chair")).toMatchObject({
+      catalogRef: { catalogId: CATALOG_ID, productId: "cove-shell-chair" },
+      snapshot: {
+        name: "Cove Shell Chair",
+        dimensions: { width: 0.78, depth: 0.8, height: 0.8 },
+      },
+    });
+    expect(resolveCatalogProduct("tideline-corner-sofa")).toMatchObject({
+      catalogRef: { catalogId: CATALOG_ID, productId: "tideline-corner-sofa" },
+      snapshot: {
+        name: "Tideline Corner Sofa",
+        dimensions: { width: 2.3, depth: 1.55, height: 0.74 },
+      },
+    });
+    expect(resolveCatalogProduct("arclet-dining-table")).toMatchObject({
+      catalogRef: { catalogId: CATALOG_ID, productId: "arclet-dining-table" },
+      snapshot: { name: "Arclet Dining Table" },
+    });
+    expect(resolveCatalogProduct("reed-dining-chair")).toMatchObject({
+      catalogRef: { catalogId: CATALOG_ID, productId: "reed-dining-chair" },
+      snapshot: { name: "Reed Dining Chair" },
+    });
+    expect(resolveCatalogProduct("harbor-console")).toMatchObject({
+      catalogRef: { catalogId: CATALOG_ID, productId: "harbor-console" },
+      snapshot: { name: "Harbor Console" },
+    });
   });
 
   it("resolves authoritative cloned facts without exposing catalog storage", () => {
@@ -733,11 +764,15 @@ describe("demo catalog integrity", () => {
       rankCatalogRelations(source, DEMO_CATALOG, "similar").map(
         ({ catalogRef }) => catalogRef.productId,
       ),
-    ).toEqual(["tidal-modular-sofa", "cedar-arc-chair", "ember-nest-chair"]);
+    ).toEqual([
+      "tidal-modular-sofa",
+      "tideline-corner-sofa",
+      "cedar-arc-chair",
+    ]);
     expect(
       rankCatalogRelations(source, DEMO_CATALOG, "goes-well-with").map(
         ({ catalogRef }) => catalogRef.productId,
       ),
-    ).toEqual(["saffron-loom-rug", "juniper-rise-plant", "orbit-side-table"]);
+    ).toEqual(["saffron-loom-rug", "arclet-dining-table", "juniper-rise-plant"]);
   });
 });

@@ -225,6 +225,41 @@ const primitiveSignature = (
 };
 
 describe("projectFurniturePrimitiveLayout", () => {
+  it("keeps the Cove Shell Chair back at local positive Z and seat/front open toward local negative Z", () => {
+    const item = {
+      ...makeSceneItem("chair"),
+      catalogProductId: "cove-shell-chair",
+      size: [0.78, 0.8, 0.8] as SceneItem["size"],
+    };
+
+    const [shell, seat] = projectFurniturePrimitiveLayout(item);
+
+    expect(shell?.kind).toBe("sphere");
+    expect(seat?.kind).toBe("sphere");
+    if (shell?.kind !== "sphere" || seat?.kind !== "sphere") {
+      throw new Error("Expected Cove Shell Chair shell and seat primitives");
+    }
+
+    expect(shell.position[2]).toBeGreaterThan(0);
+    expect(seat.position[2]).toBeLessThan(0);
+    expect(shell.position[2]).toBeGreaterThan(seat.position[2]);
+  });
+
+  it("uses generic category geometry when an external catalog reuses a demo product ID", () => {
+    const item = {
+      ...makeSceneItem("chair"),
+      catalogProductId: "cove-shell-chair",
+      catalogRef: {
+        catalogId: "external-catalog",
+        productId: "cove-shell-chair",
+      },
+    };
+
+    expect(primitiveSignature(projectFurniturePrimitiveLayout(item))).toEqual(
+      primitiveSignature(projectFurniturePrimitiveLayout(makeSceneItem("chair"))),
+    );
+  });
+
   it.each([
     ["bed", { bottom: 0, top: 0.8 }],
     ["desk", { bottom: 0, top: 0.8 }],
@@ -332,9 +367,10 @@ describe("projectFurniturePrimitiveLayout", () => {
     });
   });
 
-  it("uses molded-shell lounge tags for an original bucket lounger silhouette", () => {
+  it("uses the molded-shell lounge manifest variant for an original silhouette", () => {
     const item: SceneItem = {
       ...makeSceneItem("chair"),
+      catalogProductId: "dune-shell-lounger",
       name: "Original test lounger",
       color: "#c87852",
       size: [0.84, 0.82, 0.88],
@@ -414,9 +450,10 @@ describe("projectFurniturePrimitiveLayout", () => {
     expect(envelope.max[2]).toBeLessThanOrEqual(0.44);
   });
 
-  it("uses modular low-profile tags for a sectional sofa silhouette", () => {
+  it("uses the modular sofa manifest variant for a sectional silhouette", () => {
     const item: SceneItem = {
       ...makeSceneItem("sofa"),
+      catalogProductId: "tidal-modular-sofa",
       name: "Original test sectional",
       color: "#6e7f8d",
       size: [2.1, 0.72, 0.95],
@@ -493,7 +530,7 @@ describe("projectFurniturePrimitiveLayout", () => {
     expect(envelope.max[2]).toBeLessThanOrEqual(0.475);
   });
 
-  it("ignores tag order and safely falls back for partial or unknown combinations", () => {
+  it("uses the manifest key and safely falls back for imported snapshots", () => {
     const chair = makeSceneItem("chair");
     const sofa = makeSceneItem("sofa");
 
@@ -501,6 +538,7 @@ describe("projectFurniturePrimitiveLayout", () => {
       primitiveSignature(
         projectFurniturePrimitiveLayout({
           ...chair,
+          catalogProductId: "dune-shell-lounger",
           styleTags: ["lounge", "organic", "molded-shell"],
         }),
       ),
@@ -508,6 +546,7 @@ describe("projectFurniturePrimitiveLayout", () => {
       primitiveSignature(
         projectFurniturePrimitiveLayout({
           ...chair,
+          catalogProductId: "dune-shell-lounger",
           styleTags: ["molded-shell", "lounge"],
         }),
       ),
@@ -528,6 +567,105 @@ describe("projectFurniturePrimitiveLayout", () => {
         }),
       ),
     ).toEqual(primitiveSignature(projectFurniturePrimitiveLayout(sofa)));
+
+    expect(
+      primitiveSignature(
+        projectFurniturePrimitiveLayout({
+          ...chair,
+          catalogProductId: "cove-shell-chair",
+          styleTags: [],
+        }),
+      ),
+    ).not.toEqual(primitiveSignature(projectFurniturePrimitiveLayout(chair)));
+  });
+
+  it.each([
+    [
+      "cove-shell-chair",
+      "chair",
+      ["sphere", "sphere", "cylinder", "cylinder", "cylinder", "cylinder"],
+    ],
+    ["tideline-corner-sofa", "sofa", ["box", "box", "box", "box", "box"]],
+    ["arclet-dining-table", "table", ["sphere", "cylinder", "cylinder"]],
+    [
+      "reed-dining-chair",
+      "chair",
+      ["box", "box", "cylinder", "cylinder", "cylinder", "cylinder"],
+    ],
+    [
+      "harbor-console",
+      "dresser",
+      ["box", "box", "box", "box", "box", "box", "box"],
+    ],
+  ] as const)(
+    "selects the %s procedural variant through the manifest",
+    (catalogProductId, category, kinds) => {
+      const parts = projectFurniturePrimitiveLayout({
+        ...makeSceneItem(category),
+        catalogProductId,
+      });
+
+      expect(parts.map((part) => part.kind)).toEqual(kinds);
+    },
+  );
+
+  it.each([
+    ["cove-shell-chair", "chair", [0.78, 0.8, 0.8]],
+    ["tideline-corner-sofa", "sofa", [2.3, 0.74, 1.55]],
+    ["arclet-dining-table", "table", [1.6, 0.76, 0.9]],
+    ["reed-dining-chair", "chair", [0.52, 0.84, 0.56]],
+    ["harbor-console", "dresser", [1.4, 0.78, 0.42]],
+  ] as const)(
+    "keeps the %s variant inside its certified footprint",
+    (catalogProductId, category, size) => {
+      const item = {
+        ...makeSceneItem(category),
+        catalogProductId,
+        size: [...size] as SceneItem["size"],
+      };
+      const envelope = partEnvelope(item, projectFurniturePrimitiveLayout(item));
+
+      expect(envelope.min[0]).toBeGreaterThanOrEqual(-size[0] / 2 - 1e-9);
+      expect(envelope.min[1]).toBeGreaterThanOrEqual(-1e-9);
+      expect(envelope.min[2]).toBeGreaterThanOrEqual(-size[2] / 2 - 1e-9);
+      expect(envelope.max[0]).toBeLessThanOrEqual(size[0] / 2 + 1e-9);
+      expect(envelope.max[1]).toBeLessThanOrEqual(size[1] + 1e-9);
+      expect(envelope.max[2]).toBeLessThanOrEqual(size[2] / 2 + 1e-9);
+    },
+  );
+
+  it("keeps the Arclet Dining Table base, support, and oval top in contact", () => {
+    const item = {
+      ...makeSceneItem("table"),
+      catalogProductId: "arclet-dining-table",
+      size: [1.6, 0.76, 0.9] as SceneItem["size"],
+    };
+    const [top, support, base] = projectFurniturePrimitiveLayout(item);
+    expect(top?.kind).toBe("sphere");
+    expect(support?.kind).toBe("cylinder");
+    expect(base?.kind).toBe("cylinder");
+    if (
+      top?.kind !== "sphere" ||
+      support?.kind !== "cylinder" ||
+      base?.kind !== "cylinder"
+    ) {
+      throw new Error("Expected Arclet top, support, and base primitives");
+    }
+
+    const itemCenterY = item.size[1] / 2;
+    const topUnderside =
+      itemCenterY + top.position[1] - top.radius * (top.scale?.[1] ?? 1);
+    const supportBottom =
+      itemCenterY + support.position[1] - support.size[1] / 2;
+    const supportTop =
+      itemCenterY + support.position[1] + support.size[1] / 2;
+    const baseTop = itemCenterY + base.position[1] + base.size[1] / 2;
+
+    expect(itemCenterY + base.position[1] - base.size[1] / 2).toBeCloseTo(0, 9);
+    expect(supportBottom).toBeCloseTo(baseTop, 9);
+    expect(supportTop).toBeCloseTo(topUnderside, 9);
+    expect(top.scale?.[0]).toBeCloseTo(item.size[0], 9);
+    expect(top.scale?.[2]).toBeCloseTo(item.size[2], 9);
   });
 });
 

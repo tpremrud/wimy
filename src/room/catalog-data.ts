@@ -144,4 +144,59 @@ export const DEMO_CATALOG: readonly CatalogItem[] = deepFreeze([
       commerce: { price: { amount: 1299, currency: "USD" } },
     },
   },
+  {
+    catalogRef: { catalogId: CATALOG_ID, productId: "cove-shell-chair" },
+    snapshot: {
+      name: "Cove Shell Chair",
+      category: "chair",
+      dimensions: { width: 0.78, depth: 0.8, height: 0.8 },
+      appearance: { color: "#7A8F88" },
+      styleTags: ["organic", "sculptural", "lounge"],
+      commerce: { price: { amount: 639, currency: "USD" } },
+    },
+  },
+  {
+    catalogRef: { catalogId: CATALOG_ID, productId: "tideline-corner-sofa" },
+    snapshot: {
+      name: "Tideline Corner Sofa",
+      category: "sofa",
+      dimensions: { width: 2.3, depth: 1.55, height: 0.74 },
+      appearance: { color: "#738A96" },
+      styleTags: ["soft", "modular", "corner", "low-profile"],
+      commerce: { price: { amount: 1499, currency: "USD" } },
+    },
+  },
+  {
+    catalogRef: { catalogId: CATALOG_ID, productId: "arclet-dining-table" },
+    snapshot: {
+      name: "Arclet Dining Table",
+      category: "table",
+      dimensions: { width: 1.6, depth: 0.9, height: 0.76 },
+      appearance: { color: "#B18A61" },
+      styleTags: ["dining", "sculptural", "natural"],
+      commerce: { price: { amount: 899, currency: "USD" } },
+    },
+  },
+  {
+    catalogRef: { catalogId: CATALOG_ID, productId: "reed-dining-chair" },
+    snapshot: {
+      name: "Reed Dining Chair",
+      category: "chair",
+      dimensions: { width: 0.52, depth: 0.56, height: 0.84 },
+      appearance: { color: "#9A7657" },
+      styleTags: ["dining", "natural", "compact"],
+      commerce: { price: { amount: 279, currency: "USD" } },
+    },
+  },
+  {
+    catalogRef: { catalogId: CATALOG_ID, productId: "harbor-console" },
+    snapshot: {
+      name: "Harbor Console",
+      category: "dresser",
+      dimensions: { width: 1.4, depth: 0.42, height: 0.78 },
+      appearance: { color: "#5F6C70" },
+      styleTags: ["storage", "minimal", "natural"],
+      commerce: { price: { amount: 749, currency: "USD" } },
+    },
+  },
 ]);

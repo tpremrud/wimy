@@ -6,6 +6,7 @@ import {
   type CatalogMatch,
   type CatalogQuery,
 } from "../room/catalog";
+import { getCatalogPresentation } from "../room/catalog-presentation";
 import type { FurnitureSnapshot, WimyRoomV1 } from "../room/document";
 import type { RoomStore } from "../room/store";
 import { LOCAL_CATALOG_TRANSACTION } from "../room/transaction";
@@ -46,6 +47,13 @@ const optionalNumber = (value: string) =>
 
 const categoryLabel = (category: FurnitureSnapshot["category"]) =>
   `${category[0]?.toUpperCase() ?? ""}${category.slice(1)}`;
+
+const presentationSummary = (productId: string) => {
+  const presentation = getCatalogPresentation(productId);
+  if (!presentation) return "Generic procedural fallback";
+
+  return `${presentation.origin === "project-authored" ? "Project-authored" : "Catalog"} procedural geometry · ${presentation.license.spdxId}`;
+};
 
 const searchSummary = (
   attempt: number,
@@ -233,6 +241,7 @@ export function CatalogPanel({
                 <span>
                   <strong>{item.snapshot.name}</strong>
                   <small>{item.snapshot.category} · {item.snapshot.dimensions.width} × {item.snapshot.dimensions.depth} m</small>
+                  <small>{presentationSummary(item.catalogRef.productId)}</small>
                 </span>
                 {onToggleFavorite ? (
                   <button
@@ -328,6 +337,7 @@ export function CatalogPanel({
                   {`${match.snapshot.category} · ${match.snapshot.dimensions.width} × ${match.snapshot.dimensions.depth} m`}
                 </span>
                 <span>{`Styles: ${match.snapshot.styleTags.join(", ")}`}</span>
+                <span>{presentationSummary(match.catalogRef.productId)}</span>
                 <span>{`$${match.snapshot.commerce.price.amount} USD`}</span>
                 <span>
                   {`Best fit: x ${match.suggestedPose.x} m, y ${match.suggestedPose.y} m, rotation ${match.suggestedPose.rotationDeg}°`}
