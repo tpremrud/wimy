@@ -85,6 +85,11 @@ export type SceneOpeningHint = {
 export type SceneItem = {
   id: EntityId;
   name: string;
+  catalogRef?: {
+    catalogId: string;
+    productId: string;
+  };
+  catalogProductId?: string;
   category: FurnitureSnapshot["category"];
   color: string;
   position: SceneVector3;
@@ -188,6 +193,12 @@ export const projectRoomToScene = (
     items: room.items.map((item) => ({
       id: item.id,
       name: item.snapshot.name,
+      ...(item.catalogRef
+        ? { catalogRef: { ...item.catalogRef } }
+        : {}),
+      ...(item.catalogRef?.productId
+        ? { catalogProductId: item.catalogRef.productId }
+        : {}),
       category: item.snapshot.category,
       color: sceneColor(item.snapshot.appearance.color),
       position: [

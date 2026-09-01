@@ -240,6 +240,55 @@ describe("projectRoomToPlan", () => {
 });
 
 describe("projectRoomToScene", () => {
+  it("carries a catalog product ID only as presentation metadata", () => {
+    const scene = projectRoomToScene(
+      makeRoom({
+        items: [
+          makePlacedItem({
+            catalogRef: {
+              catalogId: "wimy-demo-v1",
+              productId: "cove-shell-chair",
+            },
+          }),
+        ],
+      }),
+    );
+
+    expect(scene.items[0]).toMatchObject({
+      catalogRef: {
+        catalogId: "wimy-demo-v1",
+        productId: "cove-shell-chair",
+      },
+      catalogProductId: "cove-shell-chair",
+      size: [0.6, 0.8, 0.6],
+    });
+  });
+
+  it("preserves an external catalog namespace when a product ID collides", () => {
+    const scene = projectRoomToScene(
+      makeRoom({
+        items: [
+          makePlacedItem({
+            catalogRef: {
+              catalogId: "external-catalog",
+              productId: "cove-shell-chair",
+            },
+          }),
+        ],
+      }),
+    );
+
+    expect(scene.items[0]).toMatchObject({
+      catalogRef: {
+        catalogId: "external-catalog",
+        productId: "cove-shell-chair",
+      },
+      catalogProductId: "cove-shell-chair",
+    });
+  });
+});
+
+describe("projectRoomToScene", () => {
   it("maps room x/y and item height to Three X/Z/Y", () => {
     const item = makePlacedItem({
       pose: { x: 1.2, y: 2.3, rotationDeg: 90 },

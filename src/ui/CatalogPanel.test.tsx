@@ -73,6 +73,9 @@ describe("CatalogPanel", () => {
     const results = screen.getByRole("list", { name: "Catalog results" });
     expect(within(results).getByText("Ember Nest Chair")).toBeVisible();
     expect(within(results).getByText("$499 USD")).toBeVisible();
+    expect(
+      within(results).getAllByText("Project-authored procedural geometry · MIT"),
+    ).toHaveLength(2);
     expect(within(results).getByText(/x 0\.3 m, y 0\.3 m, rotation 0°/u))
       .toBeVisible();
     expect(store.getState()).toBe(before);
