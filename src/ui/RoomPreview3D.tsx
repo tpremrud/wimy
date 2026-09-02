@@ -50,6 +50,13 @@ import {
   type SunDirection,
   type SunStudyScenario,
 } from "../room/sunlight";
+import {
+  calculateLunarIlluminationAtUtc,
+  calculateLunarPositionAtUtc,
+  deriveMoonDirection,
+  type LunarIllumination,
+  type LunarPosition,
+} from "../room/moonlight";
 
 type RoomPreview3DProps = {
   room: Parameters<typeof projectRoomToScene>[0];
@@ -69,6 +76,13 @@ type SunStudyInputState = {
 type SunStudyRenderState = {
   position: SolarPosition;
   direction: SunDirection;
+  shadowsEnabled: boolean;
+};
+
+type MoonStudyRenderState = {
+  position: LunarPosition;
+  direction: SunDirection;
+  illumination: LunarIllumination;
   shadowsEnabled: boolean;
 };
 
@@ -115,6 +129,7 @@ const SunStudyControls = ({
   onShadowsChange,
   dayAnimating,
   onDayAnimationChange,
+  moonIllumination,
 }: {
   input: SunStudyInputState;
   onChange: (field: keyof SunStudyInputState, value: string) => void;
@@ -123,6 +138,7 @@ const SunStudyControls = ({
   onShadowsChange: (enabled: boolean) => void;
   dayAnimating: boolean;
   onDayAnimationChange: (playing: boolean) => void;
+  moonIllumination: LunarIllumination | null;
 }) => (
   <fieldset className="sun-study-controls" aria-label="Sun study controls">
     <legend>Sun study (experimental)</legend>
@@ -197,6 +213,11 @@ const SunStudyControls = ({
         <span>Time of day</span>
         <output htmlFor="sun-study-time-slider">{input.localTime}</output>
       </div>
+      {moonIllumination ? (
+        <span className="moon-phase-indicator">
+          {moonIllumination.phaseName} · {Math.round(moonIllumination.fraction * 100)}%
+        </span>
+      ) : null}
       <input
         aria-label="Local time of day"
         id="sun-study-time-slider"
@@ -221,7 +242,7 @@ const SunStudyControls = ({
         onClick={() => onDayAnimationChange(!dayAnimating)}
         type="button"
       >
-        {dayAnimating ? "Pause daylight" : "Play daylight"}
+        {dayAnimating ? "Pause 24-hour cycle" : "Play 24-hour cycle"}
       </button>
     </div>
     <label className="sun-study-shadow-toggle">
@@ -674,7 +695,15 @@ const CameraFramer = ({
   );
 };
 
-const SunBeamVolume = ({ beam }: { beam: SunBeam }) => {
+const WindowLightBeamVolume = ({
+  beam,
+  color = "#ffb65c",
+  opacityScale = 1,
+}: {
+  beam: SunBeam;
+  color?: string;
+  opacityScale?: number;
+}) => {
   const quaternion = useMemo(
     () => new Quaternion().setFromUnitVectors(
       new Vector3(0, 0, 1),
@@ -692,9 +721,9 @@ const SunBeamVolume = ({ beam }: { beam: SunBeam }) => {
       <boxGeometry args={[beam.aperture[0] * 0.94, beam.aperture[1] * 0.94, beam.length]} />
       <meshBasicMaterial
         blending={AdditiveBlending}
-        color="#ffb65c"
+        color={color}
         depthWrite={false}
-        opacity={0.1 + beam.strength * 0.2}
+        opacity={(0.1 + beam.strength * 0.2) * opacityScale}
         side={DoubleSide}
         toneMapped={false}
         transparent
@@ -705,20 +734,31 @@ const SunBeamVolume = ({ beam }: { beam: SunBeam }) => {
 
 const PreviewScene = ({
   scene,
+  moonBeams,
+  moonStudy,
   sunBeams,
   sunStudy,
 }: {
   scene: SceneProjection;
+  moonBeams: readonly SunBeam[];
+  moonStudy: MoonStudyRenderState | null;
   sunBeams: readonly SunBeam[];
   sunStudy: SunStudyRenderState | null;
 }) => {
   const [width, height, depth] = scene.dimensions;
   const span = Math.max(width, depth);
   const sunTarget = useMemo(() => new Object3D(), []);
+  const moonTarget = useMemo(() => new Object3D(), []);
   const sunLight = useRef<DirectionalLight>(null);
-  const renderKey = sunStudy
-    ? `${sunStudy.position.utcDate}:${sunStudy.position.azimuthDeg}:${sunStudy.position.apparentAltitudeDeg}:${sunStudy.shadowsEnabled}`
-    : "no-sun-study";
+  const moonLight = useRef<DirectionalLight>(null);
+  const renderKey = [
+    sunStudy?.position.utcDate ?? "no-sun-study",
+    sunStudy?.position.azimuthDeg ?? 0,
+    sunStudy?.position.apparentAltitudeDeg ?? 0,
+    moonStudy?.position.azimuthDeg ?? 0,
+    moonStudy?.position.apparentAltitudeDeg ?? 0,
+    sunStudy?.shadowsEnabled ?? false,
+  ].join(":");
   const initialFrame = useMemo(
     () => deriveRoomPreviewCamera([width, height, depth], 1),
     [depth, height, width],
@@ -727,8 +767,12 @@ const PreviewScene = ({
     sunTarget.position.set(width / 2, 0, depth / 2);
     sunTarget.updateMatrixWorld();
     if (sunLight.current) sunLight.current.target = sunTarget;
-  }, [depth, sunTarget, width]);
+    moonTarget.position.set(width / 2, 0, depth / 2);
+    moonTarget.updateMatrixWorld();
+    if (moonLight.current) moonLight.current.target = moonTarget;
+  }, [depth, moonTarget, sunTarget, width]);
   const showSun = sunStudy?.direction.isAboveHorizon === true;
+  const showMoon = moonStudy?.direction.isAboveHorizon === true && !showSun;
   const daylight = showSun && sunStudy
     ? Math.min(Math.max(Math.sin(sunStudy.position.apparentAltitudeDeg * Math.PI / 180), 0.08), 1)
     : 0;
@@ -782,7 +826,40 @@ const PreviewScene = ({
             target={sunTarget}
           />
           {sunBeams.map((beam) => (
-            <SunBeamVolume beam={beam} key={beam.openingId} />
+            <WindowLightBeamVolume beam={beam} key={beam.openingId} />
+          ))}
+        </>
+      ) : null}
+      {showMoon && moonStudy ? (
+        <>
+          <primitive object={moonTarget} />
+          <directionalLight
+            castShadow={moonStudy.shadowsEnabled}
+            color="#9fc5ff"
+            intensity={0.12 + moonStudy.illumination.fraction * 0.55}
+            position={[
+              width / 2 + moonStudy.direction.lightPosition[0],
+              height + moonStudy.direction.lightPosition[1],
+              depth / 2 + moonStudy.direction.lightPosition[2],
+            ]}
+            ref={moonLight}
+            shadow-bias={-0.00015}
+            shadow-camera-bottom={-span}
+            shadow-camera-far={span * 4}
+            shadow-camera-left={-span}
+            shadow-camera-right={span}
+            shadow-camera-top={span}
+            shadow-mapSize={[2048, 2048]}
+            shadow-normalBias={0.02}
+            target={moonTarget}
+          />
+          {moonBeams.map((beam) => (
+            <WindowLightBeamVolume
+              beam={beam}
+              color="#8cbcff"
+              key={beam.openingId}
+              opacityScale={0.28 + moonStudy.illumination.fraction * 0.5}
+            />
           ))}
         </>
       ) : null}
@@ -887,6 +964,24 @@ export function RoomPreview3D({
       shadowsEnabled: shadowsEnabled && shadowSupport,
     };
   }, [shadowSupport, shadowsEnabled, sunStudyValidation]);
+  const moonStudy = useMemo<MoonStudyRenderState | null>(() => {
+    if (!sunStudyValidation.valid) return null;
+    const instant = new Date(sunStudyValidation.value.utcDate);
+    const position = calculateLunarPositionAtUtc(
+      instant,
+      sunStudyValidation.value.latitude,
+      sunStudyValidation.value.longitude,
+    );
+    return {
+      direction: deriveMoonDirection(
+        position,
+        sunStudyValidation.value.planNorthAzimuthDeg,
+      ),
+      illumination: calculateLunarIlluminationAtUtc(instant),
+      position,
+      shadowsEnabled: shadowsEnabled && shadowSupport,
+    };
+  }, [shadowSupport, shadowsEnabled, sunStudyValidation]);
   const summary = `${room.name}: ${room.dimensions.width} m by ${room.dimensions.depth} m room with ${room.items.length} placed item${room.items.length === 1 ? "" : "s"}.`;
   const updateSunStudyInput = (
     field: keyof SunStudyInputState,
@@ -915,6 +1010,28 @@ export function RoomPreview3D({
       : [],
     [scene, sunStudy],
   );
+  const moonBeams = useMemo(
+    () => moonStudy && !sunStudy?.direction.isAboveHorizon
+      ? deriveSunBeams(scene.dimensions, scene.openings, moonStudy.direction)
+      : [],
+    [moonStudy, scene, sunStudy],
+  );
+  const moonStatusText = !sunStudyValidation.valid || !moonStudy
+    ? "Moon study unavailable. No fixed fallback moonlight is shown."
+    : [
+        `${moonStudy.illumination.phaseName}`,
+        `${Math.round(moonStudy.illumination.fraction * 100)}% illuminated`,
+        `apparent lunar azimuth ${fixed(moonStudy.position.azimuthDeg)}°`,
+        `apparent lunar altitude ${fixed(moonStudy.position.apparentAltitudeDeg)}°`,
+        moonStudy.direction.isAboveHorizon
+          ? "Moon is above the modeled horizon"
+          : "Moon is at or below the modeled horizon",
+        sunStudy?.direction.isAboveHorizon
+          ? "Direct sun takes lighting precedence"
+          : moonBeams.length > 0
+            ? "Illustrative moonlight reaches a window"
+            : "No window-facing moonlight beam",
+      ].join(" — ");
 
   return (
     <section className="room-preview" aria-label={`3D preview of ${room.name}`}>
@@ -926,6 +1043,7 @@ export function RoomPreview3D({
       <SunStudyControls
         dayAnimating={dayAnimating}
         input={sunStudyInput}
+        moonIllumination={moonStudy?.illumination ?? null}
         onDayAnimationChange={setDayAnimating}
         onChange={updateSunStudyInput}
         onShadowsChange={setShadowsEnabled}
@@ -939,6 +1057,13 @@ export function RoomPreview3D({
       >
         {statusText}
       </p>
+      <p
+        aria-label="Moon study status"
+        className="moon-study-status"
+        role="status"
+      >
+        {moonStatusText}
+      </p>
       {sunStudyValidation.valid && sunStudy ? (
         <p className="sun-study-time">
           Local {sunStudyValidation.value.date} {sunStudyValidation.value.localTime}{" "}
@@ -946,16 +1071,18 @@ export function RoomPreview3D({
         </p>
       ) : null}
       <aside className="sun-study-assumptions" aria-label="Sun study assumptions">
-        <strong>Approximate directional direct-sun geometry</strong>
+        <strong>Approximate directional sun and moon geometry</strong>
         <p>
           Plan North is the room-local top edge; the true bearing is used only
-          to orient the sun. This does not estimate daylight intensity, lux, or
-          energy performance.
+          to orient the sky. This does not estimate daylight or moonlight
+          intensity, lux, or energy performance.
         </p>
         <p>
           Clear sky, no weather, glazing, blinds, terrain, or exterior
           obstructions are modeled. Window openings are geometric apertures;
-          furniture and walls use a bounded shadow map when enabled.
+          furniture and walls use a bounded shadow map when enabled. Moonlight
+          is intentionally amplified and labeled illustrative so its direction
+          and phase can be understood in the preview.
         </p>
       </aside>
       {!webglSupported ? (
@@ -975,10 +1102,19 @@ export function RoomPreview3D({
           <div
             className="room-preview-canvas"
             data-wimy-shadows={sunStudy?.shadowsEnabled ? "on" : "off"}
+            data-wimy-moonbeams={moonBeams.length}
+            data-wimy-moonlight={moonStudy?.direction.isAboveHorizon && !sunStudy?.direction.isAboveHorizon ? "on" : "off"}
+            data-wimy-moon-phase={moonStudy?.illumination.phaseName ?? "unavailable"}
             data-wimy-sunbeams={sunBeams.length}
             data-wimy-sun-study={sunStudy ? "available" : "unavailable"}
           >
-          <PreviewScene scene={scene} sunBeams={sunBeams} sunStudy={sunStudy} />
+          <PreviewScene
+            moonBeams={moonBeams}
+            moonStudy={moonStudy}
+            scene={scene}
+            sunBeams={sunBeams}
+            sunStudy={sunStudy}
+          />
           </div>
         </PreviewErrorBoundary>
       )}

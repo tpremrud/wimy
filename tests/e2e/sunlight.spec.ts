@@ -46,15 +46,28 @@ test("keeps the directional sun study local and deterministic", async ({
   await expect(status).toContainText("Plan North 90°");
   await timeSlider.fill("480");
   await expect(preview).toContainText("Local 2026-09-01 08:00");
-  await preview.getByRole("button", { name: "Play daylight" }).click();
+  await preview.getByRole("button", { name: "Play 24-hour cycle" }).click();
   await expect.poll(() => timeSlider.inputValue()).not.toBe("480");
-  await preview.getByRole("button", { name: "Pause daylight" }).click();
+  await preview.getByRole("button", { name: "Pause 24-hour cycle" }).click();
   await expect(canvas).toHaveAttribute("data-wimy-shadows", "on");
   await expect.poll(
     async () => Number(await canvas.getAttribute("data-wimy-sunbeams")),
   ).toBeGreaterThan(0);
-  await expect(preview).toContainText("Approximate directional direct-sun geometry");
-  await expect(preview).toContainText("does not estimate daylight intensity, lux, or energy performance");
+  await expect(preview).toContainText("Approximate directional sun and moon geometry");
+  await expect(preview).toContainText("does not estimate daylight or moonlight intensity, lux, or energy performance");
+
+  await preview.getByLabel("Plan North true bearing").fill("0");
+  await preview.getByLabel("Local date").fill("2026-09-26");
+  await timeSlider.fill("1200");
+  await expect(preview.getByRole("status", { name: "Moon study status" })).toContainText(
+    "Full Moon",
+  );
+  await expect(canvas).toHaveAttribute("data-wimy-moonlight", "on");
+  await expect(canvas).toHaveAttribute("data-wimy-moon-phase", "Full Moon");
+  await expect.poll(
+    async () => Number(await canvas.getAttribute("data-wimy-moonbeams")),
+  ).toBeGreaterThan(0);
+  await canvas.screenshot({ path: testInfo.outputPath("moonlight-canvas.png") });
 
   const exported = page.waitForEvent("download");
   await page.getByRole("button", { name: "Share room", exact: true }).click();

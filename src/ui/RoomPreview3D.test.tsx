@@ -780,8 +780,8 @@ describe("RoomPreview3D", () => {
     expect(screen.getByLabelText("Longitude" )).toHaveValue(-74.01);
     expect(screen.getByLabelText("Plan North true bearing" )).toHaveValue(0);
     expect(screen.getByRole("slider", { name: "Local time of day" })).toHaveValue("720");
-    expect(screen.getByText("Approximate directional direct-sun geometry")).toBeVisible();
-    expect(screen.getByText(/does not estimate daylight intensity, lux, or energy performance/i)).toBeVisible();
+    expect(screen.getByText("Approximate directional sun and moon geometry")).toBeVisible();
+    expect(screen.getByText(/does not estimate daylight or moonlight intensity, lux, or energy performance/i)).toBeVisible();
     expect(screen.getByRole("status", { name: "Sun study status" })).toHaveTextContent(
       "Shadows are unavailable",
     );
@@ -812,6 +812,29 @@ describe("RoomPreview3D", () => {
 
     expect(slider).toHaveValue("480");
     expect(screen.getByText(/Local 2026-09-01 08:00/u)).toBeVisible();
+  });
+
+  it("derives the moon phase and horizon position from the same local study controls", () => {
+    render(
+      <RoomPreview3D
+        room={makeRoom({ openings: [makeOpening({ kind: "window", wall: "east" })] })}
+        webglSupportOverride={false}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("Local date"), {
+      target: { value: "2026-09-26" },
+    });
+    fireEvent.change(screen.getByRole("slider", { name: "Local time of day" }), {
+      target: { value: "1200" },
+    });
+
+    expect(screen.getByRole("status", { name: "Moon study status" })).toHaveTextContent(
+      "Full Moon",
+    );
+    expect(screen.getByRole("status", { name: "Moon study status" })).toHaveTextContent(
+      "Moon is above the modeled horizon",
+    );
   });
 
   it("enables bounded shadows by default when the renderer supports them", () => {

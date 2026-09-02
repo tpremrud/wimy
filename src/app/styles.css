@@ -829,6 +829,13 @@ section > p {
   font-variant-numeric: tabular-nums;
 }
 
+.moon-phase-indicator {
+  justify-self: start;
+  color: #375778;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
 .sun-study-timeline input[type="range"] {
   width: 100%;
   accent-color: var(--accent);
@@ -861,12 +868,20 @@ section > p {
   background: var(--accent);
 }
 
-.sun-study-status {
+.sun-study-status,
+.moon-study-status {
   margin: 0;
-  color: #76501c;
   font-size: 0.84rem;
   font-weight: 700;
   line-height: 1.45;
+}
+
+.sun-study-status {
+  color: #76501c;
+}
+
+.moon-study-status {
+  color: #375778;
 }
 
 .sun-study-assumptions {
