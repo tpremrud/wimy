@@ -1,0 +1,125 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-02T16:17:03Z",
+  "title": "Design System: Wimy",
+  "extensions": {
+    "colorMeta": {
+      "room-teal": { "role": "primary", "displayName": "Room Teal", "canonical": "#0f5c63", "tonalRamp": ["#082b2f", "#0a3c41", "#0d4d53", "#0f5c63", "#3f7d82", "#70a0a3", "#a8c8c9", "#e4f0ef"] },
+      "deep-room-teal": { "role": "primary", "displayName": "Deep Room Teal", "canonical": "#08444a", "tonalRamp": ["#041f22", "#063036", "#08444a", "#1d5960", "#477a7f", "#76a0a3", "#acc8ca", "#e5f0f0"] },
+      "plan-ink": { "role": "neutral", "displayName": "Plan Ink", "canonical": "#182126", "tonalRamp": ["#11171a", "#182126", "#303b40", "#4b575c", "#6b777b", "#929b9e", "#c2c7c9", "#f0f2f2"] },
+      "muted-instruction": { "role": "neutral", "displayName": "Muted Instruction", "canonical": "#526067", "tonalRamp": ["#1d2427", "#354147", "#526067", "#6e7b81", "#8e989d", "#afb7ba", "#d2d7d9", "#f2f4f5"] },
+      "measured-line": { "role": "neutral", "displayName": "Measured Line", "canonical": "#d5dcda", "tonalRamp": ["#24302d", "#46534f", "#6b7773", "#909b97", "#b2bbb8", "#d5dcda", "#e6ebe9", "#f5f8f7"] },
+      "tool-rail": { "role": "neutral", "displayName": "Tool Rail", "canonical": "#f3f6f4", "tonalRamp": ["#23302b", "#46534e", "#6c7873", "#929d98", "#b8c1bd", "#d9dfdc", "#e9eeeb", "#f3f6f4"] },
+      "clean-surface": { "role": "neutral", "displayName": "Clean Surface", "canonical": "#ffffff", "tonalRamp": ["#262626", "#4b4b4b", "#727272", "#999999", "#bfbfbf", "#dddddd", "#eeeeee", "#ffffff"] },
+      "drafting-field": { "role": "neutral", "displayName": "Drafting Field", "canonical": "#e9efec", "tonalRamp": ["#22302a", "#46544e", "#6b7973", "#919e98", "#b7c1bc", "#d5ddd9", "#e2e9e5", "#f3f7f5"] },
+      "page-wash": { "role": "neutral", "displayName": "Page Wash", "canonical": "#f8faf9", "tonalRamp": ["#26302b", "#4a554f", "#707b75", "#97a09b", "#bdc5c1", "#dce1de", "#edf0ee", "#f8faf9"] },
+      "focus-amber": { "role": "secondary", "displayName": "Focus Amber", "canonical": "#b34b1e", "tonalRamp": ["#3b1608", "#67260d", "#923814", "#b34b1e", "#cc6b40", "#df9572", "#efc1aa", "#f9e9df"] },
+      "accepted-green": { "role": "semantic", "displayName": "Accepted Green", "canonical": "#23754d", "tonalRamp": ["#082919", "#0e452a", "#17603d", "#23754d", "#4d936e", "#7db29a", "#b2d2c3", "#e5f1eb"] },
+      "caution-ochre": { "role": "semantic", "displayName": "Caution Ochre", "canonical": "#a85a22", "tonalRamp": ["#351b09", "#5d300e", "#854719", "#a85a22", "#c47a45", "#d99f75", "#ebc8ac", "#f8ece0"] },
+      "rejected-rust": { "role": "semantic", "displayName": "Rejected Rust", "canonical": "#9f321f", "tonalRamp": ["#35100a", "#5c1b10", "#822719", "#9f321f", "#bd5744", "#d78475", "#e9b6ab", "#f7e5e1"] }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Room Display", "purpose": "Current room names and dominant workspace anchors." },
+      "headline": { "displayName": "Surface Headline", "purpose": "Brand and major surface headings." },
+      "title": { "displayName": "Tool Title", "purpose": "Rail, catalog, and object-group headings." },
+      "body": { "displayName": "Instruction Body", "purpose": "Short operational guidance and disclosures." },
+      "label": { "displayName": "Control Label", "purpose": "Compact actions, kickers, metadata, and state." }
+    },
+    "shadows": [
+      { "name": "floating-panel", "value": "0 4px 12px rgb(24 33 38 / 10%)", "purpose": "Panels that overlay the room workspace." },
+      { "name": "compact-popover", "value": "0 0.25rem 0.5rem rgb(20 42 38 / 15%)", "purpose": "Small WebMCP and status popovers." },
+      { "name": "control-dock", "value": "0 4px 8px rgb(24 33 38 / 22%)", "purpose": "Selected-item controls attached to the room canvas." }
+    ],
+    "motion": [
+      { "name": "reduced-motion", "value": "0.01ms", "purpose": "Near-instant transitions and animations when reduced motion is requested." }
+    ],
+    "breakpoints": [
+      { "name": "compact", "value": "42rem" },
+      { "name": "workspace", "value": "70rem" },
+      { "name": "wide", "value": "87rem" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "A compact, deliberate room action.",
+      "html": "<button class=\"ds-button-primary\">Apply change</button>",
+      "css": ".ds-button-primary { min-height: 2.15rem; border: 1px solid var(--accent, #0f5c63); border-radius: 0.3rem; padding: 0.35rem 0.55rem; color: var(--surface, #ffffff); background: var(--accent, #0f5c63); font: 700 0.75rem Inter, ui-sans-serif, system-ui, sans-serif; cursor: pointer; } .ds-button-primary:hover { background: var(--accent-strong, #08444a); } .ds-button-primary:focus-visible { outline: 3px solid var(--focus, #b34b1e); outline-offset: 2px; }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "A quiet supporting or review action.",
+      "html": "<button class=\"ds-button-secondary\">Review room</button>",
+      "css": ".ds-button-secondary { min-height: 2.15rem; border: 1px solid var(--line, #d5dcda); border-radius: 0.3rem; padding: 0.35rem 0.55rem; color: var(--accent-strong, #08444a); background: var(--surface, #ffffff); font: 700 0.75rem Inter, ui-sans-serif, system-ui, sans-serif; cursor: pointer; } .ds-button-secondary:hover { border-color: var(--accent, #0f5c63); background: #eef5f2; } .ds-button-secondary:focus-visible { outline: 3px solid var(--focus, #b34b1e); outline-offset: 2px; }"
+    },
+    {
+      "name": "Catalog Field",
+      "kind": "input",
+      "refersTo": "field",
+      "description": "A compact search or filter field on the tool rail.",
+      "html": "<label class=\"ds-field-label\">Category<input class=\"ds-field\" value=\"All categories\"></label>",
+      "css": ".ds-field-label { display: grid; gap: 0.3rem; color: var(--muted, #526067); font: 700 0.75rem Inter, ui-sans-serif, system-ui, sans-serif; } .ds-field { min-height: 2.35rem; border: 1px solid var(--line, #d5dcda); border-radius: 0.3rem; padding: 0.45rem 0.55rem; color: var(--ink, #182126); background: var(--surface, #ffffff); font: 400 0.875rem Inter, ui-sans-serif, system-ui, sans-serif; } .ds-field:focus-visible { outline: 3px solid var(--focus, #b34b1e); outline-offset: 2px; }"
+    },
+    {
+      "name": "Workspace Tabs",
+      "kind": "nav",
+      "refersTo": "button-secondary",
+      "description": "The stable Add, Placed, and Favorites rail navigation.",
+      "html": "<nav class=\"ds-tabs\" aria-label=\"Room tools\"><button aria-selected=\"true\">Add</button><button aria-selected=\"false\">Placed <span>5</span></button><button aria-selected=\"false\">Favorites <span>0</span></button></nav>",
+      "css": ".ds-tabs { display: flex; gap: 0.25rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--line, #d5dcda); } .ds-tabs button { min-height: 2.15rem; border: 1px solid transparent; border-radius: 0.25rem; padding: 0.35rem 0.55rem; color: var(--muted, #526067); background: transparent; font: 700 0.75rem Inter, ui-sans-serif, system-ui, sans-serif; } .ds-tabs button[aria-selected=\"true\"] { border-color: var(--line, #d5dcda); color: var(--accent-strong, #08444a); background: var(--surface, #ffffff); } .ds-tabs span { border-radius: 999px; padding: 0.1rem 0.3rem; color: var(--accent-strong, #08444a); background: #dce9e5; } .ds-tabs button:focus-visible { outline: 3px solid var(--focus, #b34b1e); outline-offset: 2px; }"
+    },
+    {
+      "name": "Floating Review Panel",
+      "kind": "card",
+      "refersTo": "floating-surface",
+      "description": "A bounded review surface for sharing, cart state, guidance, or activity.",
+      "html": "<section class=\"ds-panel\"><small>COMMERCE REVIEW</small><h2>Cart review</h2><p>Planning items and retailer cart lines stay visibly distinct.</p></section>",
+      "css": ".ds-panel { width: min(26rem, calc(100vw - 2.5rem)); border: 1px solid var(--line, #d5dcda); border-radius: 0.75rem; padding: 1rem; color: var(--ink, #182126); background: var(--surface, #ffffff); box-shadow: 0 4px 12px rgb(24 33 38 / 10%); font-family: Inter, ui-sans-serif, system-ui, sans-serif; } .ds-panel small { color: var(--muted, #526067); font-size: 0.68rem; font-weight: 800; letter-spacing: 0.07em; } .ds-panel h2 { margin: 0.2rem 0 0; font-size: 1rem; } .ds-panel p { color: var(--muted, #526067); font-size: 0.8125rem; line-height: 1.4; }"
+    },
+    {
+      "name": "Selected Item Control Dock",
+      "kind": "custom",
+      "refersTo": "button-primary",
+      "description": "The bottom-centered action surface attached to a selected room item.",
+      "html": "<div class=\"ds-control-dock\"><strong>Soft Lounge Chair</strong><button>Rotate</button><button>Find substitutes</button></div>",
+      "css": ".ds-control-dock { display: flex; align-items: center; width: max-content; max-width: calc(100vw - 2rem); border-radius: 0.75rem; padding: 0.4rem; gap: 0.4rem; color: var(--surface, #ffffff); background: var(--ink, #182126); box-shadow: 0 4px 8px rgb(24 33 38 / 22%); font-family: Inter, ui-sans-serif, system-ui, sans-serif; } .ds-control-dock strong { padding: 0 0.45rem; font-size: 0.78rem; } .ds-control-dock button { min-height: 2.25rem; border: 0; border-radius: 0.4rem; padding: 0.4rem 0.65rem; color: var(--surface, #ffffff); background: #344047; font-size: 0.75rem; font-weight: 700; } .ds-control-dock button:hover { background: #46535a; } .ds-control-dock button:focus-visible { outline: 3px solid var(--surface, #ffffff); outline-offset: 2px; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Quiet Planning Table",
+    "overview": "Wimy should feel like a well-made drafting table placed in a calm room: the plan occupies the center, measured lines establish trust, and compact instruments wait at the edge until they are needed. The interface is visually restrained but not sterile. Deep teal carries deliberate action, warm amber makes keyboard focus unmistakable, and lightly tinted surfaces separate tools from the room without turning every section into a card.\n\nDensity is purposeful. Desktop screens should remain within the viewport, with catalog and activity regions owning their scroll instead of the entire document. Floating panels are compact review surfaces, not miniature pages. The system explicitly rejects cluttered retail portals, unrelated card dashboards, whole-page scrolling for primary tools, opaque navigation, invisible agent actions, and commerce language that blurs planning items with retailer cart lines.",
+    "keyCharacteristics": [
+      "Room-first composition with tools held to the edges.",
+      "Compact controls, short labels, and visible revision or state cues.",
+      "Mostly flat surfaces separated by 1px measured lines and pale tonal shifts.",
+      "Deep teal actions used selectively against white and drafting neutrals.",
+      "Explicit focus, warning, provenance, and human-confirmation states."
+    ],
+    "rules": [
+      { "name": "The One Deliberate Accent Rule", "body": "Room Teal identifies action or selection; do not spread it across large decorative surfaces.", "section": "colors" },
+      { "name": "The State Is More Than Color Rule", "body": "Every accepted, warning, error, or WebMCP state also needs text, an icon, or a semantic label.", "section": "colors" },
+      { "name": "The Operational Copy Rule", "body": "Prefer concrete verbs and exact nouns—Inspect, Find substitutes, Replace, Revision—over promotional or ambiguous labels.", "section": "typography" },
+      { "name": "The Flat-Until-Floating Rule", "body": "Cards and rails stay flat at rest; only a surface that overlays the room earns a shadow.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do preserve the largest clear area for the room and keep supporting tools at the edges.",
+      "Do keep desktop primary workflows within the viewport; give catalog and panel contents their own bounded scrolling regions.",
+      "Do use 1px Measured Line borders and pale tonal differences before adding a shadow.",
+      "Do make human and browser-agent actions legible through revision, receipt, warning, and tool-state text.",
+      "Do keep planning items, canonical catalog identity, retailer offers, cart lines, and checkout confirmation visually and verbally distinct.",
+      "Do retain the 3px Focus Amber outline and reduced-motion behavior."
+    ],
+    "donts": [
+      "Don't make Wimy feel like a cluttered retail portal, a dashboard made of unrelated cards, or a page that requires whole-document scrolling to reach primary tools.",
+      "Don't require authentication or a database merely to create, import, export, or share a room.",
+      "Don't imply that a planning item is already a retailer cart line or invent a universal checkout across retailers.",
+      "Don't hide product provenance or use licensed, copied, scraped, or remotely fetched assets without explicit authorization.",
+      "Don't bury core room controls behind opaque navigation or let agent actions become invisible to the person reviewing the room.",
+      "Don't add decorative gradients, oversized display typography, glass effects, or accent-heavy surfaces that compete with the room."
+    ]
+  }
+}

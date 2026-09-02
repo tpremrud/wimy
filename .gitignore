@@ -11,3 +11,6 @@ test-results/
 
 # Issue-isolated linked worktrees.
 .worktrees/
+
+# Impeccable live-mode recovery journals are local execution evidence.
+.impeccable/live/sessions/
