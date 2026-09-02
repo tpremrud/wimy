@@ -4,11 +4,12 @@ import type { CustomerSessionClient } from "../commerce/customer-session-demo";
 
 type CustomerSessionPanelProps = Readonly<{
   client: CustomerSessionClient;
+  onSessionChange?: (session: CustomerSessionView) => void;
 }>;
 
 const ANONYMOUS_SESSION: CustomerSessionView = { authenticated: false };
 
-export function CustomerSessionPanel({ client }: CustomerSessionPanelProps) {
+export function CustomerSessionPanel({ client, onSessionChange }: CustomerSessionPanelProps) {
   const [session, setSession] = useState<CustomerSessionView>(ANONYMOUS_SESSION);
   const [identity, setIdentity] = useState("Demo customer");
   const [open, setOpen] = useState(false);
@@ -18,12 +19,15 @@ export function CustomerSessionPanel({ client }: CustomerSessionPanelProps) {
   useEffect(() => {
     let current = true;
     void client.getSession().then((nextSession) => {
-      if (current) setSession(nextSession);
+      if (current) {
+        setSession(nextSession);
+        onSessionChange?.(nextSession);
+      }
     });
     return () => {
       current = false;
     };
-  }, [client]);
+  }, [client, onSessionChange]);
 
   const signIn = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -35,7 +39,9 @@ export function CustomerSessionPanel({ client }: CustomerSessionPanelProps) {
     setBusy(true);
     setError(null);
     try {
-      setSession(await client.signIn(customerId));
+      const nextSession = await client.signIn(customerId);
+      setSession(nextSession);
+      onSessionChange?.(nextSession);
       setOpen(false);
     } catch {
       setError("The local session could not be created.");
@@ -48,7 +54,9 @@ export function CustomerSessionPanel({ client }: CustomerSessionPanelProps) {
     setBusy(true);
     setError(null);
     try {
-      setSession(await client.signOut());
+      const nextSession = await client.signOut();
+      setSession(nextSession);
+      onSessionChange?.(nextSession);
     } catch {
       setError("The local session could not be revoked.");
     } finally {

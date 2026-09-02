@@ -6,15 +6,29 @@ import {
   type ServerSessionTicket,
   type StoredCustomerSession,
 } from "./customer-session";
+import {
+  createCartService,
+  createInMemoryCartStore,
+  type CartReadResult,
+  type CartService,
+} from "./cart";
+import type { RetailerOfferResolver } from "./retailer-offer-adapter";
 
 export interface CustomerSessionClient {
   getSession: () => Promise<CustomerSessionView>;
   signIn: (customerId: string) => Promise<CustomerSessionView>;
   signOut: () => Promise<CustomerSessionView>;
+  cart?: CustomerCartClient;
+}
+
+export interface CustomerCartClient {
+  getCart: () => Promise<CartReadResult>;
 }
 
 type CustomerSessionDemoOptions = Readonly<{
   authority?: CustomerSessionAuthority;
+  cartService?: CartService;
+  offerResolver?: RetailerOfferResolver;
 }>;
 
 const createBrowserOpaqueValue = () => {
@@ -52,6 +66,14 @@ export const createCustomerSessionDemo = (
 ): CustomerSessionClient => {
   const authority = options.authority ?? createDefaultAuthority();
   let ticket: ServerSessionTicket | undefined;
+  const cartService = options.cartService ?? createCartService({
+    store: createInMemoryCartStore(),
+    sessionAuthority: authority,
+    offerResolver: options.offerResolver ?? {
+      resolve: async () => ({ status: "no_offers" as const, offers: [] as const }),
+      clearCache: () => undefined,
+    },
+  });
 
   return {
     getSession: () => authority.resolve(ticket?.sessionToken),
@@ -67,6 +89,9 @@ export const createCustomerSessionDemo = (
       await authority.logout(ticket?.sessionToken);
       ticket = undefined;
       return { authenticated: false };
+    },
+    cart: {
+      getCart: () => cartService.getCart({ sessionToken: ticket?.sessionToken }),
     },
   };
 };

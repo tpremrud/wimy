@@ -115,6 +115,68 @@
   font-weight: 700;
 }
 
+.cart-review-panel {
+  display: grid;
+  border: 1px solid #166534;
+  border-radius: 0.35rem;
+  padding: 0.85rem 1rem;
+  gap: 0.55rem;
+  background: #f6fbf7;
+}
+
+.cart-review-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.cart-review-heading h2 {
+  margin-top: 0.15rem;
+  font-size: 1rem;
+}
+
+.cart-review-heading > span,
+.cart-review-panel > p,
+.cart-review-lines span {
+  color: #555555;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+
+.cart-review-lines {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  gap: 0.45rem;
+  list-style: none;
+}
+
+.cart-review-lines li {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  border-top: 1px solid #c8d9cb;
+  padding-top: 0.45rem;
+}
+
+.cart-review-lines li > span:first-child,
+.cart-review-total strong {
+  color: #111111;
+  font-weight: 700;
+}
+
+.cart-review-total,
+.cart-review-disclosure {
+  margin: 0;
+}
+
+.cart-review-disclosure {
+  border-top: 1px solid #c8d9cb;
+  padding-top: 0.45rem;
+}
+
 @media (max-width: 42rem) {
   .customer-session {
     order: 4;
@@ -1157,6 +1219,12 @@ summary:focus-visible,
   flex-direction: column;
 }
 
+.cart-review-region {
+  position: relative;
+  z-index: 2;
+  display: block;
+}
+
 .share-trigger {
   order: -1;
   align-self: end;
@@ -1798,6 +1866,10 @@ body {
   z-index: 31;
 }
 
+.cart-review-region.is-open {
+  z-index: 31;
+}
+
 .share-trigger {
   min-height: 2.15rem;
   padding: 0.35rem 0.55rem;
@@ -1805,6 +1877,7 @@ body {
 }
 
 .share-panel,
+.cart-review-panel,
 .app-drawer {
   position: fixed;
   z-index: 30;
@@ -1818,6 +1891,15 @@ body {
   border-radius: 0.75rem;
   background: var(--surface);
   box-shadow: 0 4px 12px rgb(24 33 38 / 10%);
+}
+
+.cart-review-panel.is-open {
+  padding: 1rem;
+  box-shadow: 0 4px 12px rgb(24 33 38 / 10%);
+}
+
+.cart-review-panel[hidden] {
+  display: none;
 }
 
 .share-panel.is-open {
@@ -1916,6 +1998,32 @@ body {
 
 .share-panel-heading p {
   margin-top: 0.4rem;
+}
+
+.cart-review-heading-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.cart-review-heading-actions > span {
+  color: #555555;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.cart-review-heading-actions button,
+.cart-review-heading > button {
+  min-height: 2.15rem;
+  border: 1px solid var(--line);
+  border-radius: 0.3rem;
+  padding: 0.35rem 0.55rem;
+  color: var(--accent-strong);
+  background: var(--surface);
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: 700;
 }
 
 .share-panel .portable-controls {
@@ -2303,7 +2411,17 @@ body {
 }
 
 @media (max-width: 87rem) and (min-width: 42.01rem) {
+  .header-actions {
+    gap: 0.3rem;
+  }
+
+  .cart-review-trigger {
+    padding-right: 0.4rem;
+    padding-left: 0.4rem;
+  }
+
   .share-panel.is-open,
+  .cart-review-panel.is-open,
   .help-drawer,
   .activity-drawer.is-open {
     top: auto;
@@ -2409,6 +2527,7 @@ body {
   }
 
   .share-panel,
+  .cart-review-panel,
   .app-drawer {
     top: 0.75rem;
     right: 0.75rem;

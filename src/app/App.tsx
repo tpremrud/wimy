@@ -22,10 +22,12 @@ import { FavoritesPanel, PlacedPanel } from "../ui/RoomRailPanels";
 import { ShareRoomPanel } from "../ui/ShareRoomPanel";
 import { WebMcpToolList } from "../ui/WebMcpToolList";
 import { CustomerSessionPanel } from "../ui/CustomerSessionPanel";
+import { CartReviewPanel } from "../ui/CartReviewPanel";
 import {
   createCustomerSessionDemo,
   type CustomerSessionClient,
 } from "../commerce/customer-session-demo";
+import type { CustomerSessionView } from "../commerce/customer-session";
 import {
   createRoomToolDefinitions,
   registerRoomTools,
@@ -34,7 +36,7 @@ import {
 
 type ViewMode = "2d" | "3d";
 type RailTab = "add" | "placed" | "favorites";
-type ActiveSurface = "share" | "help" | "activity" | null;
+type ActiveSurface = "share" | "help" | "activity" | "cart" | null;
 
 type PreviewProps = {
   room: ReturnType<RoomStore["getState"]>["room"];
@@ -154,10 +156,12 @@ export function App({
   const [railTab, setRailTab] = useState<RailTab>("add");
   const [railCollapsed, setRailCollapsed] = useState(false);
   const [activeSurface, setActiveSurface] = useState<ActiveSurface>(null);
+  const [customerSessionView, setCustomerSessionView] = useState<CustomerSessionView>({ authenticated: false });
   const previousReceiptRef = useRef(receipts[0]);
   const shareButtonRef = useRef<HTMLButtonElement>(null);
   const helpButtonRef = useRef<HTMLButtonElement>(null);
   const activityButtonRef = useRef<HTMLButtonElement>(null);
+  const cartButtonRef = useRef<HTMLButtonElement>(null);
   const [favoriteIds, setFavoriteIds] = useState<Set<string>>(
     () => new Set(),
   );
@@ -169,8 +173,8 @@ export function App({
     [store],
   );
   const customerSession = useMemo(
-    () => providedCustomerSession ?? createCustomerSessionDemo(),
-    [providedCustomerSession],
+    () => providedCustomerSession ?? createCustomerSessionDemo({ offerResolver }),
+    [offerResolver, providedCustomerSession],
   );
   const webMcpToolDefinitions = useMemo(
     () => createRoomToolDefinitions(store, offerResolver),
@@ -292,7 +296,9 @@ export function App({
       ? shareButtonRef
       : surface === "help"
         ? helpButtonRef
-        : activityButtonRef;
+        : surface === "activity"
+          ? activityButtonRef
+          : cartButtonRef;
     opener.current?.focus();
   };
 
@@ -302,7 +308,9 @@ export function App({
       ? shareButtonRef
       : activeSurface === "help"
         ? helpButtonRef
-        : activityButtonRef;
+        : activeSurface === "activity"
+          ? activityButtonRef
+          : cartButtonRef;
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       setActiveSurface(null);
@@ -344,13 +352,21 @@ export function App({
             <button aria-pressed={viewMode === "2d"} onClick={() => setViewMode("2d")} type="button">Edit in 2D</button>
             <button aria-pressed={viewMode === "3d"} onClick={() => setViewMode("3d")} type="button">Preview in 3D</button>
           </div>
-          <CustomerSessionPanel client={customerSession} />
+          <CustomerSessionPanel client={customerSession} onSessionChange={setCustomerSessionView} />
           <ShareRoomPanel
             open={activeSurface === "share"}
             onClose={() => closeSurface("share")}
             onOpen={() => openSurface("share")}
             openerRef={shareButtonRef}
             store={store}
+          />
+          <CartReviewPanel
+            client={customerSession.cart}
+            onClose={() => closeSurface("cart")}
+            onOpen={() => openSurface("cart")}
+            openerRef={cartButtonRef}
+            open={activeSurface === "cart"}
+            session={customerSessionView}
           />
           <button
             ref={helpButtonRef}

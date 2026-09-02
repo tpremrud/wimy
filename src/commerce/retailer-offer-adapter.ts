@@ -132,6 +132,42 @@ export type RetailerOffer = RawRetailerOffer & {
   };
 };
 
+/**
+ * Produces a bounded, deterministic version for an exact offer snapshot.
+ * The version is intentionally derived from every fact the cart relies on;
+ * it is not a claim that the synthetic adapter is durable or distributed.
+ */
+export const getRetailerOfferVersion = (offer: RetailerOffer): string => {
+  const canonicalFacts = JSON.stringify([
+    offer.offerId,
+    offer.retailerId,
+    offer.sellerId,
+    offer.catalogRef.catalogId,
+    offer.catalogRef.productId,
+    offer.displayName,
+    offer.productUrl,
+    offer.price.amountMinor,
+    offer.price.currency,
+    offer.price.unit ?? null,
+    offer.price.quantity ?? null,
+    offer.availability,
+    offer.observedAt,
+    offer.expiresAt,
+    offer.provenance.sourceName,
+    offer.provenance.sourceUrl,
+    offer.provenance.sourceKind,
+    offer.provenance.adapterId,
+    offer.provenance.environment,
+    offer.identityEvidence.match,
+    offer.identityEvidence.method,
+    offer.identityEvidence.confidence ?? null,
+    offer.identityEvidence.evidence ?? [],
+    offer.identityEvidence.catalogRef.catalogId,
+    offer.identityEvidence.catalogRef.productId,
+  ]);
+  return `offer-v1:${canonicalFacts}`;
+};
+
 export type RetailerOfferResolution =
   | { status: "ok"; offers: readonly RetailerOffer[] }
   | { status: "no_offers"; offers: readonly [] }
