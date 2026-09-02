@@ -9,6 +9,7 @@ import {
 } from "react";
 import { useStore } from "zustand";
 import type { EntityId, Pose, RotationDeg } from "../room/document";
+import { findNearestLegalRotationPose } from "../room/placement";
 import {
   projectRoomToPlan,
   screenPointToRoom,
@@ -434,6 +435,11 @@ export function RoomEditor2D({
     );
     if (!item) return;
     const rotationDeg = ((item.pose.rotationDeg + 90) % 360) as RotationDeg;
+    const pose =
+      findNearestLegalRotationPose(current.room, item, rotationDeg) ?? {
+        ...item.pose,
+        rotationDeg,
+      };
     const result = current.transact({
       expectedRevision: current.revision,
       origin: "human",
@@ -443,7 +449,7 @@ export function RoomEditor2D({
           {
             type: "transform",
             itemId: item.id,
-            pose: { rotationDeg },
+            pose,
           },
         ],
       },

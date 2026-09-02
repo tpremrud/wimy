@@ -528,6 +528,7 @@ test("fails closed on malformed and stale imports and never opens snapshot URLs"
       (window as typeof window & { __wimyStaleReadStarted?: boolean })
         .__wimyStaleReadStarted === true,
   );
+  await closeShare(page);
   await portableItem.click();
   await page.getByRole("button", { name: "Rotate 90 degrees" }).click();
   await expect(revisionText(page, "Living Room")).toHaveText("Revision 4");

@@ -279,6 +279,151 @@ export const validatePlacement = (
   return { ok: true };
 };
 
+const canonicalPosition = (value: number) => {
+  const rounded = Math.round(value * 1_000) / 1_000;
+  return Object.is(rounded, -0) ? 0 : rounded;
+};
+
+const portableFloor = (value: number) => Math.floor(value * 1_000 + 1e-9) / 1_000;
+const portableCeil = (value: number) => Math.ceil(value * 1_000 - 1e-9) / 1_000;
+
+const squaredDistance = (first: Readonly<Pose>, second: Readonly<Pose>) =>
+  (first.x - second.x) ** 2 + (first.y - second.y) ** 2;
+
+/**
+ * Finds the nearest deterministic Pose for a human quarter-turn. The search
+ * keeps blocking furniture and door clearance authoritative; only rugs retain
+ * their existing overlap exception.
+ */
+export const findNearestLegalRotationPose = (
+  room: PreparedPlacementRoom,
+  item: PreparedPlacementRoom["items"][number],
+  rotationDeg: RotationDeg,
+): Pose | undefined => {
+  const footprint = orientedFootprint(item.snapshot.dimensions, rotationDeg);
+  const minX = portableCeil(footprint.width / 2);
+  const maxX = portableFloor(room.dimensions.width - footprint.width / 2);
+  const minY = portableCeil(footprint.depth / 2);
+  const maxY = portableFloor(room.dimensions.depth - footprint.depth / 2);
+  if (minX > maxX || minY > maxY) return undefined;
+
+  const clamp = (value: number, minimum: number, maximum: number) =>
+    canonicalPosition(Math.min(maximum, Math.max(minimum, value)));
+  const clampedPose: Pose = {
+    x: clamp(item.pose.x, minX, maxX),
+    y: clamp(item.pose.y, minY, maxY),
+    rotationDeg,
+  };
+  const context = preparePlacementContext(room);
+  const prepared = context as PreparedPlacementContextValue;
+  const placementItem = prepared.room.items.find(({ id }) => id === item.id);
+  if (!placementItem) return undefined;
+
+  const xCoordinates = new Set<number>([minX, maxX, clampedPose.x]);
+  const yCoordinates = new Set<number>([minY, maxY, clampedPose.y]);
+  const addCoordinate = (
+    coordinates: Set<number>,
+    value: number,
+    minimum: number,
+    maximum: number,
+  ) => {
+    for (const canonical of [portableFloor(value), portableCeil(value)]) {
+      if (
+        canonical >= minimum - PLACEMENT_EPSILON_METERS &&
+        canonical <= maximum + PLACEMENT_EPSILON_METERS
+      ) {
+        coordinates.add(canonical);
+      }
+    }
+  };
+  const blockingRectangles = [
+    ...prepared.blockingRectangles.filter(({ id }) => id !== item.id),
+    ...prepared.doorClearanceRectangles,
+  ];
+  for (const { rectangle } of blockingRectangles) {
+    addCoordinate(xCoordinates, rectangle.left - footprint.width / 2, minX, maxX);
+    addCoordinate(xCoordinates, rectangle.right + footprint.width / 2, minX, maxX);
+    addCoordinate(yCoordinates, rectangle.top - footprint.depth / 2, minY, maxY);
+    addCoordinate(yCoordinates, rectangle.bottom + footprint.depth / 2, minY, maxY);
+  }
+
+  const sortAxis = (coordinates: Set<number>, current: number) =>
+    [...coordinates].sort(
+      (first, second) =>
+        Math.abs(first - current) - Math.abs(second - current) || first - second,
+    );
+  const xs = sortAxis(xCoordinates, item.pose.x);
+  const ys = sortAxis(yCoordinates, item.pose.y);
+  type CandidateIndex = { xIndex: number; yIndex: number; pose: Pose };
+  const compareCandidates = (first: CandidateIndex, second: CandidateIndex) =>
+    squaredDistance(first.pose, item.pose) - squaredDistance(second.pose, item.pose) ||
+    Math.abs(first.pose.y - item.pose.y) - Math.abs(second.pose.y - item.pose.y) ||
+    Math.abs(first.pose.x - item.pose.x) - Math.abs(second.pose.x - item.pose.x) ||
+    first.pose.y - second.pose.y ||
+    first.pose.x - second.pose.x;
+  const heap: CandidateIndex[] = [];
+  const push = (candidate: CandidateIndex) => {
+    heap.push(candidate);
+    let index = heap.length - 1;
+    while (index > 0) {
+      const parent = Math.floor((index - 1) / 2);
+      if (compareCandidates(heap[parent]!, candidate) <= 0) break;
+      heap[index] = heap[parent]!;
+      index = parent;
+    }
+    heap[index] = candidate;
+  };
+  const pop = () => {
+    const first = heap[0];
+    const last = heap.pop();
+    if (!first || !last || heap.length === 0) return first;
+    let index = 0;
+    while (true) {
+      const left = index * 2 + 1;
+      const right = left + 1;
+      if (left >= heap.length) break;
+      const child =
+        right < heap.length && compareCandidates(heap[right]!, heap[left]!) < 0
+          ? right
+          : left;
+      if (compareCandidates(last, heap[child]!) <= 0) break;
+      heap[index] = heap[child]!;
+      index = child;
+    }
+    heap[index] = last;
+    return first;
+  };
+
+  for (let xIndex = 0; xIndex < xs.length; xIndex += 1) {
+    push({
+      xIndex,
+      yIndex: 0,
+      pose: { x: xs[xIndex]!, y: ys[0]!, rotationDeg },
+    });
+  }
+  while (heap.length > 0) {
+    const candidate = pop()!;
+    if (
+      validatePlacement(prepared.room, placementItem, candidate.pose, context).ok
+    ) {
+      return candidate.pose;
+    }
+    const nextYIndex = candidate.yIndex + 1;
+    if (nextYIndex < ys.length) {
+      push({
+        xIndex: candidate.xIndex,
+        yIndex: nextYIndex,
+        pose: {
+          x: xs[candidate.xIndex]!,
+          y: ys[nextYIndex]!,
+          rotationDeg,
+        },
+      });
+    }
+  }
+  return undefined;
+};
+
 export const findLayoutWarnings = (
   room: WimyRoomV1,
   isCatalogProductAvailable: CatalogAvailability,

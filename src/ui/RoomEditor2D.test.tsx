@@ -1123,6 +1123,51 @@ describe("RoomEditor2D drag", () => {
 });
 
 describe("RoomEditor2D selected-item actions", () => {
+  it("rotates and scoots to the nearest legal pose instead of rejecting at a wall", () => {
+    const selected = makePlacedItem({
+      pose: { x: 0.4, y: 1, rotationDeg: 90 },
+      snapshot: {
+        ...makePlacedItem().snapshot,
+        dimensions: { width: 1.2, depth: 0.6, height: 0.8 },
+      },
+    });
+    const plant = makePlacedItem({
+      id: "item_plant_1",
+      pose: { x: 1.1, y: 1, rotationDeg: 0 },
+      snapshot: {
+        ...makePlacedItem().snapshot,
+        name: "Test Plant",
+        category: "plant",
+        dimensions: { width: 0.4, depth: 0.6, height: 1 },
+      },
+    });
+    const store = renderEditor(makeRoom({ items: [selected, plant] }));
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Select Test Chair" }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Rotate 90 degrees" }),
+    );
+
+    expect(store.getState()).toMatchObject({
+      revision: 2,
+      room: {
+        items: [
+          { id: "item_chair_1", pose: { x: 0.6, y: 0.4, rotationDeg: 180 } },
+          { id: "item_plant_1", pose: { x: 1.1, y: 1, rotationDeg: 0 } },
+        ],
+      },
+      receipts: [
+        expect.objectContaining({
+          origin: "human",
+          status: "accepted",
+          affectedItemIds: ["item_chair_1"],
+        }),
+      ],
+    });
+  });
+
   it("rotates and removes through one transaction each outside the SVG", () => {
     const store = renderEditor(
       makeRoom({

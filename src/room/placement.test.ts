@@ -5,11 +5,43 @@ import {
   makeRoom,
 } from "../test/room-fixtures";
 import {
+  findNearestLegalRotationPose,
   findLayoutWarnings,
   orientedFootprint,
   preparePlacementContext,
   validatePlacement,
 } from "./placement";
+
+describe("findNearestLegalRotationPose", () => {
+  it("finds a millimeter-precise legal boundary instead of relying on a coarse grid", () => {
+    const item = makePlacedItem({
+      id: "item_turning",
+      pose: { x: 0.5, y: 0.5, rotationDeg: 0 },
+      snapshot: {
+        ...makePlacedItem().snapshot,
+        dimensions: { width: 0.2, depth: 0.611, height: 0.8 },
+      },
+    });
+    const blocker = makePlacedItem({
+      id: "item_blocker",
+      pose: { x: 0.806, y: 0.5, rotationDeg: 0 },
+      snapshot: {
+        ...makePlacedItem().snapshot,
+        dimensions: { width: 0.388, depth: 1, height: 0.8 },
+      },
+    });
+    const room = makeRoom({
+      dimensions: { width: 1, depth: 1, height: 2.7 },
+      items: [item, blocker],
+    });
+
+    expect(findNearestLegalRotationPose(room, item, 90)).toEqual({
+      x: 0.306,
+      y: 0.5,
+      rotationDeg: 90,
+    });
+  });
+});
 
 describe("orientedFootprint", () => {
   it("swaps width and depth for a quarter turn", () => {

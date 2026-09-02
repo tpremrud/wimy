@@ -5,6 +5,7 @@ import {
 } from "../room/catalog";
 import type { EntityId, RotationDeg } from "../room/document";
 import { projectFurnitureOrientation } from "../room/orientation";
+import { findNearestLegalRotationPose } from "../room/placement";
 import type { RoomStore } from "../room/store";
 
 type PlacedPanelProps = {
@@ -19,12 +20,17 @@ export function PlacedPanel({ store }: PlacedPanelProps) {
     const item = current.room.items.find(({ id }) => id === itemId);
     if (!item) return;
     const rotationDeg = ((item.pose.rotationDeg + 90) % 360) as RotationDeg;
+    const pose =
+      findNearestLegalRotationPose(current.room, item, rotationDeg) ?? {
+        ...item.pose,
+        rotationDeg,
+      };
     current.transact({
       expectedRevision: current.revision,
       origin: "human",
       change: {
         type: "edit",
-        operations: [{ type: "transform", itemId, pose: { rotationDeg } }],
+        operations: [{ type: "transform", itemId, pose }],
       },
     });
   };

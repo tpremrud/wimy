@@ -757,8 +757,9 @@ describe("App", () => {
     const room = getTemplate("living-room");
     const plant = room.items.find(({ id }) => id === "item_living_plant");
     if (!plant) throw new Error("expected the living-room plant");
-    plant.pose.x = 4.575;
-    plant.snapshot.dimensions.depth = 0.8;
+    plant.pose = { x: 2.4, y: 2.1, rotationDeg: 90 };
+    plant.snapshot.dimensions.width = 4.1;
+    plant.snapshot.dimensions.depth = 4.7;
     const store = createRoomStore(room, TEST_TRANSACTION_DEPENDENCIES);
 
     render(<App store={store} />);
