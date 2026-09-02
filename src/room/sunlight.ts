@@ -40,6 +40,23 @@ export type SunDirection = {
   lightPosition: [number, number, number];
 };
 
+export type SunBeamOpening = {
+  id: string;
+  kind: "door" | "window";
+  wall: "north" | "east" | "south" | "west";
+  position: [number, number, number];
+  size: [number, number, number];
+};
+
+export type SunBeam = {
+  openingId: string;
+  position: [number, number, number];
+  direction: [number, number, number];
+  aperture: [number, number];
+  length: number;
+  strength: number;
+};
+
 type LocalDateTime = {
   year: number;
   month: number;
@@ -361,9 +378,86 @@ export const deriveSunDirection = (
     isAboveHorizon: true,
     toward,
     lightPosition: [
-      -toward[0] * LIGHT_DISTANCE,
-      -toward[1] * LIGHT_DISTANCE,
-      -toward[2] * LIGHT_DISTANCE,
+      toward[0] * LIGHT_DISTANCE,
+      toward[1] * LIGHT_DISTANCE,
+      toward[2] * LIGHT_DISTANCE,
     ],
   };
+};
+
+const WALL_OUTWARD_NORMALS: Record<SunBeamOpening["wall"], [number, number, number]> = {
+  north: [0, 0, -1],
+  east: [1, 0, 0],
+  south: [0, 0, 1],
+  west: [-1, 0, 0],
+};
+
+const firstPositiveBoundaryDistance = (
+  start: [number, number, number],
+  direction: [number, number, number],
+  dimensions: [number, number, number],
+) => {
+  const distances: number[] = [];
+  for (let axis = 0; axis < 3; axis += 1) {
+    const delta = direction[axis]!;
+    if (Math.abs(delta) < 1e-9) continue;
+    const boundary = delta > 0 ? dimensions[axis]! : 0;
+    const distance = (boundary - start[axis]!) / delta;
+    if (distance > 0.05) distances.push(distance);
+  }
+  return distances.length > 0 ? Math.min(...distances) : 0;
+};
+
+export const deriveSunBeams = (
+  dimensions: [number, number, number],
+  openings: readonly SunBeamOpening[],
+  sun: SunDirection,
+): SunBeam[] => {
+  if (!sun.isAboveHorizon) return [];
+  const incoming: [number, number, number] = [
+    -sun.toward[0],
+    -sun.toward[1],
+    -sun.toward[2],
+  ];
+
+  return openings.flatMap((opening): SunBeam[] => {
+    if (opening.kind !== "window") return [];
+    const outward = WALL_OUTWARD_NORMALS[opening.wall];
+    const facing = outward.reduce(
+      (sum, component, axis) => sum + component * sun.toward[axis]!,
+      0,
+    );
+    if (facing <= 0.08) return [];
+
+    const start: [number, number, number] = [
+      opening.position[0] - outward[0] * 0.04,
+      opening.position[1] - outward[1] * 0.04,
+      opening.position[2] - outward[2] * 0.04,
+    ];
+    const boundaryDistance = firstPositiveBoundaryDistance(
+      start,
+      incoming,
+      dimensions,
+    );
+    const length = Math.max(boundaryDistance - 0.03, 0);
+    if (length <= 0.08) return [];
+
+    return [{
+      openingId: opening.id,
+      position: [
+        start[0] + incoming[0] * length / 2,
+        start[1] + incoming[1] * length / 2,
+        start[2] + incoming[2] * length / 2,
+      ],
+      direction: incoming,
+      aperture: [
+        opening.wall === "north" || opening.wall === "south"
+          ? opening.size[0]
+          : opening.size[2],
+        opening.size[1],
+      ],
+      length,
+      strength: Math.min(Math.max(facing * (0.35 + sun.toward[1] * 0.65), 0), 1),
+    }];
+  });
 };

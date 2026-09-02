@@ -11,6 +11,26 @@ const corners = ([width, height, depth]: readonly [number, number, number]) =>
   );
 
 describe("deriveRoomPreviewCamera", () => {
+  it("uses most of a wide preview for a typical room without turning it into a miniature", () => {
+    const dimensions = [4.8, 2.7, 4.2] as const;
+    const aspect = 880 / 337;
+    const frame = deriveRoomPreviewCamera(dimensions, aspect);
+    const camera = new PerspectiveCamera(ROOM_PREVIEW_CAMERA_FOV, aspect, frame.near, frame.far);
+    camera.position.set(...frame.position);
+    camera.lookAt(...frame.target);
+    camera.updateProjectionMatrix();
+    camera.updateMatrixWorld();
+
+    const largestProjectedCoordinate = Math.max(
+      ...corners(dimensions).flatMap((corner) => {
+        const projected = corner.project(camera);
+        return [Math.abs(projected.x), Math.abs(projected.y)];
+      }),
+    );
+
+    expect(largestProjectedCoordinate).toBeGreaterThanOrEqual(0.78);
+  });
+
   it.each([
     [[1, 2, 1], 0.4],
     [[1, 10, 1], 1],

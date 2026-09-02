@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { expect, test, type Page } from "@playwright/test";
+import { deriveRoomPreviewCamera } from "../../src/ui/room-preview-camera";
 
 const revisionText = (page: Page, roomName: string) =>
   page
@@ -637,26 +638,13 @@ test("reframes the actual 3D camera after importing materially larger room dimen
     far: Number(element.dataset.wimyCameraFar),
     position: element.dataset.wimyCameraPosition?.split(",").map(Number),
   }));
-  const radius = Math.hypot(30, 10, 30) / 2;
-  const verticalHalfAngle = (42 * Math.PI) / 360;
-  const horizontalHalfAngle = Math.atan(
-    Math.tan(verticalHalfAngle) * camera.aspect,
-  );
-  const distance =
-    (radius / Math.sin(Math.min(verticalHalfAngle, horizontalHalfAngle))) *
-    1.18;
-  const directionLength = Math.hypot(1, 0.8, 1);
-  const expectedPosition = [
-    15 + distance / directionLength,
-    5 + (distance * 0.8) / directionLength,
-    15 + distance / directionLength,
-  ];
+  const expected = deriveRoomPreviewCamera([30, 10, 30], camera.aspect);
 
   expect(camera.position).toHaveLength(3);
   camera.position?.forEach((value, index) =>
-    expect(value).toBeCloseTo(expectedPosition[index] ?? 0, 1),
+    expect(value).toBeCloseTo(expected.position[index] ?? 0, 1),
   );
-  expect(camera.far).toBeCloseTo(distance + radius * 2, 1);
+  expect(camera.far).toBeCloseTo(expected.far, 1);
 });
 
 test("accepts real user orbit input while the 3D preview remains visible", async ({

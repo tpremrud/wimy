@@ -803,6 +803,64 @@ section > p {
   font-weight: 700;
 }
 
+.sun-study-timeline {
+  display: grid;
+  border-top: 1px solid #c8c2b6;
+  padding-top: 0.65rem;
+  gap: 0.35rem;
+}
+
+.sun-study-timeline-heading,
+.sun-study-timeline-ticks {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.sun-study-timeline-heading {
+  color: #2e393d;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.sun-study-timeline-heading output {
+  color: var(--accent-strong);
+  font-variant-numeric: tabular-nums;
+}
+
+.sun-study-timeline input[type="range"] {
+  width: 100%;
+  accent-color: var(--accent);
+  cursor: ew-resize;
+}
+
+.sun-study-timeline-ticks {
+  color: #777777;
+  font-size: 0.62rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.sun-study-timeline button {
+  justify-self: start;
+  min-height: 2.15rem;
+  border: 1px solid var(--line);
+  border-radius: 0.3rem;
+  padding: 0.35rem 0.55rem;
+  color: var(--accent-strong);
+  background: var(--surface);
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.sun-study-timeline button:hover,
+.sun-study-timeline button[aria-pressed="true"] {
+  border-color: var(--accent);
+  color: var(--surface);
+  background: var(--accent);
+}
+
 .sun-study-status {
   margin: 0;
   color: #76501c;

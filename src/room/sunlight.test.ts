@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   calculateSolarPositionAtUtc,
+  deriveSunBeams,
   deriveSunDirection,
   validateSunStudyScenario,
   type SunStudyScenario,
@@ -93,6 +94,9 @@ describe("deriveSunDirection", () => {
     expect(direction.toward[0]).toBeCloseTo(0, 9);
     expect(direction.toward[1]).toBeCloseTo(Math.SQRT1_2, 9);
     expect(direction.toward[2]).toBeCloseTo(-Math.SQRT1_2, 9);
+    expect(direction.lightPosition[0]).toBeCloseTo(0, 9);
+    expect(direction.lightPosition[1]).toBeCloseTo(Math.SQRT1_2 * 10, 9);
+    expect(direction.lightPosition[2]).toBeCloseTo(-Math.SQRT1_2 * 10, 9);
   });
 
   it("disables direct light at or below the horizon", () => {
@@ -107,5 +111,50 @@ describe("deriveSunDirection", () => {
         0,
       ),
     ).toMatchObject({ isAboveHorizon: false, toward: [0, 0, 0] });
+  });
+});
+
+describe("deriveSunBeams", () => {
+  const westWindow = {
+    id: "window-west",
+    kind: "window" as const,
+    wall: "west" as const,
+    position: [0.05, 1.5, 1.5] as [number, number, number],
+    size: [0.02, 1, 1.2] as [number, number, number],
+  };
+
+  it("projects a bounded beam inward from a sun-facing window", () => {
+    const beams = deriveSunBeams(
+      [4, 2.7, 3],
+      [westWindow],
+      {
+        isAboveHorizon: true,
+        toward: [-Math.SQRT1_2, Math.SQRT1_2, 0],
+        lightPosition: [-7.071, 7.071, 0],
+      },
+    );
+
+    expect(beams).toHaveLength(1);
+    expect(beams[0]).toMatchObject({
+      openingId: "window-west",
+      direction: [Math.SQRT1_2, -Math.SQRT1_2, -0],
+      aperture: [1.2, 1],
+    });
+    expect(beams[0]?.length).toBeGreaterThan(1);
+    expect(beams[0]?.length).toBeLessThan(3);
+  });
+
+  it("does not invent a beam for a window facing away from the sun", () => {
+    expect(
+      deriveSunBeams(
+        [4, 2.7, 3],
+        [westWindow],
+        {
+          isAboveHorizon: true,
+          toward: [Math.SQRT1_2, Math.SQRT1_2, 0],
+          lightPosition: [7.071, 7.071, 0],
+        },
+      ),
+    ).toEqual([]);
   });
 });

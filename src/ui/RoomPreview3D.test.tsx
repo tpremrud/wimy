@@ -779,6 +779,7 @@ describe("RoomPreview3D", () => {
     expect(screen.getByLabelText("Latitude" )).toHaveValue(40.71);
     expect(screen.getByLabelText("Longitude" )).toHaveValue(-74.01);
     expect(screen.getByLabelText("Plan North true bearing" )).toHaveValue(0);
+    expect(screen.getByRole("slider", { name: "Local time of day" })).toHaveValue("720");
     expect(screen.getByText("Approximate directional direct-sun geometry")).toBeVisible();
     expect(screen.getByText(/does not estimate daylight intensity, lux, or energy performance/i)).toBeVisible();
     expect(screen.getByRole("status", { name: "Sun study status" })).toHaveTextContent(
@@ -800,6 +801,29 @@ describe("RoomPreview3D", () => {
     expect(status.textContent).not.toBe(initialStatus);
     expect(status).toHaveTextContent("Plan North 90°");
     expect(room).toEqual(before);
+  });
+
+  it("scrubs the sun study through the day with one time slider", () => {
+    const room = makeRoom({ openings: [makeOpening({ kind: "window" })] });
+    render(<RoomPreview3D room={room} webglSupportOverride={false} />);
+
+    const slider = screen.getByRole("slider", { name: "Local time of day" });
+    fireEvent.change(slider, { target: { value: "480" } });
+
+    expect(slider).toHaveValue("480");
+    expect(screen.getByText(/Local 2026-09-01 08:00/u)).toBeVisible();
+  });
+
+  it("enables bounded shadows by default when the renderer supports them", () => {
+    render(
+      <RoomPreview3D
+        room={makeRoom({ openings: [makeOpening({ kind: "window" })] })}
+        shadowSupportOverride
+        webglSupportOverride
+      />,
+    );
+
+    expect(screen.getByLabelText("Enable bounded shadows")).toBeChecked();
   });
 
   it("fails closed for invalid location input and does not invent a sun", () => {

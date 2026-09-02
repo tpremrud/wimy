@@ -10,7 +10,15 @@ import {
   useLayoutEffect,
   type ReactNode,
 } from "react";
-import { Object3D, type DirectionalLight } from "three";
+import {
+  AdditiveBlending,
+  Color,
+  DoubleSide,
+  Object3D,
+  Quaternion,
+  Vector3,
+  type DirectionalLight,
+} from "three";
 import {
   projectRoomToScene,
   type SceneItem,
@@ -34,9 +42,11 @@ import {
 } from "./room-preview-camera";
 import {
   calculateSolarPositionAtUtc,
+  deriveSunBeams,
   deriveSunDirection,
   validateSunStudyScenario,
   type SolarPosition,
+  type SunBeam,
   type SunDirection,
   type SunStudyScenario,
 } from "../room/sunlight";
@@ -87,18 +97,32 @@ const toSunStudyScenario = (
 
 const fixed = (value: number, digits = 1) => value.toFixed(digits);
 
+const minutesFromLocalTime = (localTime: string) => {
+  const [hour = "0", minute = "0"] = localTime.split(":");
+  return Number(hour) * 60 + Number(minute);
+};
+
+const localTimeFromMinutes = (minutes: number) => {
+  const normalized = ((Math.round(minutes) % 1440) + 1440) % 1440;
+  return `${String(Math.floor(normalized / 60)).padStart(2, "0")}:${String(normalized % 60).padStart(2, "0")}`;
+};
+
 const SunStudyControls = ({
   input,
   onChange,
   shadowsEnabled,
   shadowsSupported,
   onShadowsChange,
+  dayAnimating,
+  onDayAnimationChange,
 }: {
   input: SunStudyInputState;
   onChange: (field: keyof SunStudyInputState, value: string) => void;
   shadowsEnabled: boolean;
   shadowsSupported: boolean;
   onShadowsChange: (enabled: boolean) => void;
+  dayAnimating: boolean;
+  onDayAnimationChange: (playing: boolean) => void;
 }) => (
   <fieldset className="sun-study-controls" aria-label="Sun study controls">
     <legend>Sun study (experimental)</legend>
@@ -140,14 +164,6 @@ const SunStudyControls = ({
         />
       </label>
       <label>
-        Local time
-        <input
-          onChange={(event) => onChange("localTime", event.target.value)}
-          type="time"
-          value={input.localTime}
-        />
-      </label>
-      <label>
         IANA timezone
         <input
           list="sun-study-timezones"
@@ -176,9 +192,41 @@ const SunStudyControls = ({
         />
       </label>
     </div>
+    <div className="sun-study-timeline">
+      <div className="sun-study-timeline-heading">
+        <span>Time of day</span>
+        <output htmlFor="sun-study-time-slider">{input.localTime}</output>
+      </div>
+      <input
+        aria-label="Local time of day"
+        id="sun-study-time-slider"
+        max={1435}
+        min={0}
+        onChange={(event) =>
+          onChange("localTime", localTimeFromMinutes(Number(event.target.value)))
+        }
+        step={5}
+        type="range"
+        value={minutesFromLocalTime(input.localTime)}
+      />
+      <div aria-hidden="true" className="sun-study-timeline-ticks">
+        <span>00:00</span>
+        <span>06:00</span>
+        <span>12:00</span>
+        <span>18:00</span>
+        <span>23:55</span>
+      </div>
+      <button
+        aria-pressed={dayAnimating}
+        onClick={() => onDayAnimationChange(!dayAnimating)}
+        type="button"
+      >
+        {dayAnimating ? "Pause daylight" : "Play daylight"}
+      </button>
+    </div>
     <label className="sun-study-shadow-toggle">
       <input
-        checked={shadowsEnabled}
+        checked={shadowsEnabled && shadowsSupported}
         disabled={!shadowsSupported}
         onChange={(event) => onShadowsChange(event.target.checked)}
         type="checkbox"
@@ -626,11 +674,42 @@ const CameraFramer = ({
   );
 };
 
+const SunBeamVolume = ({ beam }: { beam: SunBeam }) => {
+  const quaternion = useMemo(
+    () => new Quaternion().setFromUnitVectors(
+      new Vector3(0, 0, 1),
+      new Vector3(...beam.direction).normalize(),
+    ),
+    [beam.direction],
+  );
+
+  return (
+    <mesh
+      position={beam.position}
+      quaternion={quaternion}
+      renderOrder={2}
+    >
+      <boxGeometry args={[beam.aperture[0] * 0.94, beam.aperture[1] * 0.94, beam.length]} />
+      <meshBasicMaterial
+        blending={AdditiveBlending}
+        color="#ffb65c"
+        depthWrite={false}
+        opacity={0.1 + beam.strength * 0.2}
+        side={DoubleSide}
+        toneMapped={false}
+        transparent
+      />
+    </mesh>
+  );
+};
+
 const PreviewScene = ({
   scene,
+  sunBeams,
   sunStudy,
 }: {
   scene: SceneProjection;
+  sunBeams: readonly SunBeam[];
   sunStudy: SunStudyRenderState | null;
 }) => {
   const [width, height, depth] = scene.dimensions;
@@ -650,6 +729,13 @@ const PreviewScene = ({
     if (sunLight.current) sunLight.current.target = sunTarget;
   }, [depth, sunTarget, width]);
   const showSun = sunStudy?.direction.isAboveHorizon === true;
+  const daylight = showSun && sunStudy
+    ? Math.min(Math.max(Math.sin(sunStudy.position.apparentAltitudeDeg * Math.PI / 180), 0.08), 1)
+    : 0;
+  const skyColor = useMemo(
+    () => new Color("#243544").lerp(new Color("#edf2f1"), daylight).getStyle(),
+    [daylight],
+  );
   return (
     <Canvas
       key={scene.dimensions.join(":")}
@@ -669,28 +755,35 @@ const PreviewScene = ({
         renderKey={renderKey}
         width={width}
       />
-      <ambientLight intensity={0.7} />
+      <color args={[skyColor]} attach="background" />
+      <ambientLight intensity={0.12 + daylight * 0.22} />
+      <hemisphereLight args={["#fff7e8", "#51606a", 0.18 + daylight * 0.28]} />
       {showSun ? (
         <>
           <primitive object={sunTarget} />
           <directionalLight
             castShadow={sunStudy.shadowsEnabled}
-            intensity={1.1}
+            color="#ffe2a8"
+            intensity={0.65 + daylight * 1.75}
             position={[
               width / 2 + sunStudy.direction.lightPosition[0],
               height + sunStudy.direction.lightPosition[1],
               depth / 2 + sunStudy.direction.lightPosition[2],
             ]}
             ref={sunLight}
-            shadow-bias={-0.0005}
+            shadow-bias={-0.00015}
             shadow-camera-bottom={-span}
             shadow-camera-far={span * 4}
             shadow-camera-left={-span}
             shadow-camera-right={span}
             shadow-camera-top={span}
-            shadow-mapSize={[1024, 1024]}
+            shadow-mapSize={[2048, 2048]}
+            shadow-normalBias={0.02}
             target={sunTarget}
           />
+          {sunBeams.map((beam) => (
+            <SunBeamVolume beam={beam} key={beam.openingId} />
+          ))}
         </>
       ) : null}
       <Grid
@@ -713,7 +806,13 @@ const PreviewScene = ({
       {scene.walls.map((wall) => (
         <mesh castShadow key={`${wall.wall}-${wall.position.join("-")}`} position={wall.position} receiveShadow>
           <boxGeometry args={wall.size} />
-          <meshStandardMaterial color="#d9e0e3" opacity={0.38} transparent />
+          <meshStandardMaterial
+            color="#e1e6e4"
+            depthWrite={wall.wall === "north" || wall.wall === "west"}
+            opacity={wall.wall === "north" || wall.wall === "west" ? 0.96 : 0.13}
+            roughness={0.92}
+            transparent
+          />
         </mesh>
       ))}
       {scene.openings.map((opening) => (
@@ -721,8 +820,8 @@ const PreviewScene = ({
           <mesh position={opening.position}>
             <boxGeometry args={opening.size} />
             <meshStandardMaterial
-              color={opening.kind === "door" ? "#b45309" : "#0369a1"}
-              opacity={opening.kind === "door" ? 0.9 : 0.55}
+              color={opening.kind === "door" ? "#9b5528" : "#9bc8d8"}
+              opacity={opening.kind === "door" ? 0.82 : 0.2}
               transparent
             />
           </mesh>
@@ -756,7 +855,18 @@ export function RoomPreview3D({
   );
   const shadowSupport = shadowSupportOverride ?? webglSupported;
   const [sunStudyInput, setSunStudyInput] = useState(DEFAULT_SUN_STUDY_INPUT);
-  const [shadowsEnabled, setShadowsEnabled] = useState(false);
+  const [shadowsEnabled, setShadowsEnabled] = useState(true);
+  const [dayAnimating, setDayAnimating] = useState(false);
+  useEffect(() => {
+    if (!dayAnimating) return undefined;
+    const timer = window.setInterval(() => {
+      setSunStudyInput((current) => ({
+        ...current,
+        localTime: localTimeFromMinutes(minutesFromLocalTime(current.localTime) + 10),
+      }));
+    }, 120);
+    return () => window.clearInterval(timer);
+  }, [dayAnimating]);
   const sunStudyValidation = useMemo(
     () => validateSunStudyScenario(toSunStudyScenario(sunStudyInput)),
     [sunStudyInput],
@@ -799,6 +909,12 @@ export function RoomPreview3D({
             ? "Shadows are off"
             : "Shadows are unavailable",
       ].join(" — ");
+  const sunBeams = useMemo(
+    () => sunStudy
+      ? deriveSunBeams(scene.dimensions, scene.openings, sunStudy.direction)
+      : [],
+    [scene, sunStudy],
+  );
 
   return (
     <section className="room-preview" aria-label={`3D preview of ${room.name}`}>
@@ -808,7 +924,9 @@ export function RoomPreview3D({
       </div>
       <p className="room-preview-summary">{summary}</p>
       <SunStudyControls
+        dayAnimating={dayAnimating}
         input={sunStudyInput}
+        onDayAnimationChange={setDayAnimating}
         onChange={updateSunStudyInput}
         onShadowsChange={setShadowsEnabled}
         shadowsEnabled={shadowsEnabled}
@@ -857,9 +975,10 @@ export function RoomPreview3D({
           <div
             className="room-preview-canvas"
             data-wimy-shadows={sunStudy?.shadowsEnabled ? "on" : "off"}
+            data-wimy-sunbeams={sunBeams.length}
             data-wimy-sun-study={sunStudy ? "available" : "unavailable"}
           >
-          <PreviewScene scene={scene} sunStudy={sunStudy} />
+          <PreviewScene scene={scene} sunBeams={sunBeams} sunStudy={sunStudy} />
           </div>
         </PreviewErrorBoundary>
       )}

@@ -31,13 +31,28 @@ test("keeps the directional sun study local and deterministic", async ({
   await expect(
     preview.getByRole("group", { name: "Sun study controls" }),
   ).toBeVisible();
+  const timeSlider = preview.getByRole("slider", { name: "Local time of day" });
+  await expect(timeSlider).toHaveValue("720");
+  const canvas = preview.locator(".room-preview-canvas");
+  await expect(canvas).toHaveAttribute("data-wimy-shadows", "on");
+  await expect.poll(
+    async () => Number(await canvas.getAttribute("data-wimy-sunbeams")),
+  ).toBeGreaterThan(0);
+  await canvas.screenshot({ path: testInfo.outputPath("sunlight-canvas-initial.png") });
   const status = preview.getByRole("status", { name: "Sun study status" });
   const initialStatus = await status.textContent();
   await preview.getByLabel("Plan North true bearing").fill("90");
   await expect(status).not.toHaveText(initialStatus ?? "");
   await expect(status).toContainText("Plan North 90°");
-  const canvas = preview.locator(".room-preview-canvas");
-  await expect(canvas).toHaveAttribute("data-wimy-shadows", "off");
+  await timeSlider.fill("480");
+  await expect(preview).toContainText("Local 2026-09-01 08:00");
+  await preview.getByRole("button", { name: "Play daylight" }).click();
+  await expect.poll(() => timeSlider.inputValue()).not.toBe("480");
+  await preview.getByRole("button", { name: "Pause daylight" }).click();
+  await expect(canvas).toHaveAttribute("data-wimy-shadows", "on");
+  await expect.poll(
+    async () => Number(await canvas.getAttribute("data-wimy-sunbeams")),
+  ).toBeGreaterThan(0);
   await expect(preview).toContainText("Approximate directional direct-sun geometry");
   await expect(preview).toContainText("does not estimate daylight intensity, lux, or energy performance");
 
@@ -57,12 +72,12 @@ test("keeps the directional sun study local and deterministic", async ({
   expect(await page.evaluate(() => Object.keys(localStorage))).toEqual([]);
   expect(externalRequests).toEqual([]);
 
-  const shadowsOffFrameMs = await measureTwoAnimationFrames(page);
   const shadowToggle = preview.getByLabel("Enable bounded shadows");
   if (await shadowToggle.isEnabled()) {
-    await shadowToggle.check();
-    await expect(canvas).toHaveAttribute("data-wimy-shadows", "on");
     const shadowsOnFrameMs = await measureTwoAnimationFrames(page);
+    await shadowToggle.uncheck();
+    await expect(canvas).toHaveAttribute("data-wimy-shadows", "off");
+    const shadowsOffFrameMs = await measureTwoAnimationFrames(page);
     console.log(
       JSON.stringify({ shadowsOffFrameMs, shadowsOnFrameMs }),
     );
@@ -70,14 +85,15 @@ test("keeps the directional sun study local and deterministic", async ({
       body: JSON.stringify({ shadowsOffFrameMs, shadowsOnFrameMs }),
       contentType: "application/json",
     });
-    await shadowToggle.uncheck();
+    await shadowToggle.check();
   } else {
     await testInfo.attach("sunlight-performance.json", {
-      body: JSON.stringify({ shadowsOffFrameMs, shadowsOnFrameMs: null }),
+      body: JSON.stringify({ shadowsOffFrameMs: null, shadowsOnFrameMs: null }),
       contentType: "application/json",
     });
   }
 
+  await canvas.screenshot({ path: testInfo.outputPath("sunlight-canvas.png") });
   await preview.screenshot({ path: testInfo.outputPath("sunlight-preview.png") });
 });
 

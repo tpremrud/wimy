@@ -6,7 +6,7 @@ export type CameraFrame = {
 };
 
 const CAMERA_FOV_DEGREES = 42;
-const FIT_MARGIN = 1.18;
+const FIT_MARGIN = 1.11;
 
 export const ROOM_PREVIEW_CAMERA_FOV = CAMERA_FOV_DEGREES;
 
