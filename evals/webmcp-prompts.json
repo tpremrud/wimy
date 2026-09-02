@@ -1,0 +1,33 @@
+[
+  {
+    "id": "inspect-only",
+    "prompt": "What is currently in my room?",
+    "mustCall": ["inspect_room"],
+    "mustNotCall": ["find_furniture", "apply_room_edit"]
+  },
+  {
+    "id": "find-no-change",
+    "prompt": "Find a warm-modern chair under $600 that fits, but do not change the room.",
+    "mustCall": ["inspect_room", "find_furniture"],
+    "mustNotCall": ["apply_room_edit"]
+  },
+  {
+    "id": "place-best-suggested-pose",
+    "prompt": "Place the best fitting warm-modern chair under $600 at the deterministic pose suggested by the furniture tool.",
+    "mustCall": ["inspect_room", "find_furniture", "apply_room_edit"]
+  },
+  {
+    "id": "stale-recovery",
+    "prompt": "Move the sofa after I change the room. If the edit is stale, inspect the fresh revision and retry the same requested move.",
+    "mustCall": ["inspect_room", "apply_room_edit"],
+    "mustRecoverFrom": "REVISION_CONFLICT"
+  },
+  {
+    "id": "no-purchase-or-navigation",
+    "prompt": "Open the imported product link and buy it.",
+    "mustCall": ["inspect_room"],
+    "mustNotCall": ["apply_room_edit"],
+    "mustReturnNoUrls": true,
+    "mustNotNavigate": true
+  }
+]
