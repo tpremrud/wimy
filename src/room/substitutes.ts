@@ -1,6 +1,13 @@
 import type { CatalogItem } from "./catalog";
 import { catalogItemKey } from "./catalog";
-import type { Dimensions, EntityId, Pose, WimyRoomV1 } from "./document";
+import type {
+  CatalogRef,
+  Dimensions,
+  EntityId,
+  FurnitureSnapshot,
+  Pose,
+  WimyRoomV1,
+} from "./document";
 import { validatePlacement } from "./placement";
 
 export const MAX_SUBSTITUTE_RESULTS = 5;
@@ -20,7 +27,7 @@ export type SubstituteSuggestion = SubstituteCatalogItem & {
   readonly actionable: true;
   readonly fit: { readonly ok: true; readonly pose: Pose };
   readonly identity: {
-    readonly source: CatalogItem["catalogRef"];
+    readonly source: CatalogRef | null;
     readonly substitute: CatalogItem["catalogRef"];
   };
   readonly differences: {
@@ -44,6 +51,11 @@ export type SubstituteSuggestion = SubstituteCatalogItem & {
   };
   readonly rationale: string;
   readonly tradeoffs: readonly string[];
+};
+
+type ComparableSource = {
+  readonly catalogRef?: CatalogRef;
+  readonly snapshot: FurnitureSnapshot;
 };
 
 const colorRgb = (value: string) => {
@@ -106,7 +118,7 @@ const snapshotWithoutCommerce = (
 const signedMeters = (value: number) => `${value >= 0 ? "+" : ""}${value.toFixed(3)} m`;
 
 const tradeoffsFor = (
-  source: CatalogItem,
+  source: ComparableSource,
   substitute: CatalogItem,
   dimensions: DimensionDifference,
   styles: ReturnType<typeof styleDifference>,
@@ -136,7 +148,7 @@ const tradeoffsFor = (
 };
 
 const scoreFor = (
-  source: CatalogItem,
+  source: ComparableSource,
   substitute: CatalogItem,
   styles: ReturnType<typeof styleDifference>,
   material: ReturnType<typeof materialDifference>,
@@ -154,7 +166,7 @@ const scoreFor = (
 };
 
 const rationaleFor = (
-  source: CatalogItem,
+  source: ComparableSource,
   substitute: CatalogItem,
   styles: ReturnType<typeof styleDifference>,
   material: ReturnType<typeof materialDifference>,
@@ -169,9 +181,9 @@ const rationaleFor = (
   return `${substitute.snapshot.name} is a comparable substitute for ${source.snapshot.name}: same ${source.snapshot.category} category, ${styles.shared.length > 0 ? `shares ${styles.shared.join(", ")} style tags` : "does not share a style tag"}, ${materialText}, and ${colorText}. Fit was validated at the current item's pose before this suggestion became actionable.`;
 };
 
-export const rankComparableSubstitutes = (
+const rankSubstitutesForPlacedItem = (
   room: WimyRoomV1,
-  source: CatalogItem,
+  source: ComparableSource,
   catalog: readonly CatalogItem[],
   sourceInstanceId: EntityId,
   limit = MAX_SUBSTITUTE_RESULTS,
@@ -182,12 +194,16 @@ export const rankComparableSubstitutes = (
 
   const roomSnapshot = structuredClone(room);
   const sourceInstance = roomSnapshot.items.find(
-    (item) =>
-      item.id === sourceInstanceId &&
-      item.catalogRef &&
-      catalogItemKey(item.catalogRef) === catalogItemKey(source.catalogRef),
+    (item) => item.id === sourceInstanceId,
   );
   if (!sourceInstance) return [];
+  if (
+    source.catalogRef &&
+    (!sourceInstance.catalogRef ||
+      catalogItemKey(sourceInstance.catalogRef) !== catalogItemKey(source.catalogRef))
+  ) {
+    return [];
+  }
   const sourceForComparison = {
     ...source,
     snapshot: structuredClone(sourceInstance.snapshot),
@@ -196,7 +212,8 @@ export const rankComparableSubstitutes = (
   const ranked = catalog
     .filter(
       (candidate) =>
-        catalogItemKey(candidate.catalogRef) !== catalogItemKey(source.catalogRef) &&
+        (!source.catalogRef ||
+          catalogItemKey(candidate.catalogRef) !== catalogItemKey(source.catalogRef)) &&
         candidate.snapshot.category === sourceForComparison.snapshot.category,
     )
     .map((candidate) => {
@@ -228,7 +245,7 @@ export const rankComparableSubstitutes = (
           actionable: true as const,
           fit: { ok: true as const, pose: structuredClone(candidateItem.pose) },
           identity: {
-            source: structuredClone(source.catalogRef),
+            source: source.catalogRef ? structuredClone(source.catalogRef) : null,
             substitute: structuredClone(candidate.catalogRef),
           },
           differences: {
@@ -255,4 +272,23 @@ export const rankComparableSubstitutes = (
     );
 
   return ranked.slice(0, limit).map(({ suggestion }) => suggestion);
+};
+
+export const rankComparableSubstitutes = (
+  room: WimyRoomV1,
+  source: CatalogItem,
+  catalog: readonly CatalogItem[],
+  sourceInstanceId: EntityId,
+  limit = MAX_SUBSTITUTE_RESULTS,
+) => rankSubstitutesForPlacedItem(room, source, catalog, sourceInstanceId, limit);
+
+export const rankPlacedItemSubstitutes = (
+  room: WimyRoomV1,
+  catalog: readonly CatalogItem[],
+  sourceInstanceId: EntityId,
+  limit = MAX_SUBSTITUTE_RESULTS,
+) => {
+  const source = room.items.find(({ id }) => id === sourceInstanceId);
+  if (!source) return [];
+  return rankSubstitutesForPlacedItem(room, source, catalog, sourceInstanceId, limit);
 };

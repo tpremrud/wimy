@@ -59,6 +59,50 @@ describe("PlacedPanel orientation", () => {
 });
 
 describe("PlacedPanel substitutes", () => {
+  it("finds local substitutes for a placed template item without a catalog reference", () => {
+    const store = createRoomStore(
+      makeRoom({
+        items: [
+          makePlacedItem({
+            snapshot: {
+              ...makePlacedItem().snapshot,
+              category: "chair",
+              name: "Template Lounge Chair",
+              dimensions: { width: 0.7, depth: 0.7, height: 0.85 },
+              styleTags: ["warm-modern"],
+            },
+            pose: { x: 1, y: 1, rotationDeg: 0 },
+          }),
+        ],
+      }),
+      { createItemId: () => "generated-item", resolveProduct: resolveCatalogProduct },
+    );
+
+    render(<PlacedPanel store={store} />);
+
+    const findButton = screen.getByRole("button", {
+      name: "Find substitutes for Template Lounge Chair",
+    });
+    expect(findButton).toBeEnabled();
+    fireEvent.click(findButton);
+
+    const replaceButton = screen.getAllByRole("button", {
+      name: /^Replace Template Lounge Chair with /u,
+    })[0]!;
+    expect(
+      screen.getByRole("region", { name: "Substitutes for Template Lounge Chair" }),
+    ).toContainElement(replaceButton);
+    expect(store.getState().revision).toBe(1);
+
+    fireEvent.click(replaceButton);
+
+    expect(store.getState()).toMatchObject({
+      revision: 2,
+      room: { items: [{ catalogRef: expect.any(Object) }] },
+      receipts: [expect.objectContaining({ status: "accepted" })],
+    });
+  });
+
   it("shows fit-ranked substitute rationale and requires an explicit human replacement", () => {
     const source = DEMO_CATALOG.find(
       ({ catalogRef }) => catalogRef.productId === "ember-nest-chair",

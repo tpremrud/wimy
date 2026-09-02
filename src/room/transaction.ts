@@ -35,7 +35,7 @@ export type RoomOperation =
       type: "replace";
       itemId: EntityId;
       productId: string;
-      sourceCatalogRef: CatalogRef;
+      sourceCatalogRef?: CatalogRef;
       confirmedByHuman: true;
     };
 
@@ -367,11 +367,11 @@ export function applyRoomTransaction(
       if (!item) {
         throw new Error(`Unknown placed item ${operation.itemId}`);
       }
-      if (
-        !item.catalogRef ||
-        item.catalogRef.catalogId !== operation.sourceCatalogRef.catalogId ||
-        item.catalogRef.productId !== operation.sourceCatalogRef.productId
-      ) {
+      const sourceIdentityMatches = operation.sourceCatalogRef
+        ? item.catalogRef?.catalogId === operation.sourceCatalogRef.catalogId &&
+        item.catalogRef?.productId === operation.sourceCatalogRef.productId
+        : item.catalogRef === undefined;
+      if (!sourceIdentityMatches) {
         return rejectTransaction(
           state,
           request,

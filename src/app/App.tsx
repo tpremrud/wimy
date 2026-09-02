@@ -422,6 +422,7 @@ export function App({
             onOpen={() => openSurface("cart")}
             openerRef={cartButtonRef}
             open={activeSurface === "cart"}
+            room={room}
             session={customerSessionView}
           />
           <button

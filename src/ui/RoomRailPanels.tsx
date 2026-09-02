@@ -4,7 +4,7 @@ import {
   catalogItemKey,
   type CatalogItem,
 } from "../room/catalog";
-import { rankComparableSubstitutes, type SubstituteSuggestion } from "../room/substitutes";
+import { rankPlacedItemSubstitutes, type SubstituteSuggestion } from "../room/substitutes";
 import type { EntityId, RotationDeg, WimyRoomV1 } from "../room/document";
 import { projectFurnitureOrientation } from "../room/orientation";
 import { findNearestLegalRotationPose } from "../room/placement";
@@ -24,30 +24,8 @@ export function PlacedPanel({ store }: PlacedPanelProps) {
   } | null>(null);
 
   const findSubstitutes = (item: (typeof room.items)[number]) => {
-    if (!item.catalogRef) {
-      setSubstituteState({
-        owner: store,
-        itemId: item.id,
-        suggestions: [],
-        message: "Substitutes require a placed item with a canonical catalog identity.",
-      });
-      return;
-    }
-    const source = store.readCatalog().find(
-      (candidate) => catalogItemKey(candidate.catalogRef) === catalogItemKey(item.catalogRef!),
-    );
-    if (!source) {
-      setSubstituteState({
-        owner: store,
-        itemId: item.id,
-        suggestions: [],
-        message: "The placed item's catalog identity is not available in the local catalog.",
-      });
-      return;
-    }
-    const suggestions = rankComparableSubstitutes(
+    const suggestions = rankPlacedItemSubstitutes(
       structuredClone(store.getState().room) as WimyRoomV1,
-      source,
       store.readCatalog(),
       item.id,
     );
@@ -60,7 +38,7 @@ export function PlacedPanel({ store }: PlacedPanelProps) {
   ) => {
     const current = store.getState();
     const currentItem = current.room.items.find(({ id }) => id === item.id);
-    if (!currentItem?.catalogRef) return;
+    if (!currentItem) return;
     const result = current.transact({
       expectedRevision: current.revision,
       origin: "human",
@@ -71,7 +49,9 @@ export function PlacedPanel({ store }: PlacedPanelProps) {
             type: "replace",
             itemId: item.id,
             productId: suggestion.catalogRef.productId,
-            sourceCatalogRef: structuredClone(currentItem.catalogRef),
+            ...(currentItem.catalogRef
+              ? { sourceCatalogRef: structuredClone(currentItem.catalogRef) }
+              : {}),
             confirmedByHuman: true,
           },
         ],
@@ -164,7 +144,6 @@ export function PlacedPanel({ store }: PlacedPanelProps) {
                   type="button"
                   aria-label={`Find substitutes for ${item.snapshot.name}`}
                   onClick={() => findSubstitutes(item)}
-                  disabled={!item.catalogRef}
                 >
                   Find substitutes
                 </button>

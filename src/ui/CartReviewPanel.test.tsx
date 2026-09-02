@@ -1,12 +1,17 @@
 import { createRef } from "react";
-import { render, screen, waitFor, within } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CustomerSessionView } from "../commerce/customer-session";
 import type { CartReadResult } from "../commerce/cart";
 import type { CustomerCartClient } from "../commerce/customer-session-demo";
 import type { CustomerCheckoutClient } from "../commerce/customer-session-demo";
 import type { CheckoutReview } from "../commerce/checkout";
+import { makePlacedItem, makeRoom } from "../test/room-fixtures";
 import { CartReviewPanel } from "./CartReviewPanel";
+
+const room = makeRoom({ items: [makePlacedItem()] });
+
+afterEach(cleanup);
 
 const emptyCartResult: CartReadResult = {
   ok: true,
@@ -75,17 +80,18 @@ const checkoutReview: CheckoutReview = {
 
 describe("CartReviewPanel", () => {
   it("keeps cart review available as a separate anonymous-safe surface", () => {
-    render(<CartReviewPanel open onClose={vi.fn()} onOpen={vi.fn()} openerRef={createRef<HTMLButtonElement>()} session={{ authenticated: false }} />);
+    render(<CartReviewPanel open onClose={vi.fn()} onOpen={vi.fn()} openerRef={createRef<HTMLButtonElement>()} room={room} session={{ authenticated: false }} />);
 
     expect(screen.getByRole("heading", { name: "Cart review" })).toBeInTheDocument();
     expect(screen.getByText(/Sign in locally/iu)).toBeInTheDocument();
   });
 
-  it("reads an authenticated cart without reading room state", async () => {
+  it("reads an authenticated retailer cart while mirroring room planning items", async () => {
     const client: CustomerCartClient = { getCart: vi.fn(async () => emptyCartResult) };
-    render(<CartReviewPanel client={client} open onClose={vi.fn()} onOpen={vi.fn()} openerRef={createRef<HTMLButtonElement>()} session={signedIn} />);
+    render(<CartReviewPanel client={client} open onClose={vi.fn()} onOpen={vi.fn()} openerRef={createRef<HTMLButtonElement>()} room={room} session={signedIn} />);
 
-    await waitFor(() => expect(screen.getByText("Your cart is empty.")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("No retailer cart lines yet.")).toBeInTheDocument());
+    expect(screen.getByRole("region", { name: "Items in this room" })).toHaveTextContent("Test Chair");
     expect(client.getCart).toHaveBeenCalledTimes(1);
     expect(screen.getByText(/Checkout, payment, and purchase are not available/iu)).toBeInTheDocument();
   });
@@ -142,7 +148,7 @@ describe("CartReviewPanel", () => {
         },
       })),
     };
-    render(<CartReviewPanel client={client} open onClose={vi.fn()} onOpen={vi.fn()} openerRef={createRef<HTMLButtonElement>()} session={signedIn} />);
+    render(<CartReviewPanel client={client} open onClose={vi.fn()} onOpen={vi.fn()} openerRef={createRef<HTMLButtonElement>()} room={room} session={signedIn} />);
 
     await waitFor(() => expect(screen.getByText("Aurora Chair")).toBeInTheDocument());
     expect(screen.getByText("2 × 12000 USD = 24000 USD")).toBeInTheDocument();
@@ -163,9 +169,9 @@ describe("CartReviewPanel", () => {
         return () => undefined;
       },
     };
-    render(<CartReviewPanel client={client} open onClose={vi.fn()} onOpen={vi.fn()} openerRef={createRef<HTMLButtonElement>()} session={signedIn} />);
+    render(<CartReviewPanel client={client} open onClose={vi.fn()} onOpen={vi.fn()} openerRef={createRef<HTMLButtonElement>()} room={room} session={signedIn} />);
 
-    await waitFor(() => expect(screen.getByText("Your cart is empty.")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("No retailer cart lines yet.")).toBeInTheDocument());
     result = {
       ...emptyCartResult,
       cart: {
@@ -286,7 +292,7 @@ describe("CartReviewPanel", () => {
         },
       })),
     };
-    render(<CartReviewPanel checkout={checkout} client={client} open onClose={vi.fn()} onOpen={vi.fn()} openerRef={createRef<HTMLButtonElement>()} session={signedIn} />);
+    render(<CartReviewPanel checkout={checkout} client={client} open onClose={vi.fn()} onOpen={vi.fn()} openerRef={createRef<HTMLButtonElement>()} room={room} session={signedIn} />);
 
     await waitFor(() => expect(screen.getByRole("button", { name: "Review sandbox checkout" })).toBeInTheDocument());
     await screen.getByRole("button", { name: "Review sandbox checkout" }).click();

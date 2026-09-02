@@ -639,7 +639,7 @@ const projectSubstituteSuggestion = (suggestion: SubstituteSuggestion) => ({
   actionable: suggestion.actionable,
   fit: { ok: suggestion.fit.ok, pose: { ...suggestion.fit.pose } },
   identity: {
-    source: { ...suggestion.identity.source },
+    source: suggestion.identity.source ? { ...suggestion.identity.source } : null,
     substitute: { ...suggestion.identity.substitute },
   },
   differences: {

@@ -6,12 +6,14 @@ import type {
   CustomerCheckoutClient,
 } from "../commerce/customer-session-demo";
 import type { CheckoutReceipt, CheckoutReview, CheckoutSession } from "../commerce/checkout";
+import type { RoomStoreState } from "../room/store";
 
 type CartReviewPanelProps = Readonly<{
   open: boolean;
   onClose: () => void;
   onOpen: () => void;
   openerRef: RefObject<HTMLButtonElement | null>;
+  room: RoomStoreState["room"];
   session: CustomerSessionView;
   client?: CustomerCartClient;
   checkout?: CustomerCheckoutClient;
@@ -22,6 +24,7 @@ export function CartReviewPanel({
   onClose,
   onOpen,
   openerRef,
+  room,
   session,
   client,
   checkout,
@@ -128,7 +131,7 @@ export function CartReviewPanel({
         aria-controls="cart-review-panel"
         onClick={() => (open ? onClose() : onOpen())}
       >
-        Cart
+        Cart · {room.items.length} planned
       </button>
       <section
         id="cart-review-panel"
@@ -143,21 +146,25 @@ export function CartReviewPanel({
         {!session.authenticated ? (
           <>
             <CartReviewHeading onClose={onClose} />
+            <RoomItemsInCart room={room} />
             <p>Sign in locally to review a customer-owned cart. Room editing and file sharing remain available anonymously.</p>
           </>
         ) : !client ? (
           <>
             <CartReviewHeading onClose={onClose} />
+            <RoomItemsInCart room={room} />
             <p role="status">Cart review is not configured for this session client.</p>
           </>
         ) : !state || state.key !== sessionKey ? (
           <>
             <CartReviewHeading onClose={onClose} />
+            <RoomItemsInCart room={room} />
             <p role="status">Loading cart…</p>
           </>
         ) : !state.result.ok ? (
           <>
             <CartReviewHeading onClose={onClose} />
+            <RoomItemsInCart room={room} />
             <p role="alert">Cart review is unavailable: {state.result.error.message}.</p>
           </>
         ) : (
@@ -172,13 +179,14 @@ export function CartReviewPanel({
                 <button type="button" aria-label="Close cart review" onClick={onClose} autoFocus>Close</button>
               </div>
             </div>
+            <RoomItemsInCart room={room} />
             {state.receipt.operation !== "read" && state.receipt.target ? (
               <p role="status" aria-label="Latest cart mutation">
                 Latest mutation: {state.receipt.origin} · {state.receipt.operation} · {state.receipt.status} · Revision {state.receipt.revision} · {state.receipt.target.displayName} · {state.receipt.target.retailer} · {state.receipt.target.offerId}
               </p>
             ) : null}
             {state.result.cart.lines.length === 0 ? (
-              <p>Your cart is empty.</p>
+              <p>No retailer cart lines yet.</p>
             ) : (
               <>
                 <ul className="cart-review-lines">
@@ -213,6 +221,36 @@ export function CartReviewPanel({
         )}
       </section>
     </div>
+  );
+}
+
+function RoomItemsInCart({ room }: Readonly<{ room: RoomStoreState["room"] }>) {
+  return (
+    <section className="cart-room-items" aria-label="Items in this room">
+      <div className="cart-room-items-heading">
+        <h3>Items in this room</h3>
+        <span>{room.items.length} placed</span>
+      </div>
+      <p>
+        This planning list mirrors the room automatically. Retailer cart lines remain explicit and require an exact eligible offer.
+      </p>
+      {room.items.length === 0 ? (
+        <p>No items are placed in this room.</p>
+      ) : (
+        <ul>
+          {room.items.map((item) => (
+            <li key={item.id}>
+              <strong>{item.snapshot.name}</strong>
+              <span>
+                {item.catalogRef
+                  ? "Catalog identity available; exact retailer offer still required."
+                  : "Planning item only; canonical catalog identity is unavailable."}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }
 

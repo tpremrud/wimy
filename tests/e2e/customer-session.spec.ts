@@ -7,6 +7,15 @@ test("keeps anonymous room and file access while local session UX is optional", 
   await expect(session).toContainText("Anonymous mode");
   await expect(page.getByRole("heading", { name: "Living Room" })).toBeVisible();
 
+  await page.getByRole("tab", { name: "Placed" }).click();
+  const placedPanel = page.getByRole("tabpanel", { name: "Placed" });
+  await placedPanel
+    .getByRole("button", { name: "Find substitutes for Linen Apartment Sofa" })
+    .click();
+  await expect(
+    placedPanel.getByRole("region", { name: "Substitutes for Linen Apartment Sofa" }),
+  ).toContainText("is a comparable substitute for Linen Apartment Sofa");
+
   await page.getByRole("button", { name: "Sign in (optional)" }).click();
   await expect(page.getByRole("textbox", { name: "Demo customer identity" })).toBeVisible();
   await page.getByRole("textbox", { name: "Demo customer identity" }).fill("Demo browser customer");
@@ -14,7 +23,14 @@ test("keeps anonymous room and file access while local session UX is optional", 
   await expect(session).toContainText("Signed in locally as Demo browser customer");
   await expect(page.locator(".cart-review-panel")).toBeHidden();
   await page.getByRole("button", { name: "Review cart" }).click();
-  await expect(page.getByRole("dialog", { name: "Cart review" })).toContainText("Your cart is empty.");
+  const cartReview = page.getByRole("dialog", { name: "Cart review" });
+  await expect(cartReview.getByRole("region", { name: "Items in this room" })).toContainText(
+    "Linen Apartment Sofa",
+  );
+  await expect(cartReview.getByRole("region", { name: "Items in this room" })).toContainText(
+    "Tall Leaf Plant",
+  );
+  await expect(cartReview).toContainText("No retailer cart lines yet.");
 
   await page.getByRole("button", { name: "Sign out" }).click();
   await expect(session).toContainText("Anonymous mode");

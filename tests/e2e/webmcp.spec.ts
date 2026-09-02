@@ -588,7 +588,7 @@ test("exposes authenticated cart tools, keeps room state separate, and unregiste
       },
     },
   });
-  await expect(cartDialog).toContainText("Your cart is empty.");
+  await expect(cartDialog).toContainText("No retailer cart lines yet.");
   await expect(cartDialog).toContainText(
     "Latest mutation: webmcp · remove · accepted · Revision 4 · Aurora Browser Chair · Northstar Furnishings",
   );
