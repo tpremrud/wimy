@@ -4,6 +4,7 @@ import {
   Suspense,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type ComponentType,
@@ -18,7 +19,9 @@ import { ReceiptPanel } from "../ui/ReceiptPanel";
 import { RoomEditor2D } from "../ui/RoomEditor2D";
 import { FavoritesPanel, PlacedPanel } from "../ui/RoomRailPanels";
 import { ShareRoomPanel } from "../ui/ShareRoomPanel";
+import { WebMcpToolList } from "../ui/WebMcpToolList";
 import {
+  createRoomToolDefinitions,
   registerRoomTools,
   type WebMcpRegistrationStatus,
 } from "../webmcp/room-tools";
@@ -153,6 +156,10 @@ export function App({
   const Preview3D = previewLoadFailure
     ? RejectedRoomPreview3D
     : RoomPreview3D;
+  const webMcpToolDefinitions = useMemo(
+    () => createRoomToolDefinitions(store),
+    [store],
+  );
   const registrationGenerationRef = useRef<{
     controller: AbortController;
     owner: RoomStore;
@@ -317,9 +324,6 @@ export function App({
           <span>Revision {revision}</span>
         </div>
         <div className="header-actions">
-          <p role="status" aria-label="WebMCP status" aria-live="polite">
-            {registrationStatusText(visibleRegistration)}
-          </p>
           <div aria-label="Room view" className="room-view-controls" role="group">
             <button aria-pressed={viewMode === "2d"} onClick={() => setViewMode("2d")} type="button">Edit in 2D</button>
             <button aria-pressed={viewMode === "3d"} onClick={() => setViewMode("3d")} type="button">Preview in 3D</button>
@@ -464,6 +468,15 @@ export function App({
           <ReceiptPanel receipts={receipts} />
         </aside>
       </div>
+      <WebMcpToolList
+        definitions={webMcpToolDefinitions}
+        registration={
+          visibleRegistration.phase === "pending"
+            ? { phase: "pending" }
+            : { phase: "resolved", status: visibleRegistration.status }
+        }
+        statusText={registrationStatusText(visibleRegistration)}
+      />
     </main>
   );
 }

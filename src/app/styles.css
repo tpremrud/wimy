@@ -560,6 +560,156 @@ summary:focus-visible,
   outline-offset: 2px;
 }
 
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.webmcp-tool-list {
+  position: fixed;
+  right: 0.9rem;
+  bottom: 0.9rem;
+  z-index: 50;
+  display: flex;
+  align-items: flex-end;
+  flex-direction: column;
+  gap: 0.55rem;
+  pointer-events: none;
+}
+
+.webmcp-tool-list-trigger,
+.webmcp-tool-list-panel {
+  pointer-events: auto;
+}
+
+.webmcp-tool-list-trigger {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.25rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0.45rem 0.75rem;
+  gap: 0.45rem;
+  color: var(--ink);
+  background: var(--surface);
+  box-shadow: 0 0.2rem 0.5rem rgb(20 42 38 / 12%);
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.webmcp-tool-list-trigger:hover,
+.webmcp-tool-list-trigger[aria-expanded="true"] {
+  border-color: var(--accent);
+  background: #f2f7f5;
+}
+
+.webmcp-badge-state,
+.webmcp-tool-state {
+  flex: 0 0 auto;
+  width: 0.45rem;
+  height: 0.45rem;
+  border: 1px solid #88928e;
+  border-radius: 50%;
+  background: transparent;
+}
+
+.webmcp-tool-list-trigger[data-state="ready"] .webmcp-badge-state,
+.webmcp-tool-state.is-registered {
+  border-color: #23754d;
+  background: #23754d;
+}
+
+.webmcp-tool-list-trigger[data-state="degraded"] .webmcp-badge-state {
+  border-color: #a85a22;
+  background: #a85a22;
+}
+
+.webmcp-tool-list-panel {
+  width: min(26rem, calc(100vw - 1.8rem));
+  border: 1px solid var(--line);
+  border-radius: 0.65rem;
+  padding: 0.85rem;
+  color: var(--ink);
+  background: var(--surface);
+  box-shadow: 0 0.25rem 0.5rem rgb(20 42 38 / 15%);
+}
+
+.webmcp-tool-list-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.webmcp-tool-list-heading strong {
+  font-size: 0.95rem;
+}
+
+.webmcp-tool-list-heading span,
+.webmcp-tool-list-kicker,
+.webmcp-tool-list-legend,
+.webmcp-tool-state-label,
+.webmcp-tool-write {
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+
+.webmcp-tool-list-kicker {
+  margin: 0.75rem 0 0.3rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.webmcp-tool-list-panel ul {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  gap: 0.15rem;
+  list-style: none;
+}
+
+.webmcp-tool-list-panel li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  min-height: 1.8rem;
+  column-gap: 0.45rem;
+}
+
+.webmcp-tool-list-panel code {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 0.75rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.webmcp-tool-state-label {
+  white-space: nowrap;
+}
+
+.webmcp-tool-write {
+  grid-column: 2 / 4;
+  margin-top: -0.2rem;
+  padding-bottom: 0.2rem;
+}
+
+.webmcp-tool-list-legend {
+  margin: 0.6rem 0 0;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--line);
+  line-height: 1.45;
+}
+
 .app-shell {
   width: min(calc(100% - 2rem), 110rem);
   min-height: 100dvh;

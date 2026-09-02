@@ -83,6 +83,20 @@ test("inspect, find, and apply visibly collaborate while stale edits recover", a
   ).toContainText(
     "WebMCP ready — 3 tools registered",
   );
+  const toolsTrigger = page.getByRole("button", {
+    name: "WebMCP tools, 3 registered",
+  });
+  await expect(toolsTrigger).toHaveText("WebMCP · 3 tools");
+  await toolsTrigger.click();
+  const toolsPanel = page.getByRole("dialog", { name: "WebMCP tools" });
+  await expect(toolsPanel).toContainText("3 of 3 registered");
+  await expect(toolsPanel.getByText("inspect_room")).toBeVisible();
+  await expect(toolsPanel.getByText("find_furniture")).toBeVisible();
+  await expect(toolsPanel.getByText("apply_room_edit")).toBeVisible();
+  await expect(toolsPanel.getByText("Can change room")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(toolsPanel).toBeHidden();
+  await expect(toolsTrigger).toBeFocused();
   const discovered = await page.evaluate(() => {
     const harness = (
       window as typeof window & {

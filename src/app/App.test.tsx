@@ -806,10 +806,14 @@ describe("App", () => {
         "WebMCP unavailable — human room access remains available",
       ),
     );
+    expect(
+      screen.getByRole("button", { name: "WebMCP tools unavailable" }),
+    ).toHaveTextContent("WebMCP unavailable");
     expect(screen.getByRole("heading", { name: "Living Room" })).toBeVisible();
   });
 
   it("reports ready once and aborts registrations without re-registering on room edits", async () => {
+    const user = userEvent.setup();
     const modelContext = new AppModelContext();
     setModelContext(modelContext);
     const store = createRoomStore(
@@ -829,6 +833,15 @@ describe("App", () => {
       "find_furniture",
       "apply_room_edit",
     ]);
+    const toolsTrigger = screen.getByRole("button", {
+      name: "WebMCP tools, 3 registered",
+    });
+    expect(toolsTrigger).toHaveTextContent("WebMCP · 3 tools");
+    await user.click(toolsTrigger);
+    const toolsPanel = screen.getByRole("dialog", { name: "WebMCP tools" });
+    expect(toolsPanel).toHaveTextContent("inspect_room");
+    expect(toolsPanel).toHaveTextContent("find_furniture");
+    expect(toolsPanel).toHaveTextContent("apply_room_edit");
 
     act(() => {
       store.getState().transact({
@@ -914,6 +927,9 @@ describe("App", () => {
       "apply_room_edit: client refused apply",
     );
     expect(getWebMcpStatus()).not.toHaveTextContent("WebMCP ready");
+    expect(
+      screen.getByRole("button", { name: "WebMCP tools, 2 registered" }),
+    ).toHaveTextContent("WebMCP · 2/3 tools");
   });
 
   it("renders pending immediately while replacement-store tools register", async () => {
