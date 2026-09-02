@@ -16,8 +16,6 @@ Built for [The WebMCP Challenge](https://webmcp.devpost.com/). The repository is
 - Three imperative WebMCP tools that share the human editor's committed state: `inspect_room`, `find_furniture`, and `apply_room_edit`.
 - A versioned `.wimy` file for no-account export/import. The file is UTF-8 JSON, intentionally human-readable and strict; a custom Markdown-like room language is not part of v1.
 
-The judge-facing flow is documented in [the timed demo script](docs/demo-script.md), and public-safe submission copy is in [the submission draft](docs/submission-draft.md).
-
 ## One canonical room
 
 The portable source of truth is a `wimy-room` schema version `1` document:
@@ -84,12 +82,4 @@ The current release is deliberately a focused vertical slice. It does not includ
 - MVP2 — sharing: user-created templates, shareable links/files, import previews, thumbnails, compatibility migrations, and optional local persistence.
 - MVP3 — commerce and community: authorized retailer adapters with provenance/freshness indicators, user catalog imports, community discovery, collaboration, and explicit purchase handoff. This requires separate licensing, security, moderation, storage, and consent designs.
 
-## Project documents
-
-- [MVP design](docs/superpowers/specs/2026-08-29-wimy-mvp-design.md) — approved product, domain, trust, and release boundary.
-- [Implementation plan](docs/superpowers/plans/2026-08-29-wimy-mvp.md) — issue-by-issue execution contract.
-- [Domain language](CONTEXT.md) — canonical room and furniture vocabulary.
-- [Timed demo script](docs/demo-script.md) — operator sequence and evidence gates.
-- [Submission draft](docs/submission-draft.md) — Devpost copy with owner/unverified fields called out.
-
-Private research and execution evidence live under the ignored `.docs/` directory and are intentionally excluded from the public repository.
+Canonical room and furniture vocabulary is documented in [CONTEXT.md](CONTEXT.md). Private planning, research, decisions, and execution evidence live under the ignored `docs/` and `.docs/` directories and are intentionally excluded from the public repository.
