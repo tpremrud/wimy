@@ -76,15 +76,24 @@ export type Cart = Readonly<{
 }>;
 
 export type CartOperation = "read" | "add" | "remove" | "change_quantity";
+export type CartOrigin = "human" | "webmcp";
+
+export type CartReceiptTarget = Readonly<{
+  offerId: string;
+  displayName: string;
+  retailer: string;
+}>;
 
 export type CartAuditEvent = Readonly<{
   type: "commerce.cart.receipt";
+  origin: CartOrigin;
   operation: CartOperation;
   status: "accepted" | "rejected";
   revision: number;
   lineCount: number;
   totalQuantity: number;
   errorCode?: CartErrorCode;
+  target?: CartReceiptTarget;
 }>;
 
 export interface CartAuditEventSink {
@@ -94,6 +103,7 @@ export interface CartAuditEventSink {
 export type CartReceipt = CartAuditEvent;
 
 export type CartErrorCode =
+  | "CANCELLED"
   | "ANONYMOUS_SESSION"
   | "SESSION_EXPIRED"
   | "SESSION_REVOKED"
@@ -142,11 +152,15 @@ export type CartErrorView = Readonly<{
 }>;
 
 export type CartReadRequest = Readonly<{
+  origin?: CartOrigin;
+  signal?: AbortSignal;
   sessionToken?: string;
   cartId?: string;
 }>;
 
 export type CartAddRequest = Readonly<{
+  origin?: CartOrigin;
+  signal?: AbortSignal;
   sessionToken?: string;
   csrfSecret?: string;
   cartId?: string;
@@ -162,6 +176,8 @@ export type CartAddRequest = Readonly<{
 }>;
 
 export type CartRemoveRequest = Readonly<{
+  origin?: CartOrigin;
+  signal?: AbortSignal;
   sessionToken?: string;
   csrfSecret?: string;
   cartId?: string;
@@ -171,6 +187,8 @@ export type CartRemoveRequest = Readonly<{
 }>;
 
 export type CartChangeQuantityRequest = Readonly<{
+  origin?: CartOrigin;
+  signal?: AbortSignal;
   sessionToken?: string;
   csrfSecret?: string;
   cartId?: string;
@@ -207,6 +225,8 @@ type CartMutationPlan = Readonly<{
 }>;
 
 type CartStoreTransactionRequest = Readonly<{
+  origin: CartOrigin;
+  signal?: AbortSignal;
   customerId: string;
   cartId: string;
   expectedRevision: number;
@@ -254,6 +274,20 @@ const hasControlCharacters = (value: string) =>
   });
 
 const clone = <T>(value: T): T => structuredClone(value);
+
+const RECEIPT_URL_PATTERN =
+  /\b[a-z][a-z0-9+.-]*:(?:\/\/)?[^\s<>]+|\/\/[^\s<>]+/giu;
+
+const receiptText = (value: string) => {
+  const projected = value
+    .replace(/<[^>]*(?:>|$)/gu, " ")
+    .replace(/[<>]/gu, " ")
+    .replace(RECEIPT_URL_PATTERN, " ")
+    .replace(/\s+/gu, " ")
+    .trim()
+    .slice(0, 160);
+  return projected || "[untrusted text omitted]";
+};
 
 const assertBoundedText = (value: unknown, label: string, maximum: number) => {
   if (
@@ -349,6 +383,7 @@ const assertCartRequest = (request: {
 
 const emptyReceipt = (operation: CartOperation, errorCode?: CartErrorCode): CartReceipt => ({
   type: "commerce.cart.receipt",
+  origin: "human",
   operation,
   status: "rejected",
   revision: 0,
@@ -361,16 +396,39 @@ const receiptFor = (
   operation: CartOperation,
   status: CartReceipt["status"],
   cart: Cart,
+  origin: CartOrigin = "human",
   errorCode?: CartErrorCode,
+  target?: CartReceiptTarget,
 ): CartReceipt => ({
   type: "commerce.cart.receipt",
+  origin,
   operation,
   status,
   revision: cart.revision,
   lineCount: cart.lines.length,
   totalQuantity: cart.lines.reduce((total, line) => total + line.quantity, 0),
   ...(errorCode ? { errorCode } : {}),
+  ...(target ? { target } : {}),
 });
+
+const receiptTargetForOffer = (
+  offer: Pick<RetailerOfferSnapshot, "offerId" | "displayName" | "provenance">,
+): CartReceiptTarget => ({
+  offerId: offer.offerId,
+  displayName: receiptText(offer.displayName),
+  retailer: receiptText(offer.provenance.sourceName),
+});
+
+const receiptTargetForRequest = (
+  cart: Cart,
+  operation: Exclude<CartOperation, "read">,
+  request: CartAddRequest | CartRemoveRequest | CartChangeQuantityRequest,
+) => {
+  const line = operation === "add"
+    ? cart.lines.find(({ offer }) => offer.offerId === (request as CartAddRequest).offer.offerId)
+    : cart.lines.find(({ lineId }) => lineId === (request as CartRemoveRequest).lineId);
+  return line ? receiptTargetForOffer(line.offer) : undefined;
+};
 
 const errorView = (error: CartError): CartErrorView => ({
   code: error.code,
@@ -472,6 +530,13 @@ export const createInMemoryCartStore = (
       const current = carts.get(request.cartId);
       if (!current) return { status: "not_found" };
       if (current.customerId !== request.customerId) return { status: "owner_mismatch", cart: clone(current) };
+      if (request.signal?.aborted) {
+        return {
+          status: "rejected",
+          cart: clone(current),
+          error: new CartError("CANCELLED", "Cart operation was cancelled"),
+        };
+      }
 
       const idempotencyKey = `${request.customerId}:${request.idempotencyKey}`;
       const prior = idempotency.get(idempotencyKey);
@@ -485,6 +550,13 @@ export const createInMemoryCartStore = (
 
       try {
         const plan = await apply(clone(current));
+        if (request.signal?.aborted) {
+          return {
+            status: "rejected",
+            cart: clone(current),
+            error: new CartError("CANCELLED", "Cart operation was cancelled"),
+          };
+        }
         if (plan.cart.customerId !== current.customerId || plan.cart.revision !== current.revision + 1) {
           throw new Error("Cart transaction returned an invalid next state");
         }
@@ -550,13 +622,22 @@ const findExactOffer = async (
       { catalogRef: clone(requested.catalogRef) },
       { signal },
     );
+    if (signal?.aborted) {
+      throw new CartError("CANCELLED", "Cart operation was cancelled");
+    }
   } catch {
+    if (signal?.aborted) {
+      throw new CartError("CANCELLED", "Cart operation was cancelled");
+    }
     throw new CartError(
       "OFFER_RESOLUTION_FAILED",
       "The exact offer could not be revalidated",
     );
   }
   if (resolution.status !== "ok") {
+    if (resolution.status === "cancelled" || signal?.aborted) {
+      throw new CartError("CANCELLED", "Cart operation was cancelled");
+    }
     throw new CartError(
       resolution.status === "no_offers" ? "OFFER_NOT_FOUND" : "OFFER_RESOLUTION_FAILED",
       "The exact offer could not be revalidated",
@@ -600,6 +681,14 @@ const mapAuthorizationError = (result: CartAuthorizationResult): CartError => {
   return new CartError(code[result.reason], "Cart authorization was denied");
 };
 
+const throwIfAborted = (signal: AbortSignal | undefined) => {
+  if (signal?.aborted) {
+    throw new CartError("CANCELLED", "Cart operation was cancelled");
+  }
+};
+
+const originFor = (request: { origin?: CartOrigin }) => request.origin ?? "human";
+
 const safeAudit = async (sink: CartAuditEventSink | undefined, receipt: CartReceipt) => {
   if (!sink) return;
   try { await sink.record(clone(receipt)); } catch { /* Audit failure never changes cart outcome. */ }
@@ -626,32 +715,44 @@ export const createCartService = (options: CartServiceOptions): CartService => {
     return options.store.getOrCreateForCustomer(customerId, defaultCurrency);
   };
 
-  const getDeniedRead = async (error: CartError): Promise<CartReadResult> => {
-    const receipt = emptyReceipt("read", error.code);
+  const getDeniedRead = async (
+    error: CartError,
+    origin: CartOrigin = "human",
+  ): Promise<CartReadResult> => {
+    const receipt = { ...emptyReceipt("read", error.code), origin };
     await safeAudit(options.auditEventSink, receipt);
     return { ok: false, error: errorView(error), receipt };
   };
 
   const getCart = async (request: CartReadRequest): Promise<CartReadResult> => {
+    if (request.signal?.aborted) {
+      return getDeniedRead(
+        new CartError("CANCELLED", "Cart operation was cancelled"),
+        originFor(request),
+      );
+    }
     const authorization = await options.sessionAuthority.authorizeCartRead(request.sessionToken);
-    if (!authorization.allowed) return getDeniedRead(mapAuthorizationError(authorization));
+    if (!authorization.allowed) {
+      return getDeniedRead(mapAuthorizationError(authorization), originFor(request));
+    }
     try {
       if (request.cartId !== undefined) assertBoundedIdentifier(request.cartId, "Cart identity");
       const cart = await resolveCart(authorization.customerId, request.cartId);
       if (!cart) {
         const error = new CartError("CART_NOT_FOUND", "Cart was not found");
-        return getDeniedRead(error);
+        return getDeniedRead(error, originFor(request));
       }
       if (cart.customerId !== authorization.customerId) {
         const error = new CartError("CART_OWNERSHIP_MISMATCH", "Cart ownership does not match the active customer");
-        return getDeniedRead(error);
+        return getDeniedRead(error, originFor(request));
       }
-      const receipt = receiptFor("read", "accepted", cart);
+      throwIfAborted(request.signal);
+      const receipt = receiptFor("read", "accepted", cart, request.origin ?? "human");
       await safeAudit(options.auditEventSink, receipt);
       return { ok: true, cart: clone(cart), receipt };
     } catch (error) {
       const cartError = error instanceof CartError ? error : new CartError("STORE_UNAVAILABLE", "Cart storage is unavailable");
-      return getDeniedRead(cartError);
+      return getDeniedRead(cartError, originFor(request));
     }
   };
 
@@ -660,10 +761,20 @@ export const createCartService = (options: CartServiceOptions): CartService => {
     request: CartAddRequest | CartRemoveRequest | CartChangeQuantityRequest,
     apply: (cart: Cart) => Promise<CartMutationPlan>,
   ): Promise<CartMutationResult> => {
+    try {
+      throwIfAborted(request.signal);
+    } catch (caught) {
+      const error = caught instanceof CartError
+        ? caught
+        : new CartError("CANCELLED", "Cart operation was cancelled");
+      const receipt = { ...emptyReceipt(operation, error.code), origin: originFor(request) };
+      await safeAudit(options.auditEventSink, receipt);
+      return { ok: false, error: errorView(error), receipt };
+    }
     const authorization = await options.sessionAuthority.authorizeCartWrite(request.sessionToken, request.csrfSecret);
     if (!authorization.allowed) {
       const error = mapAuthorizationError(authorization);
-      const receipt = emptyReceipt(operation, error.code);
+      const receipt = { ...emptyReceipt(operation, error.code), origin: originFor(request) };
       await safeAudit(options.auditEventSink, receipt);
       return { ok: false, error: errorView(error), receipt };
     }
@@ -679,13 +790,20 @@ export const createCartService = (options: CartServiceOptions): CartService => {
       const cart = await resolveCart(authorization.customerId, request.cartId);
       if (!cart) {
         const error = new CartError("CART_NOT_FOUND", "Cart was not found");
-        const receipt = emptyReceipt(operation, error.code);
+        const receipt = { ...emptyReceipt(operation, error.code), origin: originFor(request) };
         await safeAudit(options.auditEventSink, receipt);
         return { ok: false, error: errorView(error), receipt };
       }
       if (cart.customerId !== authorization.customerId) {
         const error = new CartError("CART_OWNERSHIP_MISMATCH", "Cart ownership does not match the active customer");
-        const receipt = receiptFor(operation, "rejected", cart, error.code);
+        const receipt = receiptFor(
+          operation,
+          "rejected",
+          cart,
+          originFor(request),
+          error.code,
+          receiptTargetForRequest(cart, operation, request),
+        );
         await safeAudit(options.auditEventSink, receipt);
         return { ok: false, error: errorView(error), receipt };
       }
@@ -701,6 +819,8 @@ export const createCartService = (options: CartServiceOptions): CartService => {
         {
           customerId: authorization.customerId,
           cartId: cart.cartId,
+          origin: originFor(request),
+          signal: request.signal,
           expectedRevision: request.expectedRevision,
           idempotencyKey: request.idempotencyKey,
           requestFingerprint,
@@ -722,16 +842,23 @@ export const createCartService = (options: CartServiceOptions): CartService => {
       else if (storeResult.status === "owner_mismatch") error = new CartError("CART_OWNERSHIP_MISMATCH", "Cart ownership does not match the active customer");
       else error = storeResult.error;
       if (storeResult.status === "not_found") {
-        const receipt = emptyReceipt(operation, error.code);
+        const receipt = { ...emptyReceipt(operation, error.code), origin: originFor(request) };
         await safeAudit(options.auditEventSink, receipt);
         return { ok: false, error: errorView(error), receipt };
       }
-      const receipt = receiptFor(operation, "rejected", storeResult.cart, error.code);
+      const receipt = receiptFor(
+        operation,
+        "rejected",
+        storeResult.cart,
+        originFor(request),
+        error.code,
+        receiptTargetForRequest(storeResult.cart, operation, request),
+      );
       await safeAudit(options.auditEventSink, receipt);
       return { ok: false, error: errorView(error), receipt };
     } catch (caught) {
       const error = caught instanceof CartError ? caught : new CartError("STORE_UNAVAILABLE", "Cart storage is unavailable");
-      const receipt = emptyReceipt(operation, error.code);
+      const receipt = { ...emptyReceipt(operation, error.code), origin: originFor(request) };
       await safeAudit(options.auditEventSink, receipt);
       return { ok: false, error: errorView(error), receipt };
     }
@@ -756,15 +883,36 @@ export const createCartService = (options: CartServiceOptions): CartService => {
       ? cart.lines.map((candidate) => candidate.lineId === existing.lineId ? line : candidate)
       : [...cart.lines, line];
     const nextCart = cartWithTotals({ ...cart, lines, revision: cart.revision + 1, updatedAt: new Date(clock()).toISOString() });
-    return { cart: nextCart, receipt: receiptFor("add", "accepted", nextCart) };
+    return {
+      cart: nextCart,
+      receipt: receiptFor(
+        "add",
+        "accepted",
+        nextCart,
+        originFor(request),
+        undefined,
+        receiptTargetForOffer(offerSnapshot),
+      ),
+    };
   });
 
   const removeLine = (request: CartRemoveRequest) => mutate("remove", request, async (cart) => {
     if (cart.status !== "active") throw new CartError("CART_LIFECYCLE_REJECTED", "Cart is not active");
-    if (!cart.lines.some(({ lineId }) => lineId === request.lineId)) throw new CartError("LINE_NOT_FOUND", "Cart line was not found");
+    const existing = cart.lines.find(({ lineId }) => lineId === request.lineId);
+    if (!existing) throw new CartError("LINE_NOT_FOUND", "Cart line was not found");
     const lines = cart.lines.filter(({ lineId }) => lineId !== request.lineId);
     const nextCart = cartWithTotals({ ...cart, lines, revision: cart.revision + 1, updatedAt: new Date(clock()).toISOString() });
-    return { cart: nextCart, receipt: receiptFor("remove", "accepted", nextCart) };
+    return {
+      cart: nextCart,
+      receipt: receiptFor(
+        "remove",
+        "accepted",
+        nextCart,
+        originFor(request),
+        undefined,
+        receiptTargetForOffer(existing.offer),
+      ),
+    };
   });
 
   const changeQuantity = (request: CartChangeQuantityRequest) => mutate("change_quantity", request, async (cart) => {
@@ -785,7 +933,17 @@ export const createCartService = (options: CartServiceOptions): CartService => {
     };
     const lines = cart.lines.map((candidate) => candidate.lineId === request.lineId ? line : candidate);
     const nextCart = cartWithTotals({ ...cart, lines, revision: cart.revision + 1, updatedAt: new Date(clock()).toISOString() });
-    return { cart: nextCart, receipt: receiptFor("change_quantity", "accepted", nextCart) };
+    return {
+      cart: nextCart,
+      receipt: receiptFor(
+        "change_quantity",
+        "accepted",
+        nextCart,
+        originFor(request),
+        undefined,
+        receiptTargetForOffer(offerSnapshot),
+      ),
+    };
   });
 
   return { getCart, addLine, removeLine, changeQuantity };

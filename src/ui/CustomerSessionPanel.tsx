@@ -5,12 +5,15 @@ import type { CustomerSessionClient } from "../commerce/customer-session-demo";
 type CustomerSessionPanelProps = Readonly<{
   client: CustomerSessionClient;
   onSessionChange?: (session: CustomerSessionView) => void;
+  session?: CustomerSessionView;
 }>;
 
 const ANONYMOUS_SESSION: CustomerSessionView = { authenticated: false };
 
-export function CustomerSessionPanel({ client, onSessionChange }: CustomerSessionPanelProps) {
-  const [session, setSession] = useState<CustomerSessionView>(ANONYMOUS_SESSION);
+export function CustomerSessionPanel({ client, onSessionChange, session: providedSession }: CustomerSessionPanelProps) {
+  const [session, setSession] = useState<CustomerSessionView>(
+    () => providedSession ?? ANONYMOUS_SESSION,
+  );
   const [identity, setIdentity] = useState("Demo customer");
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);

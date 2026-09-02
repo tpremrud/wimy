@@ -42,8 +42,42 @@ describe("createCustomerSessionDemo", () => {
     await expect(demo.getSession()).resolves.toMatchObject({
       authenticated: true,
     });
+    const humanRead = await demo.cart?.getCart();
+    expect(humanRead).toMatchObject({
+      ok: true,
+      receipt: { origin: "human", operation: "read" },
+    });
     await expect(demo.signOut()).resolves.toEqual({ authenticated: false });
     expect(demo).not.toHaveProperty("sessionToken");
     expect(demo).not.toHaveProperty("csrfSecret");
+  });
+
+  it("retains only the latest mutation receipt within the active local session", async () => {
+    const authority = new CustomerSessionAuthority({
+      store: new MemorySessionStore(),
+      now: () => 1_000,
+      createSessionToken: () => "session-token",
+      createCsrfSecret: () => "csrf-secret",
+    });
+    const demo = createCustomerSessionDemo({ authority });
+    await demo.signIn("Demo customer");
+
+    const mutation = await demo.cart!.addLine!({
+      expectedRevision: 1,
+      idempotencyKey: "retained-receipt",
+      offer: {
+        offerId: "offer",
+        offerVersion: "version",
+        catalogRef: { catalogId: "catalog", productId: "product" },
+        price: { amountMinor: 100, currency: "USD" },
+      },
+      quantity: 1,
+    });
+    expect(demo.cart!.getLatestReceipt?.()).toEqual(mutation.receipt);
+
+    await demo.signOut();
+    expect(demo.cart!.getLatestReceipt?.()).toBeUndefined();
+    await demo.signIn("New demo customer");
+    expect(demo.cart!.getLatestReceipt?.()).toBeUndefined();
   });
 });

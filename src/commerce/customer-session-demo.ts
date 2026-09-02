@@ -9,7 +9,13 @@ import {
 import {
   createCartService,
   createInMemoryCartStore,
+  type CartAddRequest,
+  type CartChangeQuantityRequest,
+  type CartMutationResult,
+  type CartOrigin,
+  type CartReceipt,
   type CartReadResult,
+  type CartRemoveRequest,
   type CartService,
 } from "./cart";
 import type { RetailerOfferResolver } from "./retailer-offer-adapter";
@@ -22,7 +28,18 @@ export interface CustomerSessionClient {
 }
 
 export interface CustomerCartClient {
-  getCart: () => Promise<CartReadResult>;
+  getCart: (signal?: AbortSignal, origin?: CartOrigin) => Promise<CartReadResult>;
+  addLine?: (
+    request: Omit<CartAddRequest, "sessionToken" | "csrfSecret">,
+  ) => Promise<CartMutationResult>;
+  removeLine?: (
+    request: Omit<CartRemoveRequest, "sessionToken" | "csrfSecret">,
+  ) => Promise<CartMutationResult>;
+  changeQuantity?: (
+    request: Omit<CartChangeQuantityRequest, "sessionToken" | "csrfSecret">,
+  ) => Promise<CartMutationResult>;
+  getLatestReceipt?: () => CartReceipt | undefined;
+  subscribe?: (listener: (receipt?: CartReceipt) => void) => () => void;
 }
 
 type CustomerSessionDemoOptions = Readonly<{
@@ -74,24 +91,67 @@ export const createCustomerSessionDemo = (
       clearCache: () => undefined,
     },
   });
+  const listeners = new Set<(receipt?: CartReceipt) => void>();
+  let latestMutationReceipt: CartReceipt | undefined;
+  const notify = (receipt?: CartReceipt) => {
+    if (receipt && receipt.operation !== "read") {
+      latestMutationReceipt = structuredClone(receipt);
+    }
+    for (const listener of listeners) listener(receipt);
+  };
+  const withSessionSecrets = <Request extends object>(
+    request: Request,
+    defaultOrigin: CartOrigin,
+  ) => ({
+    ...request,
+    sessionToken: ticket?.sessionToken,
+    csrfSecret: ticket?.csrfSecret,
+    origin: (request as { origin?: CartOrigin }).origin ?? defaultOrigin,
+  });
 
   return {
     getSession: () => authority.resolve(ticket?.sessionToken),
     signIn: async (customerId) => {
+      latestMutationReceipt = undefined;
       ticket = await authority.signIn(
         { customerId },
         CUSTOMER_SCOPES,
         ticket?.sessionToken,
       );
+      notify();
       return ticket.view;
     },
     signOut: async () => {
       await authority.logout(ticket?.sessionToken);
       ticket = undefined;
+      latestMutationReceipt = undefined;
+      notify();
       return { authenticated: false };
     },
     cart: {
-      getCart: () => cartService.getCart({ sessionToken: ticket?.sessionToken }),
+      getCart: (signal, origin = "human") =>
+        cartService.getCart(withSessionSecrets({ signal }, origin)),
+      addLine: async (request) => {
+        const result = await cartService.addLine(withSessionSecrets(request, "human"));
+        notify(result.receipt);
+        return result;
+      },
+      removeLine: async (request) => {
+        const result = await cartService.removeLine(withSessionSecrets(request, "human"));
+        notify(result.receipt);
+        return result;
+      },
+      changeQuantity: async (request) => {
+        const result = await cartService.changeQuantity(withSessionSecrets(request, "human"));
+        notify(result.receipt);
+        return result;
+      },
+      getLatestReceipt: () =>
+        latestMutationReceipt ? structuredClone(latestMutationReceipt) : undefined,
+      subscribe: (listener) => {
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      },
     },
   };
 };

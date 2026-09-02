@@ -157,6 +157,9 @@ export function App({
   const [railCollapsed, setRailCollapsed] = useState(false);
   const [activeSurface, setActiveSurface] = useState<ActiveSurface>(null);
   const [customerSessionView, setCustomerSessionView] = useState<CustomerSessionView>({ authenticated: false });
+  const customerSessionKey = customerSessionView.authenticated
+    ? `${customerSessionView.customerId}:${customerSessionView.scopes.join(",")}`
+    : "anonymous";
   const previousReceiptRef = useRef(receipts[0]);
   const shareButtonRef = useRef<HTMLButtonElement>(null);
   const helpButtonRef = useRef<HTMLButtonElement>(null);
@@ -177,8 +180,14 @@ export function App({
     [offerResolver, providedCustomerSession],
   );
   const webMcpToolDefinitions = useMemo(
-    () => createRoomToolDefinitions(store, offerResolver),
-    [offerResolver, store],
+    () => createRoomToolDefinitions(store, offerResolver, {
+      customerSession,
+      session: customerSessionView,
+    }),
+    // customerSessionKey is the semantic auth snapshot; expiresAt changes must
+    // not churn the native registration generation.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [customerSession, customerSessionKey, offerResolver, store],
   );
   const registrationGenerationRef = useRef<{
     controller: AbortController;
@@ -214,7 +223,7 @@ export function App({
         registrationGenerationRef.current = null;
       }
     };
-  }, [store]);
+  }, [customerSessionKey, store]);
 
   useEffect(() => {
     const generation = registrationGenerationRef.current;
@@ -227,7 +236,12 @@ export function App({
     }
     const { controller } = generation;
 
-    void registerRoomTools(document.modelContext, store, controller).then(
+    void registerRoomTools(
+      document.modelContext,
+      store,
+      controller,
+      webMcpToolDefinitions,
+    ).then(
       (status) => {
         if (!controller.signal.aborted) {
           setRegistration({
@@ -239,7 +253,27 @@ export function App({
         }
       },
     );
-  }, [store]);
+  }, [store, webMcpToolDefinitions]);
+
+  useEffect(() => {
+    if (!customerSessionView.authenticated) return;
+    let current = true;
+    const delay = Math.max(0, customerSessionView.expiresAt - Date.now());
+    const timer = window.setTimeout(() => {
+      void customerSession.getSession()
+        .then((nextSession) => {
+          if (current) setCustomerSessionView(nextSession);
+        })
+        .catch(() => {
+          if (current) setCustomerSessionView({ authenticated: false });
+        });
+    }, delay);
+
+    return () => {
+      current = false;
+      window.clearTimeout(timer);
+    };
+  }, [customerSession, customerSessionView]);
 
   useEffect(() => {
     const newestReceiptChanged = receipts[0] !== previousReceiptRef.current;
@@ -352,7 +386,12 @@ export function App({
             <button aria-pressed={viewMode === "2d"} onClick={() => setViewMode("2d")} type="button">Edit in 2D</button>
             <button aria-pressed={viewMode === "3d"} onClick={() => setViewMode("3d")} type="button">Preview in 3D</button>
           </div>
-          <CustomerSessionPanel client={customerSession} onSessionChange={setCustomerSessionView} />
+          <CustomerSessionPanel
+            key={customerSessionKey}
+            client={customerSession}
+            onSessionChange={setCustomerSessionView}
+            session={customerSessionView}
+          />
           <ShareRoomPanel
             open={activeSurface === "share"}
             onClose={() => closeSurface("share")}

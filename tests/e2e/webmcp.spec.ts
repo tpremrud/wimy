@@ -71,6 +71,46 @@ const callTool = async (
     { toolName: name, toolInput: input },
   );
 
+const projectAuthoredCartPackage = {
+  format: "wimy-catalog",
+  schemaVersion: 1,
+  publisher: {
+    publisherId: "00000000-0000-4000-8000-000000000401",
+    name: "Wimy Cart Fixture Studio",
+  },
+  catalog: {
+    catalogId: "00000000-0000-4000-8000-000000000402",
+    name: "Project Authored Cart Fixture",
+    version: "2026.09.02",
+    license: { name: "Wimy Project Authored License", spdxId: "MIT" },
+    provenance: {
+      sourceName: "Wimy Cart Fixture Studio",
+      sourceUrl: "https://wimy.example.invalid/cart-fixture",
+      observedAt: "2026-09-02T01:00:00-04:00",
+    },
+  },
+  items: [
+    {
+      itemId: "00000000-0000-4000-8000-000000000403",
+      name: "Aurora Browser Chair",
+      variants: [
+        {
+          variantId: "00000000-0000-4000-8000-000000000404",
+          snapshot: {
+            name: "Aurora Browser Chair",
+            category: "chair",
+            dimensions: { width: 0.55, depth: 0.55, height: 0.8 },
+            appearance: { color: "#76543A" },
+            styleTags: ["project-authored"],
+          },
+          externalIdentifiers: [],
+          classifications: [],
+        },
+      ],
+    },
+  ],
+} as const;
+
 test("inspect, find, and apply visibly collaborate while stale edits recover", async ({
   page,
 }) => {
@@ -398,4 +438,192 @@ test("the room remains functional without modelContext", async ({ page }) => {
       .getByRole("listitem")
       .first(),
   ).toContainText("Human: Accepted. Applied 1 room operationsRevision 2");
+});
+
+test("exposes authenticated cart tools, keeps room state separate, and unregisters them on sign-out", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1_280, height: 900 });
+  await installModelContextHarness(page);
+  await page.goto("/");
+
+  await expect(page.getByRole("status", { name: "WebMCP status" })).toContainText(
+    "WebMCP ready — 6 tools registered",
+  );
+  await page.getByRole("button", { name: "Sign in (optional)" }).click();
+  await page.getByRole("button", { name: "Continue locally" }).click();
+  await expect(page.getByRole("status", { name: "WebMCP status" })).toContainText(
+    "WebMCP ready — 11 tools registered",
+  );
+
+  await page.getByLabel("Import project-authored catalog package").setInputFiles({
+    name: "cart-fixture.wimy-catalog",
+    mimeType: "application/json",
+    buffer: Buffer.from(JSON.stringify(projectAuthoredCartPackage)),
+  });
+  await expect(page.getByRole("status", { name: "Catalog import result" })).toContainText(
+    "Imported 1 project-authored catalog item: Aurora Browser Chair",
+  );
+
+  const initialRoom = (await callTool(page, "inspect_room", {})) as { revision: number };
+  const initialCart = (await callTool(page, "inspect_cart", {})) as {
+    ok: boolean;
+    cart: { revision: number; lines: unknown[] };
+  };
+  expect(initialRoom.revision).toBe(1);
+  expect(initialCart).toMatchObject({ ok: true, cart: { revision: 1, lines: [] } });
+
+  const found = (await callTool(page, "find_retailer_offers", {
+    catalogId: projectAuthoredCartPackage.catalog.catalogId,
+    productId: projectAuthoredCartPackage.items[0]!.variants[0]!.variantId,
+  })) as {
+    ok: boolean;
+    catalogRef: { catalogId: string; productId: string };
+    offers: Array<{
+      offerId: string;
+      offerVersion: string;
+      price: { amountMinor: number; currency: string };
+    }>;
+  };
+  expect(found.ok).toBe(true);
+  expect(found.offers.length).toBeGreaterThan(0);
+  expect(JSON.stringify(found)).not.toMatch(/https?:\/\/|seller|sourceUrl|csrf|session-token/iu);
+  const offer = found.offers[0]!;
+
+  const added = (await callTool(page, "add_to_cart", {
+    expectedRevision: initialCart.cart.revision,
+    idempotencyKey: "browser-add-aurora",
+    offer: {
+      offerId: offer.offerId,
+      offerVersion: offer.offerVersion,
+      catalogRef: found.catalogRef,
+      price: offer.price,
+    },
+    quantity: 1,
+  })) as { ok: boolean; cart: { revision: number; lines: Array<{ lineId: string }> } };
+  await page.getByRole("button", { name: "Review cart" }).click();
+  const cartDialog = page.getByRole("dialog", { name: "Cart review" });
+  expect(added).toMatchObject({
+    ok: true,
+    cart: { revision: 2, lines: [{ lineId: expect.any(String) }] },
+    receipt: {
+      origin: "webmcp",
+      operation: "add",
+      status: "accepted",
+      revision: 2,
+      target: {
+        displayName: "Aurora Browser Chair",
+        retailer: "Northstar Furnishings",
+      },
+    },
+  });
+  await expect(cartDialog).toContainText("Aurora Browser Chair");
+  await expect(cartDialog).toContainText("Revision 2");
+  await expect(cartDialog).toContainText(
+    "Latest mutation: webmcp · add · accepted · Revision 2 · Aurora Browser Chair · Northstar Furnishings",
+  );
+  expect((await callTool(page, "inspect_room", {}))).toMatchObject({ revision: 1 });
+
+  const lineId = added.cart.lines[0]!.lineId;
+  await expect(
+    callTool(page, "set_cart_quantity", {
+      expectedRevision: 2,
+      idempotencyKey: "browser-set-aurora",
+      lineId,
+      quantity: 2,
+    }),
+  ).resolves.toMatchObject({
+    ok: true,
+    cart: { revision: 3, lines: [{ quantity: 2 }] },
+    receipt: {
+      origin: "webmcp",
+      operation: "change_quantity",
+      status: "accepted",
+      revision: 3,
+      target: {
+        displayName: "Aurora Browser Chair",
+        retailer: "Northstar Furnishings",
+      },
+    },
+  });
+  await expect(cartDialog).toContainText("Revision 3");
+  await expect(cartDialog).toContainText(
+    "Latest mutation: webmcp · change_quantity · accepted · Revision 3 · Aurora Browser Chair · Northstar Furnishings",
+  );
+
+  await expect(
+    callTool(page, "remove_from_cart", {
+      expectedRevision: 3,
+      idempotencyKey: "browser-remove-aurora",
+      lineId,
+    }),
+  ).resolves.toMatchObject({
+    ok: true,
+    cart: { revision: 4, lines: [] },
+    receipt: {
+      origin: "webmcp",
+      operation: "remove",
+      status: "accepted",
+      revision: 4,
+      target: {
+        displayName: "Aurora Browser Chair",
+        retailer: "Northstar Furnishings",
+      },
+    },
+  });
+  await expect(cartDialog).toContainText("Your cart is empty.");
+  await expect(cartDialog).toContainText(
+    "Latest mutation: webmcp · remove · accepted · Revision 4 · Aurora Browser Chair · Northstar Furnishings",
+  );
+
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await expect(page.getByRole("status", { name: "WebMCP status" })).toContainText(
+    "WebMCP ready — 6 tools registered",
+  );
+  await expect.poll(async () =>
+    page.evaluate(() => Object.keys(window.__wimyModelContextHarness.tools).sort()),
+  ).toEqual([
+    "apply_room_edit",
+    "find_furniture",
+    "find_substitutes",
+    "inspect_retailer_offers",
+    "inspect_room",
+    "inspect_room_shopping_plan",
+  ]);
+  await expect(callTool(page, "inspect_cart", {})).rejects.toThrow("inspect_cart is not registered");
+});
+
+test("refreshes session scope at natural expiry and unregisters commerce tools", async ({
+  page,
+}) => {
+  await page.clock.install({ time: new Date("2026-09-02T12:00:00.000Z") });
+  await installModelContextHarness(page);
+  await page.goto("/");
+
+  await expect(page.getByRole("status", { name: "WebMCP status" })).toContainText(
+    "WebMCP ready — 6 tools registered",
+  );
+  await page.getByRole("button", { name: "Sign in (optional)" }).click();
+  await page.getByRole("button", { name: "Continue locally" }).click();
+  await expect(page.getByRole("status", { name: "WebMCP status" })).toContainText(
+    "WebMCP ready — 11 tools registered",
+  );
+
+  await page.clock.runFor("30:01");
+  await expect(page.getByRole("status", { name: "WebMCP status" })).toContainText(
+    "WebMCP ready — 6 tools registered",
+  );
+  await expect(page.getByRole("region", { name: "Customer session" })).toContainText(
+    "Anonymous mode",
+  );
+  await expect.poll(async () =>
+    page.evaluate(() => Object.keys(window.__wimyModelContextHarness.tools).sort()),
+  ).toEqual([
+    "apply_room_edit",
+    "find_furniture",
+    "find_substitutes",
+    "inspect_retailer_offers",
+    "inspect_room",
+    "inspect_room_shopping_plan",
+  ]);
 });

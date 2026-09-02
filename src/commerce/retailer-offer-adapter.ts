@@ -132,10 +132,18 @@ export type RetailerOffer = RawRetailerOffer & {
   };
 };
 
+const hashText = (value: string, seed: number) => {
+  let hash = seed;
+  for (const character of value) {
+    hash = Math.imul(hash ^ character.charCodeAt(0), 16_777_619);
+  }
+  return (hash >>> 0).toString(16).padStart(8, "0");
+};
+
 /**
- * Produces a bounded, deterministic version for an exact offer snapshot.
- * The version is intentionally derived from every fact the cart relies on;
- * it is not a claim that the synthetic adapter is durable or distributed.
+ * Produces a bounded, deterministic digest for an exact offer snapshot.
+ * The digest is derived from every fact the cart relies on without exposing
+ * URLs, names, or other source metadata in a client-visible version token.
  */
 export const getRetailerOfferVersion = (offer: RetailerOffer): string => {
   const canonicalFacts = JSON.stringify([
@@ -165,7 +173,7 @@ export const getRetailerOfferVersion = (offer: RetailerOffer): string => {
     offer.identityEvidence.catalogRef.catalogId,
     offer.identityEvidence.catalogRef.productId,
   ]);
-  return `offer-v1:${canonicalFacts}`;
+  return `offer-v1:${hashText(canonicalFacts, 2_166_136_261)}${hashText(canonicalFacts, 2_247_144_179)}`;
 };
 
 export type RetailerOfferResolution =

@@ -1,5 +1,6 @@
 import { useEffect, useState, type RefObject } from "react";
 import type { CustomerSessionView } from "../commerce/customer-session";
+import type { CartReceipt } from "../commerce/cart";
 import type { CustomerCartClient } from "../commerce/customer-session-demo";
 
 type CartReviewPanelProps = Readonly<{
@@ -23,16 +24,29 @@ export function CartReviewPanel({
   const [state, setState] = useState<{
     key: string;
     result: Awaited<ReturnType<CustomerCartClient["getCart"]>>;
+    receipt: CartReceipt;
   } | null>(null);
 
   useEffect(() => {
     let current = true;
     if (!open || !client) return () => { current = false; };
-    void client.getCart().then((result) => {
-      if (current) setState({ key: sessionKey, result });
+    const refresh = async (mutationReceipt?: CartReceipt) => {
+      const result = await client.getCart();
+      if (current) {
+        setState({
+          key: sessionKey,
+          result,
+          receipt: mutationReceipt ?? client.getLatestReceipt?.() ?? result.receipt,
+        });
+      }
+    };
+    void refresh();
+    const unsubscribe = client.subscribe?.((mutationReceipt) => {
+      void refresh(mutationReceipt);
     });
     return () => {
       current = false;
+      unsubscribe?.();
     };
   }, [client, open, sessionKey]);
 
@@ -91,6 +105,11 @@ export function CartReviewPanel({
                 <button type="button" aria-label="Close cart review" onClick={onClose} autoFocus>Close</button>
               </div>
             </div>
+            {state.receipt.operation !== "read" && state.receipt.target ? (
+              <p role="status" aria-label="Latest cart mutation">
+                Latest mutation: {state.receipt.origin} · {state.receipt.operation} · {state.receipt.status} · Revision {state.receipt.revision} · {state.receipt.target.displayName} · {state.receipt.target.retailer} · {state.receipt.target.offerId}
+              </p>
+            ) : null}
             {state.result.cart.lines.length === 0 ? (
               <p>Your cart is empty.</p>
             ) : (

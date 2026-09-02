@@ -1,6 +1,18 @@
 /// <reference types="webmcp-types" />
 
 import { z } from "zod";
+import type {
+  Cart,
+  CartErrorCode,
+  CartMutationResult,
+  CartReadResult,
+} from "../commerce/cart";
+import { getRetailerOfferVersion } from "../commerce/cart";
+import type { RetailerOffer } from "../commerce/retailer-offer-adapter";
+import type {
+  CustomerSessionClient,
+  CustomerCartClient,
+} from "../commerce/customer-session-demo";
 import {
   getRetailerOfferEvidenceState,
   type RetailerOfferResolver,
@@ -289,6 +301,190 @@ const ENTITY_ID_INPUT_SCHEMA = {
   minLength: 1,
   maxLength: 64,
 } as const;
+
+const CART_READ_INPUT_SCHEMA = {
+  type: "object",
+  properties: {},
+  additionalProperties: false,
+} as const;
+
+const CANONICAL_CATALOG_REF_SCHEMA = {
+  type: "object",
+  properties: {
+    catalogId: { type: "string", minLength: 1, maxLength: 128 },
+    productId: { type: "string", minLength: 1, maxLength: 128 },
+  },
+  required: ["catalogId", "productId"],
+  additionalProperties: false,
+} as const;
+
+const FIND_RETAILER_OFFERS_INPUT_SCHEMA = {
+  type: "object",
+  oneOf: [
+    CANONICAL_CATALOG_REF_SCHEMA,
+    {
+      type: "object",
+      properties: { placedItemId: ENTITY_ID_INPUT_SCHEMA },
+      required: ["placedItemId"],
+      additionalProperties: false,
+    },
+  ],
+} as const;
+
+const CART_MONEY_INPUT_SCHEMA = {
+  type: "object",
+  oneOf: [
+    {
+      type: "object",
+      properties: {
+        amountMinor: { type: "integer", minimum: 0, maximum: 1_000_000_000 },
+        currency: { type: "string", pattern: "^[A-Z]{3}$" },
+      },
+      required: ["amountMinor", "currency"],
+      additionalProperties: false,
+    },
+    {
+      type: "object",
+      properties: {
+        amountMinor: { type: "integer", minimum: 0, maximum: 1_000_000_000 },
+        currency: { type: "string", pattern: "^[A-Z]{3}$" },
+        unit: { const: "each" },
+        quantity: { const: 1 },
+      },
+      required: ["amountMinor", "currency", "unit", "quantity"],
+      additionalProperties: false,
+    },
+    {
+      type: "object",
+      properties: {
+        amountMinor: { type: "integer", minimum: 0, maximum: 1_000_000_000 },
+        currency: { type: "string", pattern: "^[A-Z]{3}$" },
+        unit: { const: "pack" },
+        quantity: { type: "integer", minimum: 1, maximum: 10_000 },
+      },
+      required: ["amountMinor", "currency", "unit", "quantity"],
+      additionalProperties: false,
+    },
+  ],
+} as const;
+
+const CART_MUTATION_COMMON_SCHEMA = {
+  type: "object",
+  properties: {
+    expectedRevision: { type: "integer", minimum: 1, maximum: Number.MAX_SAFE_INTEGER },
+    idempotencyKey: {
+      type: "string",
+      minLength: 1,
+      maxLength: 128,
+      pattern: "^[^\\u0000-\\u001F\\u007F-\\u009F ]+$",
+    },
+  },
+  required: ["expectedRevision", "idempotencyKey"],
+  additionalProperties: false,
+} as const;
+
+const ADD_TO_CART_INPUT_SCHEMA = {
+  ...CART_MUTATION_COMMON_SCHEMA,
+  properties: {
+    ...CART_MUTATION_COMMON_SCHEMA.properties,
+    offer: {
+      type: "object",
+      properties: {
+        offerId: {
+          type: "string",
+          minLength: 1,
+          maxLength: 128,
+          pattern: "^[A-Za-z][A-Za-z0-9_-]{0,127}$",
+        },
+        offerVersion: { type: "string", minLength: 1, maxLength: 8_192 },
+        catalogRef: CANONICAL_CATALOG_REF_SCHEMA,
+        price: CART_MONEY_INPUT_SCHEMA,
+      },
+      required: ["offerId", "offerVersion", "catalogRef", "price"],
+      additionalProperties: false,
+    },
+    quantity: { type: "integer", minimum: 1, maximum: 99 },
+  },
+  required: ["expectedRevision", "idempotencyKey", "offer", "quantity"],
+  additionalProperties: false,
+} as const;
+
+const REMOVE_FROM_CART_INPUT_SCHEMA = {
+  ...CART_MUTATION_COMMON_SCHEMA,
+  properties: {
+    ...CART_MUTATION_COMMON_SCHEMA.properties,
+    lineId: ENTITY_ID_INPUT_SCHEMA,
+  },
+  required: ["expectedRevision", "idempotencyKey", "lineId"],
+  additionalProperties: false,
+} as const;
+
+const SET_CART_QUANTITY_INPUT_SCHEMA = {
+  ...REMOVE_FROM_CART_INPUT_SCHEMA,
+  properties: {
+    ...CART_MUTATION_COMMON_SCHEMA.properties,
+    lineId: ENTITY_ID_INPUT_SCHEMA,
+    quantity: { type: "integer", minimum: 1, maximum: 99 },
+  },
+  required: ["expectedRevision", "idempotencyKey", "lineId", "quantity"],
+  additionalProperties: false,
+} as const;
+
+const CatalogRefInputSchema = z.object({
+  catalogId: z.string().min(1).max(128),
+  productId: z.string().min(1).max(128),
+}).strict();
+
+const FindRetailerOffersInputSchema = z.union([
+  z.object({ catalogId: z.string().min(1).max(128), productId: z.string().min(1).max(128) }).strict(),
+  z.object({ placedItemId: EntityIdSchema }).strict(),
+]);
+
+const CartReadInputSchema = z.object({}).strict();
+const hasControlCharacters = (value: string) =>
+  Array.from(value).some((character) => {
+    const codePoint = character.codePointAt(0);
+    return codePoint !== undefined &&
+      (codePoint <= 0x1f || (codePoint >= 0x7f && codePoint <= 0x9f));
+  });
+const CartMutationCommonInputSchema = z.object({
+  expectedRevision: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+  idempotencyKey: z.string().min(1).max(128).refine(
+    (value) => !value.includes(" ") && !hasControlCharacters(value),
+    "Idempotency keys cannot contain spaces or control characters",
+  ),
+}).strict();
+const CartMoneyBaseInputSchema = z.object({
+  amountMinor: z.number().int().nonnegative().max(1_000_000_000),
+  currency: z.string().regex(/^[A-Z]{3}$/u),
+}).strict();
+const CartMoneyInputSchema = z.union([
+  CartMoneyBaseInputSchema,
+  CartMoneyBaseInputSchema.extend({
+    unit: z.literal("each"),
+    quantity: z.literal(1),
+  }).strict(),
+  CartMoneyBaseInputSchema.extend({
+    unit: z.literal("pack"),
+    quantity: z.number().int().positive().max(10_000),
+  }).strict(),
+]);
+const AddToCartInputSchema = CartMutationCommonInputSchema.extend({
+  offer: z.object({
+    offerId: z.string().min(1).max(128).regex(/^[A-Za-z][A-Za-z0-9_-]{0,127}$/u),
+    offerVersion: z.string().min(1).max(8_192),
+    catalogRef: CatalogRefInputSchema,
+    price: CartMoneyInputSchema,
+  }).strict(),
+  quantity: z.number().int().min(1).max(99),
+}).strict();
+const RemoveFromCartInputSchema = CartMutationCommonInputSchema.extend({
+  lineId: EntityIdSchema,
+}).strict();
+const SetCartQuantityInputSchema = RemoveFromCartInputSchema.extend({
+  quantity: z.number().int().min(1).max(99),
+}).strict();
+
 const PRODUCT_ID_INPUT_SCHEMA = {
   type: "string",
   pattern: "^[a-z][a-z0-9-]{0,127}$",
@@ -670,6 +866,257 @@ const inspectRoomShoppingPlan = async (
   return projectShoppingPlan(plan, state.revision);
 };
 
+export type WebMcpCommerceContext = Readonly<{
+  customerSession: CustomerSessionClient;
+  session: import("../commerce/customer-session").CustomerSessionView;
+}>;
+
+const CART_TOOL_MAX_WARNINGS = 20;
+const CART_TOOL_MAX_LINES = 50;
+const CART_TOOL_MAX_OFFERS = 20;
+
+const projectCartError = (error: { code: CartErrorCode; message: string; recoverable: true }) => ({
+  code: error.code,
+  message: projectUntrustedText(error.message).slice(0, 240),
+  recoverable: true as const,
+});
+
+const projectCartReceipt = (receipt: CartReadResult["receipt"]) => ({
+  type: receipt.type,
+  origin: receipt.origin,
+  operation: receipt.operation,
+  status: receipt.status,
+  revision: receipt.revision,
+  lineCount: receipt.lineCount,
+  totalQuantity: receipt.totalQuantity,
+  ...(receipt.errorCode ? { errorCode: receipt.errorCode } : {}),
+  ...(receipt.target
+    ? {
+        target: {
+          offerId: receipt.target.offerId,
+          displayName: projectUntrustedText(receipt.target.displayName),
+          retailer: projectUntrustedText(receipt.target.retailer),
+        },
+      }
+    : {}),
+});
+
+const cartOfferState = (line: Cart["lines"][number]) => {
+  if (line.offer.eligibility === "stale" || Date.parse(line.offer.expiresAt) <= Date.now()) {
+    return "stale" as const;
+  }
+  if (line.offer.eligibility !== "purchasable" || line.offer.availability !== "in_stock") {
+    return "unavailable" as const;
+  }
+  return "fresh" as const;
+};
+
+const projectCart = (cart: Cart) => {
+  const warnings = cart.lines
+    .map((line) => {
+      const state = cartOfferState(line);
+      if (state === "fresh") return null;
+      return {
+        code: state === "stale" ? "OFFER_STALE" : "OFFER_UNAVAILABLE",
+        message: `${projectUntrustedText(line.offer.displayName)} needs offer review before use`,
+        recoverable: true as const,
+      };
+    })
+    .filter((warning): warning is NonNullable<typeof warning> => warning !== null);
+
+  return {
+    revision: cart.revision,
+    status: cart.status,
+    currency: cart.currency,
+    totals: { ...cart.totals },
+    lines: cart.lines.slice(0, CART_TOOL_MAX_LINES).map((line) => ({
+      lineId: line.lineId,
+      quantity: line.quantity,
+      lineTotalMinor: line.lineTotalMinor,
+      offer: {
+        offerId: line.offer.offerId,
+        offerVersion: line.offer.offerVersion,
+        catalogRef: { ...line.offer.catalogRef },
+        retailer: projectUntrustedText(line.offer.provenance.sourceName),
+        displayName: projectUntrustedText(line.offer.displayName),
+        price: { ...line.offer.price },
+        availability: line.offer.availability,
+        state: cartOfferState(line),
+        observedAt: line.offer.observedAt,
+        expiresAt: line.offer.expiresAt,
+      },
+    })),
+    lineCount: cart.lines.length,
+    linesTruncated: cart.lines.length > CART_TOOL_MAX_LINES,
+    warnings: warnings.slice(0, CART_TOOL_MAX_WARNINGS),
+    warningCount: warnings.length,
+    warningsTruncated: warnings.length > CART_TOOL_MAX_WARNINGS,
+  };
+};
+
+const cartToolFailure = (operation: "read" | "add" | "remove" | "change_quantity", code: CartErrorCode, message: string) => ({
+  ok: false as const,
+  error: { code, message: projectUntrustedText(message).slice(0, 240), recoverable: true as const },
+  receipt: {
+    type: "commerce.cart.receipt" as const,
+    origin: "webmcp" as const,
+    operation,
+    status: "rejected" as const,
+    revision: 0,
+    lineCount: 0,
+    totalQuantity: 0,
+    errorCode: code,
+  },
+});
+
+const authorizeCartReadTool = async (
+  customerSession: CustomerSessionClient,
+  signal: AbortSignal,
+) => {
+  throwIfAborted(signal);
+  let session;
+  try {
+    session = await customerSession.getSession();
+  } catch {
+    return cartToolFailure("read", "SESSION_UNAVAILABLE", "Cart authorization is unavailable");
+  }
+  throwIfAborted(signal);
+  if (!session.authenticated) {
+    return cartToolFailure("read", "ANONYMOUS_SESSION", "Cart authorization requires an active customer session");
+  }
+  if (!session.scopes.includes("commerce:cart:read")) {
+    return cartToolFailure("read", "MISSING_SCOPE", "Cart read scope is required");
+  }
+  return { ok: true as const };
+};
+
+const projectRetailerOffer = (offer: RetailerOffer) => ({
+  offerId: offer.offerId,
+  offerVersion: getRetailerOfferVersion(offer),
+  catalogRef: { ...offer.catalogRef },
+  retailer: projectUntrustedText(offer.provenance.sourceName),
+  displayName: projectUntrustedText(offer.displayName),
+  price: { ...offer.price },
+  availability: offer.availability,
+  state: getRetailerOfferEvidenceState(offer),
+  eligibility: offer.eligibility,
+  observedAt: offer.observedAt,
+  expiresAt: offer.expiresAt,
+  identity: {
+    match: offer.identityEvidence.match,
+    method: offer.identityEvidence.method,
+  },
+});
+
+const resolveOfferLookup = (
+  store: RoomStore,
+  input: import("zod").infer<typeof FindRetailerOffersInputSchema>,
+) => {
+  const catalogRef = "placedItemId" in input
+    ? store.getState().room.items.find(({ id }) => id === input.placedItemId)?.catalogRef
+    : input;
+  if (!catalogRef) {
+    return { ok: false as const, code: "INVALID_REQUEST" as const, message: "A canonical catalog item or placed item is required" };
+  }
+  const catalogItem = store.readCatalog().find(
+    ({ catalogRef: candidate }) =>
+      candidate.catalogId === catalogRef.catalogId && candidate.productId === catalogRef.productId,
+  );
+  if (!catalogItem) {
+    return { ok: false as const, code: "OFFER_NOT_FOUND" as const, message: "The canonical catalog item is unavailable" };
+  }
+  return { ok: true as const, catalogRef: { ...catalogItem.catalogRef } };
+};
+
+const inspectCartTool = async (
+  customerSession: CustomerSessionClient,
+  rawInput: unknown,
+  signal: AbortSignal,
+) => {
+  const parsed = CartReadInputSchema.safeParse(rawInput);
+  if (!parsed.success) return cartToolFailure("read", "INVALID_REQUEST", "inspect_cart input must be empty");
+  const authorization = await authorizeCartReadTool(customerSession, signal);
+  if (!authorization.ok) return authorization;
+  const cart = customerSession.cart;
+  if (!cart) return cartToolFailure("read", "SESSION_UNAVAILABLE", "Cart access is unavailable");
+  const result = await cart.getCart(signal, "webmcp");
+  throwIfAborted(signal);
+  if (!result.ok) {
+    return {
+      ok: false as const,
+      error: projectCartError(result.error),
+      receipt: projectCartReceipt(result.receipt),
+    };
+  }
+  return {
+    ok: true as const,
+    cart: projectCart(result.cart),
+    receipt: projectCartReceipt(result.receipt),
+  };
+};
+
+const findRetailerOffersTool = async (
+  store: RoomStore,
+  resolver: RetailerOfferResolver,
+  customerSession: CustomerSessionClient,
+  rawInput: unknown,
+  signal: AbortSignal,
+) => {
+  const parsed = FindRetailerOffersInputSchema.safeParse(rawInput);
+  if (!parsed.success) return cartToolFailure("read", "INVALID_REQUEST", "find_retailer_offers requires one canonical catalog or placed item identity");
+  const authorization = await authorizeCartReadTool(customerSession, signal);
+  if (!authorization.ok) return authorization;
+  const lookup = resolveOfferLookup(store, parsed.data);
+  if (!lookup.ok) return cartToolFailure("read", lookup.code, lookup.message);
+  const resolution = await resolver.resolve({ catalogRef: lookup.catalogRef }, { signal });
+  throwIfAborted(signal);
+  const exactOffers = resolution.offers.filter(
+    ({ identityEvidence }) => identityEvidence.match === "exact",
+  );
+  return enforceWebMcpOutputBound({
+    ok: true as const,
+    catalogRef: lookup.catalogRef,
+    status: resolution.status,
+    offerCount: exactOffers.length,
+    offersTruncated: exactOffers.length > CART_TOOL_MAX_OFFERS,
+    offers: exactOffers.slice(0, CART_TOOL_MAX_OFFERS).map(projectRetailerOffer),
+  });
+};
+
+const projectMutation = (result: CartMutationResult) => result.ok
+  ? { ok: true as const, cart: projectCart(result.cart), receipt: projectCartReceipt(result.receipt) }
+  : { ok: false as const, error: projectCartError(result.error), receipt: projectCartReceipt(result.receipt) };
+
+const addToCartTool = async (client: CustomerCartClient, rawInput: unknown, signal: AbortSignal) => {
+  const parsed = AddToCartInputSchema.safeParse(rawInput);
+  if (!parsed.success) return cartToolFailure("add", "INVALID_REQUEST", "add_to_cart input is invalid");
+  throwIfAborted(signal);
+  if (!client.addLine) return cartToolFailure("add", "SESSION_UNAVAILABLE", "Cart access is unavailable");
+  const result = await client.addLine({ ...parsed.data, signal, origin: "webmcp" });
+  throwIfAborted(signal);
+  return projectMutation(result);
+};
+
+const removeFromCartTool = async (client: CustomerCartClient, rawInput: unknown, signal: AbortSignal) => {
+  const parsed = RemoveFromCartInputSchema.safeParse(rawInput);
+  if (!parsed.success) return cartToolFailure("remove", "INVALID_REQUEST", "remove_from_cart input is invalid");
+  throwIfAborted(signal);
+  if (!client.removeLine) return cartToolFailure("remove", "SESSION_UNAVAILABLE", "Cart access is unavailable");
+  const result = await client.removeLine({ ...parsed.data, signal, origin: "webmcp" });
+  throwIfAborted(signal);
+  return projectMutation(result);
+};
+
+const setCartQuantityTool = async (client: CustomerCartClient, rawInput: unknown, signal: AbortSignal) => {
+  const parsed = SetCartQuantityInputSchema.safeParse(rawInput);
+  if (!parsed.success) return cartToolFailure("change_quantity", "INVALID_REQUEST", "set_cart_quantity input is invalid");
+  throwIfAborted(signal);
+  if (!client.changeQuantity) return cartToolFailure("change_quantity", "SESSION_UNAVAILABLE", "Cart access is unavailable");
+  const result = await client.changeQuantity({ ...parsed.data, signal, origin: "webmcp" });
+  throwIfAborted(signal);
+  return projectMutation(result);
+};
+
 const APPLY_ROOM_EDIT_INPUT_SCHEMA = {
   type: "object",
   properties: {
@@ -886,6 +1333,7 @@ export const createRoomToolDefinitions = (
   offerResolver: RetailerOfferResolver = createSyntheticRetailerOfferResolver(
     store.readCatalog,
   ),
+  commerce?: WebMcpCommerceContext,
 ): WebMcpToolDefinition[] => {
   const definitions: WebMcpToolDefinition[] = [
     {
@@ -970,6 +1418,67 @@ export const createRoomToolDefinitions = (
     },
   ];
 
+  const cart = commerce?.customerSession.cart;
+  const hasCartReadScope = commerce?.session.authenticated === true &&
+    commerce.session.scopes.includes("commerce:cart:read");
+  const hasCartWriteScope = commerce?.session.authenticated === true &&
+    commerce.session.scopes.includes("commerce:cart:write");
+
+  if (hasCartReadScope) {
+    definitions.push(
+      {
+        name: "inspect_cart",
+        title: "Inspect cart",
+        description:
+          "Read bounded totals, lines, offer freshness, and recoverable warnings for the signed-in customer cart; this never changes the room or places an order.",
+        inputSchema: CART_READ_INPUT_SCHEMA,
+        annotations: { readOnlyHint: true, untrustedContentHint: true },
+        execute: (input, { signal }) => inspectCartTool(commerce.customerSession, input, signal),
+      },
+      {
+        name: "find_retailer_offers",
+        title: "Find retailer offers",
+        description:
+          "Read bounded authorized synthetic exact offers for one canonical catalog item or placed item; imported text is untrusted and this never changes the room or purchases anything.",
+        inputSchema: FIND_RETAILER_OFFERS_INPUT_SCHEMA,
+        annotations: { readOnlyHint: true, untrustedContentHint: true },
+        execute: (input, { signal }) => findRetailerOffersTool(store, offerResolver, commerce.customerSession, input, signal),
+      },
+    );
+  }
+
+  if (hasCartWriteScope && cart) {
+    definitions.push(
+      {
+        name: "add_to_cart",
+        title: "Add to cart",
+        description:
+          "Add a bounded quantity of one exact authorized offer using the current cart revision, offer version, price, currency, catalog identity, and idempotency key; no checkout or purchase is available.",
+        inputSchema: ADD_TO_CART_INPUT_SCHEMA,
+        annotations: { readOnlyHint: false, untrustedContentHint: true },
+        execute: (input, { signal }) => addToCartTool(cart, input, signal),
+      },
+      {
+        name: "remove_from_cart",
+        title: "Remove from cart",
+        description:
+          "Remove one exact cart line using the current cart revision and idempotency key; this is not checkout or purchase.",
+        inputSchema: REMOVE_FROM_CART_INPUT_SCHEMA,
+        annotations: { readOnlyHint: false, untrustedContentHint: true },
+        execute: (input, { signal }) => removeFromCartTool(cart, input, signal),
+      },
+      {
+        name: "set_cart_quantity",
+        title: "Set cart quantity",
+        description:
+          "Set one exact cart line quantity using the current cart revision and idempotency key; this is not checkout or purchase.",
+        inputSchema: SET_CART_QUANTITY_INPUT_SCHEMA,
+        annotations: { readOnlyHint: false, untrustedContentHint: true },
+        execute: (input, { signal }) => setCartQuantityTool(cart, input, signal),
+      },
+    );
+  }
+
   return definitions;
 };
 
@@ -977,12 +1486,13 @@ export const registerRoomTools = async (
   modelContext: WebMCP.ModelContext | undefined,
   store: RoomStore,
   controller: AbortController,
+  definitions = createRoomToolDefinitions(store),
 ): Promise<WebMcpRegistrationStatus> => {
   if (!modelContext) {
     return { available: false, registered: [], errors: [] };
   }
 
-  const definitions = createRoomToolDefinitions(store).map((definition) => ({
+  const liveDefinitions = definitions.map((definition) => ({
     ...definition,
     execute: (
       input: Record<string, unknown>,
@@ -995,7 +1505,7 @@ export const registerRoomTools = async (
       }),
   }));
   const settlements = await Promise.allSettled(
-    definitions.map((definition) =>
+    liveDefinitions.map((definition) =>
       Promise.resolve().then(async () => {
         if (controller.signal.aborted) return false;
 
@@ -1013,7 +1523,7 @@ export const registerRoomTools = async (
   const errors: string[] = [];
 
   settlements.forEach((settlement, index) => {
-    const definition = definitions[index];
+    const definition = liveDefinitions[index];
     if (!definition) return;
 
     if (settlement.status === "fulfilled" && settlement.value) {

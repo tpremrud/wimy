@@ -10,6 +10,8 @@ import {
 import userEvent from "@testing-library/user-event";
 import { StrictMode, useLayoutEffect, type ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { CustomerSessionView } from "../commerce/customer-session";
+import type { CustomerSessionClient } from "../commerce/customer-session-demo";
 import { resolveCatalogProduct } from "../room/catalog";
 import { createRoomStore, type RoomStore } from "../room/store";
 import { getTemplate } from "../room/templates";
@@ -924,6 +926,84 @@ describe("App", () => {
     expect(
       modelContext.options.every(({ signal } = {}) => signal?.aborted),
     ).toBe(true);
+  });
+
+  it("registers scoped Cart tools after sign-in and removes them from the local harness on sign-out", async () => {
+    const user = userEvent.setup();
+    const modelContext = new AppModelContext();
+    setModelContext(modelContext);
+    render(<App />);
+
+    await waitFor(() =>
+      expect(getWebMcpStatus()).toHaveTextContent("WebMCP ready — 6 tools registered"),
+    );
+    await user.click(screen.getByRole("button", { name: "Sign in (optional)" }));
+    await user.click(screen.getByRole("button", { name: "Continue locally" }));
+
+    await waitFor(() =>
+      expect(getWebMcpStatus()).toHaveTextContent("WebMCP ready — 11 tools registered"),
+    );
+    expect([...modelContext.activeDefinitions.keys()]).toEqual([
+      "inspect_room",
+      "find_furniture",
+      "apply_room_edit",
+      "inspect_retailer_offers",
+      "inspect_room_shopping_plan",
+      "find_substitutes",
+      "inspect_cart",
+      "find_retailer_offers",
+      "add_to_cart",
+      "remove_from_cart",
+      "set_cart_quantity",
+    ]);
+
+    await user.click(screen.getByRole("button", { name: "Sign out" }));
+    await waitFor(() =>
+      expect(getWebMcpStatus()).toHaveTextContent("WebMCP ready — 6 tools registered"),
+    );
+    expect([...modelContext.activeDefinitions.keys()]).not.toEqual(
+      expect.arrayContaining(["inspect_cart", "add_to_cart", "remove_from_cart", "set_cart_quantity"]),
+    );
+  });
+
+  it("unregisters scoped Cart tools when the customer session naturally expires", async () => {
+    const modelContext = new AppModelContext();
+    setModelContext(modelContext);
+    const expiresAt = Date.now() + 100;
+    const signedIn: CustomerSessionView = {
+      authenticated: true,
+      customerId: "expiring-customer",
+      scopes: ["commerce:cart:read", "commerce:cart:write"],
+      expiresAt,
+    };
+    const getSession = vi.fn(async (): Promise<CustomerSessionView> =>
+        Date.now() < expiresAt ? signedIn : { authenticated: false as const },
+      );
+    const customerSession: CustomerSessionClient = {
+      getSession,
+      signIn: vi.fn(async () => signedIn),
+      signOut: vi.fn(async () => ({ authenticated: false as const })),
+      cart: {
+        getCart: vi.fn(async () => {
+          throw new Error("cart read not used in expiry lifecycle test");
+        }),
+      },
+    };
+
+    render(<App customerSession={customerSession} />);
+
+    await waitFor(() =>
+      expect(getWebMcpStatus()).toHaveTextContent("WebMCP ready — 11 tools registered"),
+    );
+    await waitFor(() =>
+      expect(getWebMcpStatus()).toHaveTextContent("WebMCP ready — 6 tools registered"),
+      { timeout: 1_000 },
+    );
+    expect(getSession.mock.calls.length).toBeGreaterThanOrEqual(2);
+    expect([...modelContext.activeDefinitions.keys()]).not.toEqual(
+      expect.arrayContaining(["inspect_cart", "add_to_cart", "remove_from_cart", "set_cart_quantity"]),
+    );
+    expect(screen.getByText("Anonymous mode")).toBeVisible();
   });
 
   it("keeps a rejected registration visibly degraded", async () => {

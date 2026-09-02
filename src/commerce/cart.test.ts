@@ -146,6 +146,7 @@ describe("CartService", () => {
     const add = await api.addLine({
       sessionToken: ticket.sessionToken,
       csrfSecret: ticket.csrfSecret,
+      origin: "webmcp",
       expectedRevision: 1,
       idempotencyKey: "add-chair-1",
       offer: {
@@ -180,6 +181,7 @@ describe("CartService", () => {
     });
     expect(add.receipt).toMatchObject({
       type: "commerce.cart.receipt",
+      origin: "webmcp",
       operation: "add",
       status: "accepted",
       revision: 2,
@@ -238,6 +240,17 @@ describe("CartService", () => {
       quantity: 1,
     });
     expect(invalidCsrfResult).toMatchObject({ ok: false, error: { code: "INVALID_CSRF" } });
+  });
+
+  it("keeps the WebMCP origin on denied cart reads", async () => {
+    const { api } = await createApi();
+    const result = await api.getCart({ origin: "webmcp" });
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: { code: "ANONYMOUS_SESSION" },
+      receipt: { origin: "webmcp", operation: "read", status: "rejected" },
+    });
   });
 
   it("maps revoked, expired, and unavailable session states to typed cart failures", async () => {
