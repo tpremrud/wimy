@@ -505,7 +505,9 @@ test("fails closed on malformed and stale imports and never opens snapshot URLs"
   await expect(
     page.getByText("Catalog unavailable; using embedded snapshot."),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Close warnings and activity" }).click();
+  await expect(
+    page.getByRole("complementary", { name: "Activity receipts" }),
+  ).toHaveAttribute("inert");
 
   await page.evaluate(() => {
     const originalArrayBuffer = File.prototype.arrayBuffer;
@@ -647,7 +649,7 @@ test("reframes the actual 3D camera after importing materially larger room dimen
   expect(camera.far).toBeCloseTo(expected.far, 1);
 });
 
-test("accepts real user orbit input while the 3D preview remains visible", async ({
+test("preserves real user orbit input while the day timeline advances", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1_280, height: 900 });
@@ -658,6 +660,11 @@ test("accepts real user orbit input while the 3D preview remains visible", async
   await expect(canvas).toHaveAttribute("data-wimy-camera-position", /.+/u);
   const initialPosition = await canvas.getAttribute("data-wimy-camera-position");
   if (!initialPosition) throw new Error("expected an initial 3D camera position");
+  const preview = page.getByRole("region", { name: "3D preview of Living Room" });
+  const timeline = preview.getByRole("slider", { name: "Local time of day" });
+  const initialTime = await timeline.inputValue();
+  await preview.getByRole("button", { name: "Play day" }).click();
+  await expect.poll(() => timeline.inputValue()).not.toBe(initialTime);
 
   await canvas.scrollIntoViewIfNeeded();
   const canvasBox = await canvas.boundingBox();
@@ -677,8 +684,13 @@ test("accepts real user orbit input while the 3D preview remains visible", async
   if (!userOrbitPosition) throw new Error("expected a user-orbited camera position");
   expect(userOrbitPosition.split(",").map(Number)).toHaveLength(3);
   expect(userOrbitPosition).not.toBe(initialPosition);
+  const orbitTime = await timeline.inputValue();
+  await expect.poll(() => timeline.inputValue()).not.toBe(orbitTime);
+  await expect.poll(() => canvas.getAttribute("data-wimy-camera-position"))
+    .toBe(userOrbitPosition);
+  await preview.getByRole("button", { name: "Pause" }).click();
   await expect(
-    page.getByRole("region", { name: "3D preview of Living Room" }),
+    preview,
   ).toContainText("Linen Apartment Sofa");
 });
 

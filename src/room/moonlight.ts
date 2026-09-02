@@ -192,10 +192,11 @@ export const calculateIllustrativeMoonlightStrength = (fraction: number) => {
     return 0;
   }
   const bounded = Math.min(fraction, 1);
-  return (
+  const normalized = (
     (bounded - MIN_ILLUSTRATIVE_MOONLIGHT_FRACTION) /
     (1 - MIN_ILLUSTRATIVE_MOONLIGHT_FRACTION)
   );
+  return normalized ** 3;
 };
 
 export const deriveMoonDirection = (

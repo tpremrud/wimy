@@ -293,11 +293,16 @@ export function App({
   }, [customerSession, customerSessionView]);
 
   useEffect(() => {
-    const newestReceiptChanged = receipts[0] !== previousReceiptRef.current;
-    if (newestReceiptChanged && activeSurface === null) {
+    const newestReceipt = receipts[0];
+    const newestReceiptChanged = newestReceipt !== previousReceiptRef.current;
+    if (
+      newestReceiptChanged &&
+      newestReceipt?.status === "rejected" &&
+      activeSurface === null
+    ) {
       setActiveSurface("activity");
     }
-    previousReceiptRef.current = receipts[0];
+    previousReceiptRef.current = newestReceipt;
   }, [activeSurface, receipts]);
 
   const toggleFavorite = (key: string) => {

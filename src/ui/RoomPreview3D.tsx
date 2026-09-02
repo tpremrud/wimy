@@ -15,10 +15,13 @@ import {
   AdditiveBlending,
   Color,
   DoubleSide,
+  Matrix4,
   Object3D,
   Quaternion,
+  type RectAreaLight,
   Vector3,
 } from "three";
+import { RectAreaLightUniformsLib } from "three/addons/lights/RectAreaLightUniformsLib.js";
 import {
   projectRoomToScene,
   type SceneItem,
@@ -61,7 +64,10 @@ import {
 import {
   MAX_SHADOW_CASTING_WINDOW_LIGHTS,
   selectShadowCastingWindowLightIds,
+  selectStrongestWindowLightIds,
 } from "./window-lighting";
+
+RectAreaLightUniformsLib.init();
 
 type RoomPreview3DProps = {
   room: Parameters<typeof projectRoomToScene>[0];
@@ -709,12 +715,10 @@ const FurniturePrimitive = ({ item }: { item: SceneItem }) => {
 const CameraFramer = ({
   depth,
   height,
-  renderKey,
   width,
 }: {
   depth: number;
   height: number;
-  renderKey: string;
   width: number;
 }) => {
   const { camera, gl, invalidate, size } = useThree();
@@ -739,10 +743,11 @@ const CameraFramer = ({
     camera.updateProjectionMatrix();
     writeCameraDiagnostics();
     invalidate();
-  }, [aspect, camera, depth, height, invalidate, renderKey, width, writeCameraDiagnostics]);
+  }, [aspect, camera, depth, height, invalidate, width, writeCameraDiagnostics]);
 
   return (
     <OrbitControls
+      enableDamping={false}
       enablePan={false}
       onChange={writeCameraDiagnostics}
       target={target}
@@ -759,13 +764,18 @@ const WindowLightBeamVolume = ({
   color?: string;
   opacityScale?: number;
 }) => {
-  const quaternion = useMemo(
-    () => new Quaternion().setFromUnitVectors(
-      new Vector3(0, 0, 1),
-      new Vector3(...beam.direction).normalize(),
-    ),
-    [beam.direction],
-  );
+  const quaternion = useMemo(() => {
+    const beamAxis = new Vector3(...beam.direction).normalize();
+    const vertical = new Vector3(0, 1, 0)
+      .addScaledVector(beamAxis, -beamAxis.y);
+    if (vertical.lengthSq() < 1e-6) vertical.set(0, 0, 1);
+    vertical.normalize();
+    const horizontal = new Vector3().crossVectors(vertical, beamAxis).normalize();
+    const correctedVertical = new Vector3().crossVectors(beamAxis, horizontal).normalize();
+    return new Quaternion().setFromRotationMatrix(
+      new Matrix4().makeBasis(horizontal, correctedVertical, beamAxis),
+    );
+  }, [beam.direction]);
 
   return (
     <mesh
@@ -778,7 +788,7 @@ const WindowLightBeamVolume = ({
         blending={AdditiveBlending}
         color={color}
         depthWrite={false}
-        opacity={(0.1 + beam.strength * 0.2) * opacityScale}
+        opacity={(0.025 + beam.strength * 0.075) * opacityScale}
         side={DoubleSide}
         toneMapped={false}
         transparent
@@ -792,11 +802,13 @@ const WindowDirectLight = ({
   castShadow,
   color,
   intensity,
+  shadowIntensity,
 }: {
   beam: SunBeam;
   castShadow: boolean;
   color: string;
   intensity: number;
+  shadowIntensity: number;
 }) => {
   const target = useMemo(() => new Object3D(), []);
   const source = useMemo(() => beam.position.map((coordinate, axis) =>
@@ -822,17 +834,57 @@ const WindowDirectLight = ({
         angle={angle}
         castShadow={castShadow}
         color={color}
-        decay={1.25}
+        decay={2}
         distance={beam.length + 1.2}
         intensity={intensity * (0.35 + beam.strength * 0.65)}
-        penumbra={0.42}
+        penumbra={0.55}
         position={source}
         shadow-bias={-0.00015}
+        shadow-camera-far={beam.length + 1.2}
+        shadow-camera-near={0.1}
+        shadow-intensity={shadowIntensity}
         shadow-mapSize={[1024, 1024]}
         shadow-normalBias={0.02}
+        shadow-radius={2.4}
         target={target}
       />
     </>
+  );
+};
+
+const WindowAreaLight = ({
+  beam,
+  color,
+  intensity,
+}: {
+  beam: SunBeam;
+  color: string;
+  intensity: number;
+}) => {
+  const lightRef = useRef<RectAreaLight>(null);
+  const source = useMemo(() => beam.position.map((coordinate, axis) =>
+    coordinate - beam.direction[axis]! * beam.length / 2,
+  ) as SceneVector3, [beam]);
+  useLayoutEffect(() => {
+    const light = lightRef.current;
+    if (!light) return;
+    light.lookAt(
+      source[0] + beam.direction[0],
+      source[1] + beam.direction[1],
+      source[2] + beam.direction[2],
+    );
+    light.updateMatrixWorld();
+  }, [beam.direction, source]);
+
+  return (
+    <rectAreaLight
+      ref={lightRef}
+      color={color}
+      height={beam.aperture[1] * 0.94}
+      intensity={intensity * (0.3 + beam.strength * 0.7)}
+      position={source}
+      width={beam.aperture[0] * 0.94}
+    />
   );
 };
 
@@ -852,14 +904,6 @@ const PreviewScene = ({
   sunStudy: SunStudyRenderState | null;
 }) => {
   const [width, height, depth] = scene.dimensions;
-  const renderKey = [
-    sunStudy?.position.utcDate ?? "no-sun-study",
-    sunStudy?.position.azimuthDeg ?? 0,
-    sunStudy?.position.apparentAltitudeDeg ?? 0,
-    moonStudy?.position.azimuthDeg ?? 0,
-    moonStudy?.position.apparentAltitudeDeg ?? 0,
-    sunStudy?.shadowsEnabled ?? false,
-  ].join(":");
   const initialFrame = useMemo(
     () => deriveRoomPreviewCamera([width, height, depth], 1),
     [depth, height, width],
@@ -883,11 +927,25 @@ const PreviewScene = ({
     )),
     [moonBeams, moonStudy?.shadowsEnabled],
   );
+  const sunFillIds = useMemo(
+    () => new Set(selectStrongestWindowLightIds(sunBeams)),
+    [sunBeams],
+  );
+  const moonFillIds = useMemo(
+    () => new Set(selectStrongestWindowLightIds(moonBeams)),
+    [moonBeams],
+  );
   const daylight = showSun && sunStudy
     ? Math.min(Math.max(Math.sin(sunStudy.position.apparentAltitudeDeg * Math.PI / 180), 0.08), 1)
     : 0;
   const skyColor = useMemo(
     () => new Color("#243544").lerp(new Color("#edf2f1"), daylight).getStyle(),
+    [daylight],
+  );
+  const sunColor = useMemo(
+    () => new Color("#ff9b58")
+      .lerp(new Color("#fff0d2"), Math.min(daylight * 1.35, 1))
+      .getStyle(),
     [daylight],
   );
   return (
@@ -901,17 +959,16 @@ const PreviewScene = ({
       }}
       dpr={[1, 1.5]}
       frameloop="demand"
-      shadows={sunStudy?.shadowsEnabled ?? false}
+      shadows={sunStudy?.shadowsEnabled ? "percentage" : false}
     >
       <CameraFramer
         depth={depth}
         height={height}
-        renderKey={renderKey}
         width={width}
       />
       <color args={[skyColor]} attach="background" />
-      <ambientLight intensity={0.12 + daylight * 0.22} />
-      <hemisphereLight args={["#fff7e8", "#51606a", 0.18 + daylight * 0.28]} />
+      <ambientLight intensity={0.08 + daylight * 0.12} />
+      <hemisphereLight args={["#fff7e8", "#3c4852", 0.12 + daylight * 0.18]} />
       {showSun ? (
         <>
           {sunBeams.map((beam) => (
@@ -919,9 +976,17 @@ const PreviewScene = ({
               <WindowDirectLight
                 beam={beam}
                 castShadow={sunShadowIds.has(beam.openingId)}
-                color="#ffe2a8"
+                color={sunColor}
                 intensity={0.65 + daylight * 1.75}
+                shadowIntensity={0.82}
               />
+              {sunFillIds.has(beam.openingId) ? (
+                <WindowAreaLight
+                  beam={beam}
+                  color={sunColor}
+                  intensity={0.3 + daylight * 0.85}
+                />
+              ) : null}
               <WindowLightBeamVolume beam={beam} />
             </group>
           ))}
@@ -936,7 +1001,15 @@ const PreviewScene = ({
                 castShadow={moonShadowIds.has(beam.openingId)}
                 color="#9fc5ff"
                 intensity={0.12 + moonlightStrength * 0.55}
+                shadowIntensity={0.72}
               />
+              {moonFillIds.has(beam.openingId) ? (
+                <WindowAreaLight
+                  beam={beam}
+                  color="#94b9ef"
+                  intensity={0.025 + moonlightStrength * 0.11}
+                />
+              ) : null}
               <WindowLightBeamVolume
                 beam={beam}
                 color="#8cbcff"
@@ -1184,6 +1257,11 @@ export function RoomPreview3D({
                   )
                 : 0
             }
+            data-wimy-area-light-count={Math.min(
+              sunBeams.length + moonBeams.length,
+              MAX_SHADOW_CASTING_WINDOW_LIGHTS,
+            )}
+            data-wimy-shadow-filter="percentage-closer"
             data-wimy-moonbeams={moonBeams.length}
             data-wimy-moonlight={moonStudy?.direction.isAboveHorizon && moonlightStrength > 0 && !sunStudy?.direction.isAboveHorizon ? "on" : "off"}
             data-wimy-moon-phase={moonStudy?.illumination.phaseName ?? "unavailable"}
@@ -1283,8 +1361,9 @@ export function RoomPreview3D({
             </p>
             <p>
               Clear sky, no weather, glazing, blinds, terrain, or exterior
-              obstructions are modeled. Window openings are geometric apertures;
-              furniture and walls use a bounded shadow map when enabled. Moonlight
+              obstructions are modeled. Each active window combines a weak,
+              window-sized diffuse fill with a bounded percentage-closer direct
+              shadow light. No ceiling or overhead direct light is added. Moonlight
               is intentionally amplified and labeled illustrative so its direction
               and phase can be understood in the preview.
             </p>

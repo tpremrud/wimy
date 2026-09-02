@@ -9,7 +9,12 @@ import {
   type PointerEvent,
 } from "react";
 import { useStore } from "zustand";
-import type { EntityId, Pose, RotationDeg } from "../room/document";
+import type { EntityId, Opening, Pose, RotationDeg, WimyRoomV1 } from "../room/document";
+import {
+  moveOpeningAlongWall,
+  resizeAnchoredRoom,
+} from "../room/direct-manipulation";
+import { roomUsableWallLength } from "../room/geometry";
 import { findNearestLegalRotationPose } from "../room/placement";
 import {
   projectRoomToPlan,
@@ -31,6 +36,8 @@ type RoomEditor2DProps = {
   viewport?: PlanViewport;
 };
 
+type RuntimeRoom = ReturnType<RoomStore["getState"]>["room"];
+
 type DragState = {
   owner: RoomStore;
   itemId: EntityId;
@@ -40,6 +47,28 @@ type DragState = {
   startRoomPoint: { x: number; y: number };
   startProjection: PlanProjection;
   previewPose: Pose;
+};
+
+type ArchitecturalDragState = {
+  owner: RoomStore;
+  pointerId: number;
+  startRevision: number;
+  startRoom: RuntimeRoom;
+  startRoomPoint: { x: number; y: number };
+  startProjection: PlanProjection;
+  previewRoom: RuntimeRoom;
+  interaction:
+    | {
+        kind: "opening";
+        openingId: EntityId;
+        wall: Opening["wall"];
+        startCenterOffset: number;
+      }
+    | {
+        kind: "dimension";
+        dimension: "width" | "depth";
+        startValue: number;
+      };
 };
 
 type LocalSelection = {
@@ -79,9 +108,12 @@ export function RoomEditor2D({
 }: RoomEditor2DProps) {
   const { room, revision } = useStore(store);
   const [drag, setDrag] = useState<DragState | null>(null);
+  const [architecturalDrag, setArchitecturalDrag] =
+    useState<ArchitecturalDragState | null>(null);
   const [selection, setSelection] = useState<LocalSelection | null>(null);
   const [poseDraft, setPoseDraft] = useState<PoseDraft | null>(null);
   const dragRef = useRef<DragState | null>(null);
+  const architecturalDragRef = useRef<ArchitecturalDragState | null>(null);
   const selectionRef = useRef<LocalSelection | null>(null);
   const pendingPointerClickRef = useRef<PendingPointerClick | null>(null);
   const pendingFocusItemIdRef = useRef<EntityId | null>(null);
@@ -103,8 +135,10 @@ export function RoomEditor2D({
     }
     interactionOwnerRef.current = store;
     dragRef.current = null;
+    architecturalDragRef.current = null;
     selectionRef.current = null;
     setDrag(null);
+    setArchitecturalDrag(null);
     setSelection(null);
     setPoseDraft(null);
     setHumanActionResult(null);
@@ -191,6 +225,16 @@ export function RoomEditor2D({
           dragRef.current = null;
           setDrag((current) => (current === dragState ? null : current));
         }
+        const architecturalDragState = architecturalDragRef.current;
+        if (
+          architecturalDragState?.owner === store &&
+          architecturalDragState.startRevision !== current.revision
+        ) {
+          architecturalDragRef.current = null;
+          setArchitecturalDrag((candidate) =>
+            candidate === architecturalDragState ? null : candidate,
+          );
+        }
       }),
     [store],
   );
@@ -208,6 +252,12 @@ export function RoomEditor2D({
 
   const visibleRoom = useMemo(() => {
     if (
+      architecturalDrag?.owner === store &&
+      architecturalDrag.startRevision === revision
+    ) {
+      return architecturalDrag.previewRoom;
+    }
+    if (
       !drag ||
       drag.owner !== store ||
       drag.startRevision !== revision
@@ -221,7 +271,7 @@ export function RoomEditor2D({
         item.id === drag.itemId ? { ...item, pose: drag.previewPose } : item,
       ),
     };
-  }, [drag, revision, room, store]);
+  }, [architecturalDrag, drag, revision, room, store]);
   const projection = useMemo(
     () => projectRoomToPlan(visibleRoom, viewport),
     [visibleRoom, viewport],
@@ -555,11 +605,185 @@ export function RoomEditor2D({
     announceResult(result);
   };
 
+  const roomAtArchitecturalPointer = (
+    activeDrag: ArchitecturalDragState,
+    svg: SVGSVGElement,
+    clientPoint: { x: number; y: number },
+  ) => {
+    const roomPoint = screenPointToRoom(
+      svg,
+      clientPoint,
+      activeDrag.startProjection,
+    );
+    if (!roomPoint) return null;
+    const deltaX = roomPoint.x - activeDrag.startRoomPoint.x;
+    const deltaY = roomPoint.y - activeDrag.startRoomPoint.y;
+    if (activeDrag.interaction.kind === "opening") {
+      const alongWall =
+        activeDrag.interaction.wall === "north" ||
+        activeDrag.interaction.wall === "south"
+          ? deltaX
+          : deltaY;
+      return moveOpeningAlongWall(
+        activeDrag.startRoom,
+        activeDrag.interaction.openingId,
+        activeDrag.interaction.startCenterOffset + alongWall,
+      );
+    }
+    const delta = activeDrag.interaction.dimension === "width" ? deltaX : deltaY;
+    return resizeAnchoredRoom(
+      activeDrag.startRoom,
+      activeDrag.interaction.dimension,
+      activeDrag.interaction.startValue + delta,
+    );
+  };
+
+  const beginArchitecturalDrag = (
+    event: PointerEvent<SVGElement>,
+    interaction: ArchitecturalDragState["interaction"],
+  ) => {
+    const svg = event.currentTarget.ownerSVGElement;
+    if (!svg) return;
+    const current = store.getState();
+    const startProjection = projectRoomToPlan(current.room, viewport);
+    const startRoomPoint = screenPointToRoom(
+      svg,
+      { x: event.clientX, y: event.clientY },
+      startProjection,
+    );
+    if (!startRoomPoint) return;
+
+    event.preventDefault();
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    dragRef.current = null;
+    setDrag(null);
+    const next: ArchitecturalDragState = {
+      owner: store,
+      pointerId: event.pointerId,
+      startRevision: current.revision,
+      startRoom: current.room,
+      startRoomPoint,
+      startProjection,
+      previewRoom: current.room,
+      interaction,
+    };
+    architecturalDragRef.current = next;
+    setArchitecturalDrag(next);
+  };
+
+  const moveArchitecturalDrag = (event: PointerEvent<SVGElement>) => {
+    const activeDrag = architecturalDragRef.current;
+    if (
+      !activeDrag ||
+      activeDrag.owner !== store ||
+      event.pointerId !== activeDrag.pointerId
+    ) return;
+    const svg = event.currentTarget.ownerSVGElement;
+    if (!svg) return;
+    const previewRoom = roomAtArchitecturalPointer(
+      activeDrag,
+      svg,
+      { x: event.clientX, y: event.clientY },
+    );
+    if (!previewRoom) return;
+    const next = { ...activeDrag, previewRoom };
+    architecturalDragRef.current = next;
+    setArchitecturalDrag(next);
+  };
+
+  const finishArchitecturalDrag = (event: PointerEvent<SVGElement>) => {
+    const activeDrag = architecturalDragRef.current;
+    if (!activeDrag || event.pointerId !== activeDrag.pointerId) return;
+    if (event.currentTarget.hasPointerCapture?.(activeDrag.pointerId)) {
+      event.currentTarget.releasePointerCapture(activeDrag.pointerId);
+    }
+    const svg = event.currentTarget.ownerSVGElement;
+    const finalRoom = svg
+      ? roomAtArchitecturalPointer(
+          activeDrag,
+          svg,
+          { x: event.clientX, y: event.clientY },
+        )
+      : null;
+    architecturalDragRef.current = null;
+    setArchitecturalDrag(null);
+    if (
+      !finalRoom ||
+      activeDrag.owner !== store ||
+      JSON.stringify(finalRoom) === JSON.stringify(activeDrag.startRoom)
+    ) return;
+    const result = activeDrag.owner.getState().transact({
+      expectedRevision: activeDrag.startRevision,
+      origin: "human",
+      change: { type: "replace", room: finalRoom },
+    });
+    announceResult(result);
+  };
+
+  const cancelArchitecturalDrag = (event: PointerEvent<SVGElement>) => {
+    const activeDrag = architecturalDragRef.current;
+    if (
+      !activeDrag ||
+      activeDrag.owner !== store ||
+      event.pointerId !== activeDrag.pointerId
+    ) return;
+    if (event.currentTarget.hasPointerCapture?.(activeDrag.pointerId)) {
+      event.currentTarget.releasePointerCapture(activeDrag.pointerId);
+    }
+    architecturalDragRef.current = null;
+    setArchitecturalDrag(null);
+  };
+
+  const applyArchitecturalRoom = (nextRoom: WimyRoomV1 | null) => {
+    if (!nextRoom) return;
+    const current = store.getState();
+    if (JSON.stringify(nextRoom) === JSON.stringify(current.room)) return;
+    announceResult(current.transact({
+      expectedRevision: current.revision,
+      origin: "human",
+      change: { type: "replace", room: nextRoom },
+    }));
+  };
+
+  const nudgeOpening = (
+    event: KeyboardEvent<SVGElement>,
+    opening: Opening,
+  ) => {
+    const horizontal = opening.wall === "north" || opening.wall === "south";
+    const decrease = horizontal ? event.key === "ArrowLeft" : event.key === "ArrowUp";
+    const increase = horizontal ? event.key === "ArrowRight" : event.key === "ArrowDown";
+    if (!decrease && !increase) return;
+    event.preventDefault();
+    const step = event.shiftKey ? 0.5 : 0.1;
+    applyArchitecturalRoom(moveOpeningAlongWall(
+      store.getState().room,
+      opening.id,
+      opening.centerOffset + (increase ? step : -step),
+    ));
+  };
+
+  const nudgeRoomDimension = (
+    event: KeyboardEvent<SVGElement>,
+    dimension: "width" | "depth",
+  ) => {
+    const decrease = dimension === "width" ? event.key === "ArrowLeft" : event.key === "ArrowUp";
+    const increase = dimension === "width" ? event.key === "ArrowRight" : event.key === "ArrowDown";
+    if (!decrease && !increase) return;
+    event.preventDefault();
+    const current = store.getState().room;
+    const step = event.shiftKey ? 0.5 : 0.1;
+    applyArchitecturalRoom(resizeAnchoredRoom(
+      current,
+      dimension,
+      current.dimensions[dimension] + (increase ? step : -step),
+    ));
+  };
+
   return (
     <section className="room-editor" aria-labelledby="room-editor-heading">
       <div className="room-editor-heading-row">
         <h3 id="room-editor-heading">2D room editor</h3>
-        <p>Drag items to move them. Select an item for more actions.</p>
+        <p>Drag furniture, openings, or the east and south room bounds.</p>
       </div>
       <div className="room-plan-stage">
         <svg
@@ -587,6 +811,76 @@ export function RoomEditor2D({
           className="room-boundary"
           points={projection.roomPolygon.map(({ x, y }) => `${x},${y}`).join(" ")}
         />
+        <g className="room-wall-resize-control">
+          <line
+            aria-hidden="true"
+            className="room-wall-resize-rail"
+            x1={projection.roomRect.x + projection.roomRect.width}
+            y1={projection.roomRect.y}
+            x2={projection.roomRect.x + projection.roomRect.width}
+            y2={projection.roomRect.y + roomUsableWallLength(visibleRoom, "east") * projection.scale}
+          />
+          <rect
+            aria-label="Resize room width from east wall"
+            aria-orientation="horizontal"
+            aria-valuemax={30}
+            aria-valuemin={1}
+            aria-valuenow={visibleRoom.dimensions.width}
+            aria-valuetext={`${visibleRoom.dimensions.width} meters wide`}
+            className="room-wall-resize-hit-target room-wall-resize-hit-target-width"
+            role="slider"
+            tabIndex={0}
+            x={projection.roomRect.x + projection.roomRect.width - 12}
+            y={projection.roomRect.y}
+            width={24}
+            height={roomUsableWallLength(visibleRoom, "east") * projection.scale}
+            onKeyDown={(event) => nudgeRoomDimension(event, "width")}
+            onPointerDown={(event) => beginArchitecturalDrag(event, {
+              kind: "dimension",
+              dimension: "width",
+              startValue: store.getState().room.dimensions.width,
+            })}
+            onPointerMove={moveArchitecturalDrag}
+            onPointerUp={finishArchitecturalDrag}
+            onPointerCancel={cancelArchitecturalDrag}
+            onLostPointerCapture={cancelArchitecturalDrag}
+          />
+        </g>
+        <g className="room-wall-resize-control">
+          <line
+            aria-hidden="true"
+            className="room-wall-resize-rail"
+            x1={projection.roomRect.x}
+            y1={projection.roomRect.y + projection.roomRect.height}
+            x2={projection.roomRect.x + roomUsableWallLength(visibleRoom, "south") * projection.scale}
+            y2={projection.roomRect.y + projection.roomRect.height}
+          />
+          <rect
+            aria-label="Resize room depth from south wall"
+            aria-orientation="vertical"
+            aria-valuemax={30}
+            aria-valuemin={1}
+            aria-valuenow={visibleRoom.dimensions.depth}
+            aria-valuetext={`${visibleRoom.dimensions.depth} meters deep`}
+            className="room-wall-resize-hit-target room-wall-resize-hit-target-depth"
+            role="slider"
+            tabIndex={0}
+            x={projection.roomRect.x}
+            y={projection.roomRect.y + projection.roomRect.height - 12}
+            width={roomUsableWallLength(visibleRoom, "south") * projection.scale}
+            height={24}
+            onKeyDown={(event) => nudgeRoomDimension(event, "depth")}
+            onPointerDown={(event) => beginArchitecturalDrag(event, {
+              kind: "dimension",
+              dimension: "depth",
+              startValue: store.getState().room.dimensions.depth,
+            })}
+            onPointerMove={moveArchitecturalDrag}
+            onPointerUp={finishArchitecturalDrag}
+            onPointerCancel={cancelArchitecturalDrag}
+            onLostPointerCapture={cancelArchitecturalDrag}
+          />
+        </g>
         <text
           className="room-name-label"
           x={projection.roomRect.x}
@@ -621,20 +915,50 @@ export function RoomEditor2D({
         {projection.openings.map((opening) => {
           const content = openingContentById.get(opening.id);
           return content ? (
-            <line
+            <g
               key={opening.id}
-              className={`room-opening room-opening-${content.kind}`}
               aria-label={opening.label.toLowerCase()}
+              className="room-opening-control"
               data-opening-id={opening.id}
               data-opening-kind={content.kind}
               data-opening-swing={opening.swing}
-              x1={opening.start.x}
-              y1={opening.start.y}
-              x2={opening.end.x}
-              y2={opening.end.y}
             >
               <title>{opening.label}</title>
-            </line>
+              <line
+                aria-hidden="true"
+                className={`room-opening room-opening-${content.kind}`}
+                x1={opening.start.x}
+                y1={opening.start.y}
+                x2={opening.end.x}
+                y2={opening.end.y}
+              />
+              <line
+                aria-label={`Move ${content.kind} on ${content.wall} wall`}
+                aria-orientation={content.wall === "north" || content.wall === "south" ? "horizontal" : "vertical"}
+                aria-valuemax={roomUsableWallLength(visibleRoom, content.wall) - content.width / 2}
+                aria-valuemin={content.width / 2}
+                aria-valuenow={content.centerOffset}
+                aria-valuetext={`${content.centerOffset} meters from wall start`}
+                className={`room-opening-hit-target room-opening-hit-target-${content.wall}`}
+                role="slider"
+                tabIndex={0}
+                x1={opening.start.x}
+                y1={opening.start.y}
+                x2={opening.end.x}
+                y2={opening.end.y}
+                onKeyDown={(event) => nudgeOpening(event, content)}
+                onPointerDown={(event) => beginArchitecturalDrag(event, {
+                  kind: "opening",
+                  openingId: content.id,
+                  wall: content.wall,
+                  startCenterOffset: store.getState().room.openings.find(({ id }) => id === content.id)?.centerOffset ?? content.centerOffset,
+                })}
+                onPointerMove={moveArchitecturalDrag}
+                onPointerUp={finishArchitecturalDrag}
+                onPointerCancel={cancelArchitecturalDrag}
+                onLostPointerCapture={cancelArchitecturalDrag}
+              />
+            </g>
           ) : null;
         })}
         {projection.items.map((item) => {

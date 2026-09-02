@@ -1194,6 +1194,7 @@ section > p {
 .room-opening {
   stroke-width: 9;
   stroke-linecap: square;
+  pointer-events: none;
 }
 
 .room-opening-door {
@@ -1204,6 +1205,69 @@ section > p {
 .room-opening-window {
   stroke: #0369a1;
   stroke-dasharray: 2 4;
+}
+
+.room-opening-hit-target {
+  stroke: rgb(8 68 74 / 0.001);
+  stroke-width: 24;
+  pointer-events: stroke;
+}
+
+.room-wall-resize-hit-target {
+  fill: rgb(8 68 74 / 0.001);
+  pointer-events: all;
+}
+
+.room-opening-hit-target-north,
+.room-opening-hit-target-south,
+.room-wall-resize-hit-target-depth {
+  cursor: ns-resize;
+}
+
+.room-opening-hit-target-east,
+.room-opening-hit-target-west,
+.room-wall-resize-hit-target-width {
+  cursor: ew-resize;
+}
+
+.room-opening-hit-target-north,
+.room-opening-hit-target-south {
+  cursor: ew-resize;
+}
+
+.room-opening-hit-target-east,
+.room-opening-hit-target-west {
+  cursor: ns-resize;
+}
+
+.room-opening-control:focus-within .room-opening,
+.room-opening-control:hover .room-opening {
+  filter: drop-shadow(0 0 3px rgb(8 68 74 / 0.38));
+  stroke-width: 11;
+}
+
+.room-opening-hit-target:focus-visible {
+  stroke: rgb(8 68 74 / 0.18);
+  outline: none;
+}
+
+.room-wall-resize-hit-target:focus-visible {
+  fill: rgb(8 68 74 / 0.12);
+  outline: none;
+}
+
+.room-wall-resize-rail {
+  stroke: var(--accent);
+  stroke-dasharray: 3 8;
+  stroke-linecap: round;
+  stroke-width: 3;
+  opacity: 0.28;
+  pointer-events: none;
+}
+
+.room-wall-resize-control:focus-within .room-wall-resize-rail,
+.room-wall-resize-control:hover .room-wall-resize-rail {
+  opacity: 0.9;
 }
 
 .room-item {

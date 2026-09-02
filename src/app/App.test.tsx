@@ -272,7 +272,7 @@ describe("App", () => {
     expect(store.getState().room.name).toBe("Compact Bedroom");
   });
 
-  it("opens activity feedback after an accepted catalog transaction", async () => {
+  it("keeps accepted catalog feedback available without interrupting the workspace", async () => {
     const user = userEvent.setup();
     const store = createRoomStore(
       getTemplate("living-room"),
@@ -289,8 +289,11 @@ describe("App", () => {
     await user.click(screen.getByRole("button", { name: "Search catalog" }));
     await user.click(screen.getByRole("button", { name: "Add best fit" }));
 
-    expect(screen.getByRole("complementary", { name: "Activity receipts" })).not.toHaveAttribute("inert");
-    expect(screen.getByRole("complementary", { name: "Activity receipts" })).toHaveTextContent("Added Ember Nest Chair");
+    const activity = screen.getByRole("complementary", { name: "Activity receipts" });
+    expect(activity).toHaveAttribute("inert");
+    await user.click(screen.getByRole("button", { name: "Warnings & activity" }));
+    expect(activity).not.toHaveAttribute("inert");
+    expect(activity).toHaveTextContent("Added Ember Nest Chair");
   });
 
   it("keeps Share open for its own file transaction feedback", async () => {
@@ -315,7 +318,7 @@ describe("App", () => {
     expect(screen.getByRole("complementary", { name: "Activity receipts" })).toHaveAttribute("inert");
   });
 
-  it("opens Activity when a new receipt replaces the capped newest receipt", async () => {
+  it("keeps a capped newest receipt available without interrupting the workspace", async () => {
     const user = userEvent.setup();
     const store = createRoomStore(
       getTemplate("living-room"),
@@ -344,10 +347,11 @@ describe("App", () => {
     });
     expect(result.ok).toBe(true);
     expect(store.getState().receipts).toHaveLength(20);
-    await waitFor(() =>
-      expect(screen.getByRole("complementary", { name: "Activity receipts" })).not.toHaveAttribute("inert"),
-    );
-    expect(screen.getByRole("complementary", { name: "Activity receipts" })).toHaveTextContent("Replaced the room with Compact Bedroom");
+    const activity = screen.getByRole("complementary", { name: "Activity receipts" });
+    expect(activity).toHaveAttribute("inert");
+    await user.click(screen.getByRole("button", { name: "Warnings & activity" }));
+    expect(activity).not.toHaveAttribute("inert");
+    expect(activity).toHaveTextContent("Replaced the room with Compact Bedroom");
   });
 
   it("presents the room in a two-pane shell with accessible secondary tabs", () => {

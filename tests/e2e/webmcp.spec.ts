@@ -292,7 +292,9 @@ test("inspect, find, and apply visibly collaborate while stale edits recover", a
       .getByRole("listitem")
       .first(),
   ).toContainText("Agent: Accepted. Added Ember Nest ChairRevision 2");
-  await page.getByRole("button", { name: "Close warnings and activity" }).click();
+  await expect(
+    page.getByRole("complementary", { name: "Activity receipts" }),
+  ).toHaveAttribute("inert");
 
   await page.getByRole("button", { name: "Rotate 90 degrees" }).click();
 

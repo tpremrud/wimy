@@ -41,10 +41,21 @@ test("keeps the directional sun study local and deterministic", async ({
   await expect(timeSlider).toHaveValue("720");
   const canvas = preview.locator(".room-preview-canvas");
   await expect(canvas).toHaveAttribute("data-wimy-shadows", "on");
+  await expect(canvas).toHaveAttribute(
+    "data-wimy-shadow-filter",
+    "percentage-closer",
+  );
+  await expect.poll(
+    async () => Number(await canvas.getAttribute("data-wimy-area-light-count")),
+  ).toBeGreaterThan(0);
   await expect.poll(
     async () => Number(await canvas.getAttribute("data-wimy-sunbeams")),
   ).toBeGreaterThan(0);
-  await canvas.screenshot({ path: testInfo.outputPath("sunlight-canvas-initial.png") });
+  await preview.getByRole("button", { name: "Close lighting settings" }).click();
+  await canvas.screenshot({
+    path: testInfo.outputPath("sunlight-noon-window-shading.png"),
+  });
+  await preview.getByRole("button", { name: "Open lighting settings" }).click();
   const status = preview.getByRole("status", { name: "Sun study status" });
   const initialStatus = await status.textContent();
   await preview.getByLabel("Plan North true bearing").fill("90");
@@ -53,6 +64,9 @@ test("keeps the directional sun study local and deterministic", async ({
   await timeSlider.fill("480");
   await expect(preview).toContainText("Local 2026-09-01 08:00");
   await preview.getByRole("button", { name: "Close lighting settings" }).click();
+  await canvas.screenshot({
+    path: testInfo.outputPath("sunlight-morning-window-shading.png"),
+  });
   await preview.getByRole("button", { name: "Play day" }).click();
   await expect.poll(() => timeSlider.inputValue()).not.toBe("480");
   await preview.getByRole("button", { name: "Pause" }).click();

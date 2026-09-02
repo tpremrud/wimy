@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { Children, useState, type ReactNode } from "react";
 import { useStore } from "zustand";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -23,6 +23,7 @@ import {
 const canvasHarness = vi.hoisted(() => ({
   cameras: [] as unknown[],
   frameloops: [] as unknown[],
+  shadows: [] as unknown[],
   gl: { domElement: { setAttribute: () => {} } },
   camera: {
     far: 100,
@@ -49,10 +50,12 @@ vi.mock("@react-three/fiber", () => ({
     camera,
     children,
     frameloop,
+    shadows,
   }: {
     camera: unknown;
     children: ReactNode;
     frameloop: unknown;
+    shadows: unknown;
   }) => {
     if (canvasHarness.throws) {
       throw new Error("WebGL unavailable for test");
@@ -60,6 +63,7 @@ vi.mock("@react-three/fiber", () => ({
     canvasHarness.mounts += 1;
     canvasHarness.cameras.push(camera);
     canvasHarness.frameloops.push(frameloop);
+    canvasHarness.shadows.push(shadows);
     // Keep R3F host primitives inside its custom renderer, not React DOM/jsdom.
     const [cameraFramer] = Children.toArray(children);
     return <div data-testid="three-canvas-host">{cameraFramer}</div>;
@@ -82,6 +86,7 @@ afterEach(() => {
   cleanup();
   canvasHarness.cameras = [];
   canvasHarness.frameloops = [];
+  canvasHarness.shadows = [];
   canvasHarness.invalidate.mockReset();
   canvasHarness.mounts = 0;
   canvasHarness.camera.position.values = [0, 0, 0];
@@ -793,6 +798,31 @@ describe("RoomPreview3D", () => {
     expect(selectShadowCastingWindowLightIds(beams, false)).toEqual([]);
   });
 
+  it("spends the shadow budget on the strongest window apertures", () => {
+    const makeBeam = (openingId: string, strength: number, aperture: [number, number] = [1, 1]): SunBeam => ({
+      openingId,
+      position: [0, 1, 1],
+      direction: [1, -0.5, 0],
+      aperture,
+      length: 2,
+      strength,
+    });
+    const beams = [
+      makeBeam("dim", 0.1),
+      makeBeam("wide", 0.9, [2, 2]),
+      makeBeam("medium-a", 0.5),
+      makeBeam("medium-b", 0.4),
+      makeBeam("medium-c", 0.3),
+    ];
+
+    expect(selectShadowCastingWindowLightIds(beams, true)).toEqual([
+      "wide",
+      "medium-a",
+      "medium-b",
+      "medium-c",
+    ]);
+  });
+
   it("keeps the room dominant while lighting settings collapse into a drawer", () => {
     render(
       <RoomPreview3D
@@ -874,6 +904,24 @@ describe("RoomPreview3D", () => {
     expect(screen.getByText("08:00")).toBeVisible();
   });
 
+  it("preserves the user's orbit while the day timeline advances", () => {
+    vi.useFakeTimers();
+    render(
+      <RoomPreview3D
+        room={makeRoom({ openings: [makeOpening({ kind: "window" })] })}
+      />,
+    );
+    const userOrbit = [14, 8, 9];
+    canvasHarness.camera.position.set(...userOrbit);
+
+    fireEvent.click(screen.getByRole("button", { name: "Play day" }));
+    act(() => vi.advanceTimersByTime(360));
+
+    expect(screen.getByRole("slider", { name: "Local time of day" })).not.toHaveValue("720");
+    expect(canvasHarness.camera.position.values).toEqual(userOrbit);
+    vi.useRealTimers();
+  });
+
   it("does not offer automatic day playback when reduced motion is preferred", () => {
     vi.stubGlobal("matchMedia", vi.fn(() => ({
       matches: true,
@@ -947,6 +995,14 @@ describe("RoomPreview3D", () => {
     openLightingSettings();
 
     expect(screen.getByLabelText("Enable bounded shadows")).toBeChecked();
+    expect(canvasHarness.shadows).not.toHaveLength(0);
+    expect(canvasHarness.shadows).toEqual(
+      expect.arrayContaining(["percentage"]),
+    );
+    expect(canvasHarness.shadows.every((filter) => filter === "percentage"))
+      .toBe(true);
+    expect(document.querySelector(".room-preview-canvas"))
+      .toHaveAttribute("data-wimy-shadow-filter", "percentage-closer");
   });
 
   it("limits every direct shadow-casting light source to room windows", () => {

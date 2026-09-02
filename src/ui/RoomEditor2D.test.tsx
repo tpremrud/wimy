@@ -465,6 +465,77 @@ describe("RoomEditor2D selection", () => {
   });
 });
 
+describe("RoomEditor2D architectural controls", () => {
+  it("drags a window along its current wall through one room transaction", () => {
+    const store = renderEditor(makeRoom({
+      openings: [makeOpening({
+        id: "window_north_1",
+        kind: "window",
+        wall: "north",
+        centerOffset: 1.5,
+        width: 1,
+        bottom: 0.9,
+        height: 1.2,
+      })],
+    }));
+    const windowControl = screen.getByRole("slider", {
+      name: "Move window on north wall",
+    });
+
+    fireEvent.pointerDown(windowControl, { pointerId: 21, clientX: 197.5, clientY: 42.5 });
+    fireEvent.pointerMove(windowControl, { pointerId: 21, clientX: 302.5, clientY: 42.5 });
+    fireEvent.pointerUp(windowControl, { pointerId: 21, clientX: 302.5, clientY: 42.5 });
+
+    expect(store.getState().revision).toBe(2);
+    expect(store.getState().room.openings[0]?.centerOffset).toBe(2.5);
+    expect(store.getState().receipts[0]).toMatchObject({
+      origin: "human",
+      status: "accepted",
+      changeType: "replace",
+    });
+  });
+
+  it("resizes the east room boundary while the north-west origin stays anchored", () => {
+    const store = renderEditor(makeRoom());
+    const widthControl = screen.getByRole("slider", {
+      name: "Resize room width from east wall",
+    });
+
+    fireEvent.pointerDown(widthControl, { pointerId: 22, clientX: 460, clientY: 200 });
+    fireEvent.pointerMove(widthControl, { pointerId: 22, clientX: 565, clientY: 200 });
+    fireEvent.pointerUp(widthControl, { pointerId: 22, clientX: 565, clientY: 200 });
+
+    expect(store.getState().revision).toBe(2);
+    expect(store.getState().room.dimensions.width).toBe(5);
+    expect(store.getState().room.dimensions.depth).toBe(3);
+  });
+
+  it("supports precise keyboard nudging for openings and room bounds", () => {
+    const store = renderEditor(makeRoom({
+      openings: [makeOpening({
+        id: "window_north_1",
+        kind: "window",
+        wall: "north",
+        centerOffset: 1.5,
+        width: 1,
+        bottom: 0.9,
+        height: 1.2,
+      })],
+    }));
+
+    fireEvent.keyDown(screen.getByRole("slider", { name: "Move window on north wall" }), {
+      key: "ArrowRight",
+    });
+    fireEvent.keyDown(screen.getByRole("slider", { name: "Resize room depth from south wall" }), {
+      key: "ArrowDown",
+    });
+
+    expect(store.getState().revision).toBe(3);
+    expect(store.getState().room.openings[0]?.centerOffset).toBe(1.6);
+    expect(store.getState().room.dimensions.depth).toBe(3.1);
+  });
+});
+
 describe("RoomEditor2D drag", () => {
   it("uses the actual pointer id and ignores unrelated pointer lifecycle events", () => {
     const store = renderEditor(makeRoom({ items: [makePlacedItem()] }));

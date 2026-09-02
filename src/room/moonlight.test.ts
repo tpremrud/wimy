@@ -10,7 +10,7 @@ describe("calculateIllustrativeMoonlightStrength", () => {
   it("keeps a new moon dark while scaling visible phases", () => {
     expect(calculateIllustrativeMoonlightStrength(0)).toBe(0);
     expect(calculateIllustrativeMoonlightStrength(0.01)).toBe(0);
-    expect(calculateIllustrativeMoonlightStrength(0.5)).toBeGreaterThan(0);
+    expect(calculateIllustrativeMoonlightStrength(0.5)).toBeCloseTo(0.12, 1);
     expect(calculateIllustrativeMoonlightStrength(1)).toBe(1);
   });
 });
