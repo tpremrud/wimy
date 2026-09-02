@@ -146,6 +146,7 @@ export const FurnitureSnapshotSchema = z.object({
   ]),
   dimensions: DimensionsSchema,
   appearance: AppearanceSchema,
+  material: boundedText(80).optional(),
   styleTags: z.array(boundedText(80)),
   commerce: CommerceSnapshotSchema.optional(),
 }).strict();
@@ -156,6 +157,8 @@ export const CatalogRefSchema = z
     productId: boundedText(128),
   })
   .strict();
+
+export type CatalogRef = z.infer<typeof CatalogRefSchema>;
 
 export const PlacedItemSchema = z.object({
   id: EntityIdSchema,

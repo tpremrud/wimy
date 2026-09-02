@@ -11,7 +11,11 @@ import {
   type ComparableShoppingOffer,
   type RoomShoppingPlan,
 } from "../commerce/shopping-plan";
-import { findFurniture } from "../room/catalog";
+import {
+  catalogItemKey,
+  findFurniture,
+  type CatalogItem,
+} from "../room/catalog";
 import {
   EntityIdSchema,
   PoseSchema,
@@ -22,6 +26,10 @@ import { projectOpeningSemantics } from "../room/opening";
 import { findLayoutWarnings, type RoomWarning } from "../room/placement";
 import type { RoomStore } from "../room/store";
 import { LOCAL_CATALOG_TRANSACTION } from "../room/transaction";
+import {
+  rankComparableSubstitutes,
+  type SubstituteSuggestion,
+} from "../room/substitutes";
 
 export type WebMcpToolDefinition = WebMCP.ModelContextTool;
 export type WebMcpRegistrationStatus =
@@ -287,6 +295,26 @@ const PRODUCT_ID_INPUT_SCHEMA = {
   minLength: 1,
   maxLength: 128,
 } as const;
+const FIND_SUBSTITUTES_INPUT_SCHEMA = {
+  type: "object",
+  properties: {
+    itemId: ENTITY_ID_INPUT_SCHEMA,
+    limit: {
+      type: "integer",
+      minimum: 1,
+      maximum: 5,
+      default: 5,
+    },
+  },
+  required: ["itemId"],
+  additionalProperties: false,
+} as const;
+const FindSubstitutesInputSchema = z
+  .object({
+    itemId: EntityIdSchema,
+    limit: z.number().int().min(1).max(5).default(5),
+  })
+  .strict();
 const PORTABLE_COORDINATE_INPUT_SCHEMA = {
   type: "number",
 } as const;
@@ -376,6 +404,128 @@ const findFurnitureForRoom = (
     revision: state.revision,
     units: "meters" as const,
     matches,
+  });
+};
+
+const projectCatalogMetadata = (item: CatalogItem) =>
+  item.metadata
+    ? {
+        origin: item.metadata.origin,
+        publisherId: item.metadata.publisherId,
+        catalogId: item.metadata.catalogId,
+        catalogVersion: item.metadata.catalogVersion,
+        itemId: item.metadata.itemId,
+        variantId: item.metadata.variantId,
+        provenance: {
+          sourceName: projectUntrustedText(item.metadata.provenance.sourceName),
+          observedAt: item.metadata.provenance.observedAt,
+        },
+        license: {
+          name: projectUntrustedText(item.metadata.license.name),
+          ...(item.metadata.license.spdxId
+            ? { spdxId: item.metadata.license.spdxId }
+            : {}),
+        },
+      }
+    : undefined;
+
+const projectSubstituteSuggestion = (suggestion: SubstituteSuggestion) => ({
+  catalogRef: { ...suggestion.catalogRef },
+  name: projectUntrustedText(suggestion.snapshot.name),
+  category: suggestion.snapshot.category,
+  dimensions: { ...suggestion.snapshot.dimensions },
+  material: suggestion.snapshot.material
+    ? projectUntrustedText(suggestion.snapshot.material)
+    : null,
+  color: suggestion.snapshot.appearance.color,
+  styleTags: suggestion.snapshot.styleTags.map(projectUntrustedText),
+  metadata: projectCatalogMetadata(suggestion),
+  actionable: suggestion.actionable,
+  fit: { ok: suggestion.fit.ok, pose: { ...suggestion.fit.pose } },
+  identity: {
+    source: { ...suggestion.identity.source },
+    substitute: { ...suggestion.identity.substitute },
+  },
+  differences: {
+    category: { ...suggestion.differences.category },
+    dimensions: {
+      source: { ...suggestion.differences.dimensions.source },
+      substitute: { ...suggestion.differences.dimensions.substitute },
+      delta: { ...suggestion.differences.dimensions.delta },
+    },
+    style: {
+      shared: suggestion.differences.style.shared.map(projectUntrustedText),
+      onlyInSource: suggestion.differences.style.onlyInSource.map(projectUntrustedText),
+      onlyInSubstitute: suggestion.differences.style.onlyInSubstitute.map(projectUntrustedText),
+    },
+    material: { ...suggestion.differences.material },
+    color: { ...suggestion.differences.color },
+  },
+  rationale: projectUntrustedText(suggestion.rationale),
+  tradeoffs: suggestion.tradeoffs.map(projectUntrustedText),
+});
+
+const findSubstitutesForRoom = (
+  store: RoomStore,
+  rawInput: unknown,
+  signal?: AbortSignal,
+) => {
+  throwIfAborted(signal);
+  const parsedInput = FindSubstitutesInputSchema.safeParse(rawInput);
+  if (!parsedInput.success) {
+    throw new TypeError(
+      "find_substitutes input must contain a placed item ID and bounded limit",
+    );
+  }
+
+  const state = store.getState();
+  const placedItem = state.room.items.find(({ id }) => id === parsedInput.data.itemId);
+  if (!placedItem?.catalogRef) {
+    return enforceWebMcpOutputBound({
+      ok: false as const,
+      revision: state.revision,
+      code: "UNKNOWN_ITEM" as const,
+      message: "Substitutes require a placed item with a canonical catalog identity",
+    });
+  }
+
+  const source = store.readCatalog().find(
+    (item) => catalogItemKey(item.catalogRef) === catalogItemKey(placedItem.catalogRef!),
+  );
+  if (!source) {
+    return enforceWebMcpOutputBound({
+      ok: false as const,
+      revision: state.revision,
+      code: "UNKNOWN_PRODUCT" as const,
+      message: "The placed item's catalog identity is not available in the local catalog",
+    });
+  }
+
+  const matches = rankComparableSubstitutes(
+    state.room as WimyRoomV1,
+    source,
+    store.readCatalog(),
+    placedItem.id,
+    parsedInput.data.limit,
+  );
+  return enforceWebMcpOutputBound({
+    ok: true as const,
+    revision: state.revision,
+    source: {
+      itemId: placedItem.id,
+      catalogRef: { ...source.catalogRef },
+      name: projectUntrustedText(placedItem.snapshot.name),
+      category: placedItem.snapshot.category,
+      dimensions: { ...placedItem.snapshot.dimensions },
+      material: placedItem.snapshot.material
+        ? projectUntrustedText(placedItem.snapshot.material)
+        : null,
+      color: placedItem.snapshot.appearance.color,
+      styleTags: placedItem.snapshot.styleTags.map(projectUntrustedText),
+      pose: { ...placedItem.pose },
+      metadata: projectCatalogMetadata(source),
+    },
+    matches: matches.map(projectSubstituteSuggestion),
   });
 };
 
@@ -804,6 +954,19 @@ export const createRoomToolDefinitions = (
       },
       execute: (input, { signal }) =>
         inspectRoomShoppingPlan(store, offerResolver, input, signal),
+    },
+    {
+      name: "find_substitutes",
+      title: "Find furniture substitutes",
+      description:
+        "Rank deterministic same-category catalog substitutes for one placed item without changing the room; every actionable suggestion includes fit, identity differences, rationale, tradeoffs, and provenance, and replacement requires explicit human confirmation.",
+      inputSchema: FIND_SUBSTITUTES_INPUT_SCHEMA,
+      annotations: {
+        readOnlyHint: true,
+        untrustedContentHint: true,
+      },
+      execute: (input, { signal }) =>
+        findSubstitutesForRoom(store, input, signal),
     },
   ];
 

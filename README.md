@@ -13,7 +13,7 @@ Built for [The WebMCP Challenge](https://webmcp.devpost.com/). The repository is
 - A read-only procedural 3D preview derived from the same committed room. It uses room geometry and item snapshots to draw floors, walls, openings, and category-shaped primitives; it never edits the room. If WebGL or the preview chunk is unavailable, the room summary and placed-item list remain usable.
 - Three independent room templates: Blank Room, Compact Bedroom, and Living Room.
 - A twelve-item local fictional catalog. Category, style tags, fictional USD price snapshots, and maximum footprint filters are deterministic. A fit search tries quarter-turns in `0`, `90`, `180`, `270` degree order and scans a fixed 0.1 m grid, returning the first legal pose for each result.
-- Five WebMCP tools that share the human editor's committed state: `inspect_room`, `find_furniture`, `apply_room_edit`, the read-only `inspect_retailer_offers` evidence lookup, and the read-only `inspect_room_shopping_plan` comparison.
+- Six WebMCP tools that share the human editor's committed state: `inspect_room`, `find_furniture`, `apply_room_edit`, the read-only `inspect_retailer_offers` evidence lookup, the read-only `inspect_room_shopping_plan` comparison, and the read-only `find_substitutes` ranking.
 - A versioned `.wimy` file for no-account export/import. The file is UTF-8 JSON, intentionally human-readable and strict; a custom Markdown-like room language is not part of v1.
 
 ## One canonical room
@@ -21,7 +21,7 @@ Built for [The WebMCP Challenge](https://webmcp.devpost.com/). The repository is
 The portable source of truth is a `wimy-room` schema version `1` document:
 
 - `room.name`, `room.dimensions`, and `room.openings` describe the rectangular room. The coordinate origin is the northwest interior floor corner; `+x` points east/right and `+y` points south/down.
-- Each placed item has a document-scoped `id`, a pose (`x`, `y`, and a clockwise quarter-turn), and an embedded Furniture Snapshot containing its name, category, dimensions, color, style tags, and optional commerce snapshot.
+- Each placed item has a document-scoped `id`, a pose (`x`, `y`, and a clockwise quarter-turn), and an embedded Furniture Snapshot containing its name, category, dimensions, color, optional material, style tags, and optional commerce snapshot.
 - `catalogRef` is an optional lookup hint. The embedded snapshot is authoritative, so an imported item with an unavailable catalog reference still renders and can be edited; the UI reports a catalog warning.
 - Exports use fixed key order, two-space indentation, and one trailing newline. Imports validate the complete document before one atomic replacement. Entity IDs and array order survive a round trip.
 - Runtime revision, receipts, undo state, selection, tool prompts/calls, account data, file paths, cookies, analytics IDs, request headers, and other runtime metadata are not serialized.
@@ -30,7 +30,7 @@ The human UI, templates, import, export, undo, WebMCP handlers, 2D projection, a
 
 ## WebMCP interface
 
-When the host exposes `document.modelContext`, Wimy registers exactly five tools once. The header reports the live registered count, a degraded registration, or `WebMCP unavailable — human room access remains available`. The room remains human-editable and file-portable when WebMCP is unavailable.
+When the host exposes `document.modelContext`, Wimy registers exactly six tools once. The header reports the live registered count, a degraded registration, or `WebMCP unavailable — human room access remains available`. The room remains human-editable and file-portable when WebMCP is unavailable.
 
 | Tool | Input and result | Annotation and effect |
 | --- | --- | --- |
@@ -39,6 +39,7 @@ When the host exposes `document.modelContext`, Wimy registers exactly five tools
 | `apply_room_edit` | `expectedRevision` plus 1–8 exact `add`, `transform`, or `remove` operations. Returns the accepted revision, applied count, generated item IDs, and warnings, or a bounded failure code/message. | `readOnlyHint: false`, `untrustedContentHint: true`. Valid operations commit atomically through the same transaction seam as human edits. |
 | `inspect_retailer_offers` | Canonical project-authored `catalogId` and `productId` UUIDs. Returns synthetic retailer/source, price/currency, availability, inert product URL text, observed/expiry timestamps, mapping confidence/evidence, and exact/ambiguous/substitute/stale/unavailable state. | `readOnlyHint: true`, `untrustedContentHint: true`. Reads volatile evidence only; it never changes the room. |
 | `inspect_room_shopping_plan` | Empty object. Resolves the canonical catalog variants currently placed in the room, compares only current exact offers with compatible currency and price basis, and groups the bounded result by retailer. | `readOnlyHint: true`, `untrustedContentHint: true`. Reads volatile evidence only; it never changes the room. Prices exclude delivery, tax, membership discounts or fees, regional costs, and other unavailable landed-cost inputs. |
+| `find_substitutes` | A placed `itemId` and optional limit from 1–5. Returns fit-validated, same-category catalog substitutes with deterministic identity differences, rationale, tradeoffs, and catalog provenance; it does not return prices. | `readOnlyHint: true`, `untrustedContentHint: true`. Does not change the room. A replacement is a separate human-confirmed action in the UI and is stale-safe at the room revision seam. |
 
 An add operation supplies a catalog `productId` and pose; Wimy generates the placed-item ID. Placement checks room bounds, blocking overlaps, and protected door clearance. The tool does not expose arbitrary HTML, file access, arbitrary URL navigation, checkout, or purchase actions.
 

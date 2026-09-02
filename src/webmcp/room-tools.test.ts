@@ -195,6 +195,12 @@ describe("createRoomToolDefinitions", () => {
         description:
           "Read a bounded retailer-grouped comparison of current exact synthetic offers for the placed room variants; this never changes the room.",
       },
+      {
+        name: "find_substitutes",
+        title: "Find furniture substitutes",
+        description:
+          "Rank deterministic same-category catalog substitutes for one placed item without changing the room; every actionable suggestion includes fit, identity differences, rationale, tradeoffs, and provenance, and replacement requires explicit human confirmation.",
+      },
     ]);
   });
 
@@ -2134,6 +2140,7 @@ describe("registerRoomTools", () => {
       "apply_room_edit",
       "inspect_retailer_offers",
       "inspect_room_shopping_plan",
+      "find_substitutes",
     ]);
     expect(settled).toBe(false);
 
@@ -2148,7 +2155,7 @@ describe("registerRoomTools", () => {
     third.resolve();
     await expect(registration).resolves.toEqual({
       available: true,
-      registered: ["inspect_room", "find_furniture", "apply_room_edit", "inspect_retailer_offers", "inspect_room_shopping_plan"],
+      registered: ["inspect_room", "find_furniture", "apply_room_edit", "inspect_retailer_offers", "inspect_room_shopping_plan", "find_substitutes"],
       errors: [],
     });
   });
@@ -2170,7 +2177,7 @@ describe("registerRoomTools", () => {
     const registration = registerRoomTools(modelContext, store, controller);
 
     await Promise.resolve();
-    expect(modelContext.definitions).toHaveLength(5);
+    expect(modelContext.definitions).toHaveLength(6);
 
     controller.abort();
     first.resolve();
@@ -2228,7 +2235,7 @@ describe("registerRoomTools", () => {
       fulfilled: true,
       value: {
         available: true,
-        registered: ["find_furniture", "apply_room_edit", "inspect_retailer_offers", "inspect_room_shopping_plan"],
+        registered: ["find_furniture", "apply_room_edit", "inspect_retailer_offers", "inspect_room_shopping_plan", "find_substitutes"],
         errors: ["inspect_room: client denied by policy"],
       },
     });
@@ -2249,7 +2256,7 @@ describe("registerRoomTools", () => {
       registerRoomTools(modelContext, store, new AbortController()),
     ).resolves.toEqual({
       available: true,
-      registered: ["inspect_room", "find_furniture", "inspect_retailer_offers", "inspect_room_shopping_plan"],
+      registered: ["inspect_room", "find_furniture", "inspect_retailer_offers", "inspect_room_shopping_plan", "find_substitutes"],
       errors: ["apply_room_edit: mutating tool denied"],
     });
     expect(modelContext.definitions.map(({ name }) => name)).toEqual([
@@ -2258,6 +2265,7 @@ describe("registerRoomTools", () => {
       "apply_room_edit",
       "inspect_retailer_offers",
       "inspect_room_shopping_plan",
+      "find_substitutes",
     ]);
   });
 
@@ -2300,6 +2308,7 @@ describe("registerRoomTools", () => {
       "apply_room_edit",
       "inspect_retailer_offers",
       "inspect_room_shopping_plan",
+      "find_substitutes",
     ]);
     expect(settled).toBe(false);
 
@@ -2312,7 +2321,7 @@ describe("registerRoomTools", () => {
       fulfilled: true,
       value: {
         available: true,
-        registered: ["find_furniture", "apply_room_edit", "inspect_retailer_offers", "inspect_room_shopping_plan"],
+        registered: ["find_furniture", "apply_room_edit", "inspect_retailer_offers", "inspect_room_shopping_plan", "find_substitutes"],
         errors: ["inspect_room: synchronous client refusal"],
       },
     });
@@ -2346,6 +2355,7 @@ describe("registerRoomTools", () => {
       ]),
     );
     expect(modelContext.options.map((options) => options?.signal)).toEqual([
+      controller.signal,
       controller.signal,
       controller.signal,
       controller.signal,

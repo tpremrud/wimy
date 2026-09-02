@@ -81,20 +81,21 @@ test("inspect, find, and apply visibly collaborate while stale edits recover", a
   await expect(
     page.getByRole("status", { name: "WebMCP status" }),
   ).toContainText(
-    "WebMCP ready — 5 tools registered",
+    "WebMCP ready — 6 tools registered",
   );
   const toolsTrigger = page.getByRole("button", {
-    name: "WebMCP tools, 5 registered",
+    name: "WebMCP tools, 6 registered",
   });
-  await expect(toolsTrigger).toHaveText("WebMCP · 5 tools");
+  await expect(toolsTrigger).toHaveText("WebMCP · 6 tools");
   await toolsTrigger.click();
   const toolsPanel = page.getByRole("dialog", { name: "WebMCP tools" });
-  await expect(toolsPanel).toContainText("5 of 5 registered");
+  await expect(toolsPanel).toContainText("6 of 6 registered");
   await expect(toolsPanel.getByText("inspect_room", { exact: true })).toBeVisible();
   await expect(toolsPanel.getByText("find_furniture")).toBeVisible();
   await expect(toolsPanel.getByText("apply_room_edit")).toBeVisible();
   await expect(toolsPanel.getByText("inspect_retailer_offers")).toBeVisible();
   await expect(toolsPanel.getByText("inspect_room_shopping_plan")).toBeVisible();
+  await expect(toolsPanel.getByText("find_substitutes")).toBeVisible();
   await expect(toolsPanel.getByText("Can change room")).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(toolsPanel).toBeHidden();
@@ -113,11 +114,12 @@ test("inspect, find, and apply visibly collaborate while stale edits recover", a
   expect(discovered.activeNames).toEqual([
     "apply_room_edit",
     "find_furniture",
+    "find_substitutes",
     "inspect_retailer_offers",
     "inspect_room",
     "inspect_room_shopping_plan",
   ]);
-  expect(discovered.registrationCount).toBe(5);
+  expect(discovered.registrationCount).toBe(6);
   const pageUrlBeforeReadOnlyTools = page.url();
   const pageCountBeforeReadOnlyTools = page.context().pages().length;
 
@@ -211,6 +213,27 @@ test("inspect, find, and apply visibly collaborate while stale edits recover", a
   });
   const addedItemId = (applied as { itemIds: string[] }).itemIds[0];
   expect(addedItemId).toMatch(/^item_[A-Fa-f0-9-]+$/u);
+  const substitutes = (await callTool(page, "find_substitutes", {
+    itemId: addedItemId,
+    limit: 3,
+  })) as {
+    ok: boolean;
+    revision: number;
+    matches: Array<{
+      name: string;
+      actionable: boolean;
+      rationale: string;
+      tradeoffs: string[];
+    }>;
+  };
+  expect(substitutes).toMatchObject({ ok: true, revision: 2 });
+  expect(substitutes.matches.length).toBeGreaterThan(0);
+  expect(substitutes.matches[0]).toMatchObject({
+    actionable: true,
+    rationale: expect.any(String),
+    tradeoffs: expect.any(Array),
+  });
+  expect(JSON.stringify(substitutes)).not.toMatch(/price|https?:\/\//iu);
   await expect(
     page.getByRole("region", { name: "Living Room" }),
   ).toContainText("Revision 2");
@@ -317,6 +340,23 @@ test("inspect, find, and apply visibly collaborate while stale edits recover", a
   ).toHaveCount(editorItemCount);
   await expect(preview).toContainText("Ember Nest Chair");
 
+  await page.getByRole("tab", { name: "Placed" }).click();
+  const placedPanel = page.getByRole("tabpanel", { name: "Placed" });
+  await placedPanel
+    .getByRole("button", { name: "Find substitutes for Ember Nest Chair" })
+    .click();
+  const substitutesPanel = page.getByRole("region", {
+    name: "Substitutes for Ember Nest Chair",
+  });
+  await expect(substitutesPanel).toContainText(
+    "is a comparable substitute for Ember Nest Chair",
+  );
+  await substitutesPanel.getByRole("button", { name: /^Replace Ember Nest Chair with /u }).first().click();
+  await expect(
+    page.getByRole("region", { name: "Living Room", exact: true }),
+  ).toContainText("Revision 5");
+  await expect(page.getByRole("status").filter({ hasText: "Accepted: Replaced" })).toBeVisible();
+
   const registrationCountAfterEdits = await page.evaluate(() => {
     const harness = (
       window as typeof window & {
@@ -325,7 +365,7 @@ test("inspect, find, and apply visibly collaborate while stale edits recover", a
     ).__wimyModelContextHarness;
     return harness.registrationCalls.length;
   });
-  expect(registrationCountAfterEdits).toBe(5);
+  expect(registrationCountAfterEdits).toBe(6);
 });
 
 test("the room remains functional without modelContext", async ({ page }) => {

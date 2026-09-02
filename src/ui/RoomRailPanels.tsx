@@ -1,9 +1,11 @@
 import { useStore } from "zustand";
+import { useState } from "react";
 import {
   catalogItemKey,
   type CatalogItem,
 } from "../room/catalog";
-import type { EntityId, RotationDeg } from "../room/document";
+import { rankComparableSubstitutes, type SubstituteSuggestion } from "../room/substitutes";
+import type { EntityId, RotationDeg, WimyRoomV1 } from "../room/document";
 import { projectFurnitureOrientation } from "../room/orientation";
 import { findNearestLegalRotationPose } from "../room/placement";
 import type { RoomStore } from "../room/store";
@@ -14,6 +16,76 @@ type PlacedPanelProps = {
 
 export function PlacedPanel({ store }: PlacedPanelProps) {
   const room = useStore(store, (state) => state.room);
+  const [substituteState, setSubstituteState] = useState<{
+    owner: RoomStore;
+    itemId: EntityId;
+    suggestions: SubstituteSuggestion[];
+    message?: string;
+  } | null>(null);
+
+  const findSubstitutes = (item: (typeof room.items)[number]) => {
+    if (!item.catalogRef) {
+      setSubstituteState({
+        owner: store,
+        itemId: item.id,
+        suggestions: [],
+        message: "Substitutes require a placed item with a canonical catalog identity.",
+      });
+      return;
+    }
+    const source = store.readCatalog().find(
+      (candidate) => catalogItemKey(candidate.catalogRef) === catalogItemKey(item.catalogRef!),
+    );
+    if (!source) {
+      setSubstituteState({
+        owner: store,
+        itemId: item.id,
+        suggestions: [],
+        message: "The placed item's catalog identity is not available in the local catalog.",
+      });
+      return;
+    }
+    const suggestions = rankComparableSubstitutes(
+      structuredClone(store.getState().room) as WimyRoomV1,
+      source,
+      store.readCatalog(),
+      item.id,
+    );
+    setSubstituteState({ owner: store, itemId: item.id, suggestions });
+  };
+
+  const replaceWithSubstitute = (
+    item: (typeof room.items)[number],
+    suggestion: SubstituteSuggestion,
+  ) => {
+    const current = store.getState();
+    const currentItem = current.room.items.find(({ id }) => id === item.id);
+    if (!currentItem?.catalogRef) return;
+    const result = current.transact({
+      expectedRevision: current.revision,
+      origin: "human",
+      change: {
+        type: "edit",
+        operations: [
+          {
+            type: "replace",
+            itemId: item.id,
+            productId: suggestion.catalogRef.productId,
+            sourceCatalogRef: structuredClone(currentItem.catalogRef),
+            confirmedByHuman: true,
+          },
+        ],
+      },
+    });
+    setSubstituteState({
+      owner: store,
+      itemId: item.id,
+      suggestions: result.ok ? [] : [suggestion],
+      message: result.ok
+        ? `Accepted: ${result.receipt.summary}. Revision ${result.revision}.`
+        : `Rejected: ${result.message}. Revision ${result.revision}.`,
+    });
+  };
 
   const rotate = (itemId: EntityId) => {
     const current = store.getState();
@@ -59,7 +131,7 @@ export function PlacedPanel({ store }: PlacedPanelProps) {
       ) : (
         <ul className="placed-list" aria-label="Placed items">
           {room.items.map((item) => (
-            <li key={item.id} data-placed-item-id={item.id}>
+          <li key={item.id} data-placed-item-id={item.id}>
               <div className="placed-item-copy">
                 <strong>{item.snapshot.name}</strong>
                 <small>
@@ -88,7 +160,45 @@ export function PlacedPanel({ store }: PlacedPanelProps) {
                 >
                   Remove
                 </button>
+                <button
+                  type="button"
+                  aria-label={`Find substitutes for ${item.snapshot.name}`}
+                  onClick={() => findSubstitutes(item)}
+                  disabled={!item.catalogRef}
+                >
+                  Find substitutes
+                </button>
               </div>
+              {substituteState?.owner === store && substituteState.itemId === item.id ? (
+                <section className="placed-item-substitutes" aria-label={`Substitutes for ${item.snapshot.name}`}>
+                  <h3>Comparable substitutes</h3>
+                  <p className="panel-note">
+                    Read-only local ranking. Fit was checked at this item's current Pose; replacing it always requires this explicit human action.
+                  </p>
+                  {substituteState.message ? <p role="status">{substituteState.message}</p> : null}
+                  {substituteState.suggestions.length === 0 && !substituteState.message ? (
+                    <p role="status">No comparable catalog substitute fits this placement.</p>
+                  ) : null}
+                  {substituteState.suggestions.length > 0 ? (
+                    <ol aria-label={`Comparable substitutes for ${item.snapshot.name}`}>
+                      {substituteState.suggestions.map((suggestion) => (
+                        <li key={catalogItemKey(suggestion.catalogRef)}>
+                          <strong>{suggestion.snapshot.name}</strong>
+                          <span>{suggestion.rationale}</span>
+                          <span>{suggestion.tradeoffs.join(" ")}</span>
+                          <button
+                            type="button"
+                            aria-label={`Replace ${item.snapshot.name} with ${suggestion.snapshot.name}`}
+                            onClick={() => replaceWithSubstitute(item, suggestion)}
+                          >
+                            Replace with {suggestion.snapshot.name}
+                          </button>
+                        </li>
+                      ))}
+                    </ol>
+                  ) : null}
+                </section>
+              ) : null}
             </li>
           ))}
         </ul>
