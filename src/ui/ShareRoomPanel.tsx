@@ -19,7 +19,7 @@ export function ShareRoomPanel({
 }: ShareRoomPanelProps) {
 
   return (
-    <div className="share-region">
+    <div className={`share-region${open ? " is-open" : ""}`}>
       <button
         ref={openerRef}
         type="button"
@@ -30,27 +30,30 @@ export function ShareRoomPanel({
       >
         Share room
       </button>
-      {open ? (
-        <section
-          id="share-room-panel"
-          className="share-panel is-open"
-          role="dialog"
-          aria-modal="false"
-          aria-labelledby="share-room-heading"
-        >
-          <div className="share-panel-heading">
-            <div>
-              <p className="drawer-kicker">Portable room file</p>
-              <h2 id="share-room-heading">Share room</h2>
-              <p>No account or network is required. Wimy Files stay on your device until you share them yourself.</p>
-            </div>
+      <section
+        id="share-room-panel"
+        className={`share-panel${open ? " is-open" : ""}`}
+        data-floating-surface="share"
+        role="dialog"
+        aria-modal="false"
+        aria-labelledby="share-room-heading"
+        hidden={!open}
+        inert={!open ? true : undefined}
+      >
+        <div className="share-panel-heading">
+          <div>
+            <p className="drawer-kicker">Portable room file</p>
+            <h2 id="share-room-heading">Share room</h2>
+            <p>No account or network is required. Wimy Files stay on your device until you share them yourself.</p>
+          </div>
+          {open ? (
             <button type="button" aria-label="Close share room" onClick={onClose} autoFocus>
               Close
             </button>
-          </div>
-          <FileAndTemplateControls store={store} />
-        </section>
-      ) : null}
+          ) : null}
+        </div>
+        <FileAndTemplateControls store={store} />
+      </section>
     </div>
   );
 }

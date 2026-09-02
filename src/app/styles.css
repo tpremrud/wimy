@@ -1255,9 +1255,19 @@ body {
   background: #eef5f2;
 }
 
+.header-action-button[aria-expanded="true"] {
+  border-color: var(--accent-strong);
+  color: var(--surface);
+  background: var(--accent-strong);
+}
+
 .share-region {
-  position: static;
+  position: relative;
   display: block;
+}
+
+.share-region.is-open {
+  z-index: 31;
 }
 
 .share-trigger {
@@ -1271,17 +1281,22 @@ body {
   position: fixed;
   z-index: 30;
   top: 4.65rem;
-  right: 1rem;
-  width: min(32rem, calc(100vw - 2rem));
+  right: 1.25rem;
+  width: min(32rem, calc(100vw - 2.5rem));
   max-height: calc(100dvh - 5.5rem);
   margin: 0;
   overflow: auto;
   border: 1px solid var(--line);
+  border-radius: 0.75rem;
   background: var(--surface);
   box-shadow: 0 4px 12px rgb(24 33 38 / 10%);
 }
 
 .share-panel.is-open {
+  padding: 1rem;
+}
+
+.help-drawer {
   padding: 1rem;
 }
 
@@ -1343,9 +1358,9 @@ body {
 }
 
 .activity-drawer.is-open {
-  top: auto;
-  bottom: 1rem;
-  max-height: min(28rem, calc(100dvh - 2rem));
+  top: 4.65rem;
+  bottom: auto;
+  max-height: min(28rem, calc(100dvh - 5.5rem));
   transform: translateX(0);
   pointer-events: auto;
 }
@@ -1542,6 +1557,16 @@ body {
   }
 }
 
+@media (max-width: 87rem) and (min-width: 42.01rem) {
+  .share-panel.is-open,
+  .help-drawer,
+  .activity-drawer.is-open {
+    top: auto;
+    bottom: 1rem;
+    max-height: min(28rem, calc(100dvh - 2rem));
+  }
+}
+
 @media (max-width: 42rem) {
   body {
     overflow: auto;
@@ -1632,14 +1657,14 @@ body {
   .share-panel,
   .app-drawer {
     top: 0.75rem;
-    right: 0.5rem;
-    width: calc(100vw - 1rem);
+    right: 0.75rem;
+    width: calc(100vw - 1.5rem);
     max-height: calc(100dvh - 1.5rem);
   }
 
   .activity-drawer.is-open {
-    top: auto;
-    right: 0.5rem;
-    bottom: 0.75rem;
+    top: 0.75rem;
+    right: 0.75rem;
+    bottom: auto;
   }
 }

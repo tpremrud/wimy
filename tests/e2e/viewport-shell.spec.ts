@@ -52,6 +52,55 @@ for (const viewport of desktopViewports) {
   });
 }
 
+test("keeps floating header surfaces inset and dismisses them outside", async ({ page }) => {
+  const viewport = { width: 1440, height: 900 };
+  await page.setViewportSize(viewport);
+  await page.goto("/");
+
+  const headerBox = await page.locator(".app-header").boundingBox();
+  if (!headerBox) throw new Error("expected the app header");
+
+  const surfaces = [
+    {
+      trigger: page.getByRole("button", { name: "Share room" }),
+      surface: () => page.getByRole("dialog", { name: "Share room" }),
+    },
+    {
+      trigger: page.getByRole("button", { name: "Help and agent guidance" }),
+      surface: () => page.getByRole("dialog", { name: "Browser agent guidance" }),
+    },
+    {
+      trigger: page.getByRole("button", { name: "Warnings & activity" }),
+      surface: () => page.getByRole("complementary", { name: "Activity receipts" }),
+    },
+  ] as const;
+
+  for (const { trigger, surface: getSurface } of surfaces) {
+    await trigger.click();
+    const surface = getSurface();
+    await expect(surface).toBeVisible();
+
+    const geometry = await surface.evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      const styles = getComputedStyle(element);
+      return {
+        borderRadius: styles.borderRadius,
+        paddingTop: Number.parseFloat(styles.paddingTop),
+        rightInset: window.innerWidth - rect.right,
+        top: rect.top,
+      };
+    });
+    expect(geometry.borderRadius).toBe("12px");
+    expect(geometry.paddingTop).toBeGreaterThanOrEqual(16);
+    expect(geometry.rightInset).toBeGreaterThanOrEqual(16);
+    expect(geometry.top).toBeGreaterThanOrEqual(headerBox.y + headerBox.height + 8);
+    expect(geometry.top).toBeLessThanOrEqual(headerBox.y + headerBox.height + 24);
+
+    await page.getByRole("heading", { name: "Living Room", exact: true }).click();
+    await expect(trigger).toHaveAttribute("aria-expanded", "false");
+  }
+});
+
 test("keeps narrow room tools reachable without horizontal overflow", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
@@ -76,4 +125,96 @@ test("keeps narrow room tools reachable without horizontal overflow", async ({ p
   }))).toMatchObject({ overflowY: "visible", fits: true });
   await page.getByRole("button", { name: "Collapse room tools" }).click();
   await expect(page.getByRole("button", { name: "Expand room tools" })).toBeVisible();
+});
+
+test("keeps floating surfaces clear of wrapped header controls", async ({ page }) => {
+  for (const width of [1024, 1121, 1180, 1280, 1366]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto("/");
+
+    const header = page.locator(".app-header");
+    const surfaces = [
+      {
+        trigger: page.getByRole("button", { name: "Share room" }),
+        surface: () => page.getByRole("dialog", { name: "Share room" }),
+      },
+      {
+        trigger: page.getByRole("button", { name: "Help and agent guidance" }),
+        surface: () => page.getByRole("dialog", { name: "Browser agent guidance" }),
+      },
+      {
+        trigger: page.getByRole("button", { name: "Warnings & activity" }),
+        surface: () => page.getByRole("complementary", { name: "Activity receipts" }),
+      },
+    ] as const;
+
+    for (const { trigger, surface: getSurface } of surfaces) {
+      await trigger.click();
+      const surface = getSurface();
+      await expect(surface).toBeVisible();
+      const [headerBox, surfaceBox] = await Promise.all([
+        header.boundingBox(),
+        surface.boundingBox(),
+      ]);
+      if (!headerBox || !surfaceBox) {
+        throw new Error("expected the app header and floating surface");
+      }
+      expect(
+        surfaceBox.y,
+        `floating surface should clear the header at ${width}px`,
+      ).toBeGreaterThanOrEqual(headerBox.y + headerBox.height);
+      await page.keyboard.press("Escape");
+      await expect(trigger).toHaveAttribute("aria-expanded", "false");
+    }
+  }
+});
+
+test("keeps the inactive Share trigger behind mobile overlays", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+
+  const shareTrigger = page.getByRole("button", { name: "Share room" });
+  const overlays = [
+    {
+      name: "help",
+      trigger: page.getByRole("button", { name: "Help and agent guidance" }),
+      surface: () => page.getByRole("dialog", { name: "Browser agent guidance" }),
+    },
+    {
+      name: "activity",
+      trigger: page.getByRole("button", { name: "Warnings & activity" }),
+      surface: () => page.getByRole("complementary", { name: "Activity receipts" }),
+    },
+  ] as const;
+
+  for (const { name, trigger, surface: getSurface } of overlays) {
+    await trigger.click();
+    const surface = getSurface();
+    await expect(surface).toBeVisible();
+    const [shareBox, surfaceBox] = await Promise.all([
+      shareTrigger.boundingBox(),
+      surface.boundingBox(),
+    ]);
+    if (!shareBox || !surfaceBox) {
+      throw new Error("expected the Share trigger and mobile overlay");
+    }
+    const intersection = {
+      left: Math.max(shareBox.x, surfaceBox.x),
+      right: Math.min(shareBox.x + shareBox.width, surfaceBox.x + surfaceBox.width),
+      top: Math.max(shareBox.y, surfaceBox.y),
+      bottom: Math.min(shareBox.y + shareBox.height, surfaceBox.y + surfaceBox.height),
+    };
+    expect(intersection.right).toBeGreaterThan(intersection.left);
+    expect(intersection.bottom).toBeGreaterThan(intersection.top);
+    const topSurface = await page.evaluate(({ x, y }) => (
+      document.elementFromPoint(x, y)
+        ?.closest<HTMLElement>("[data-floating-surface]")
+        ?.dataset.floatingSurface ?? null
+    ), {
+      x: (intersection.left + intersection.right) / 2,
+      y: (intersection.top + intersection.bottom) / 2,
+    });
+    expect(topSurface).toBe(name);
+    await page.keyboard.press("Escape");
+  }
 });

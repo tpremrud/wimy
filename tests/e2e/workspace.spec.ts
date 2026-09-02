@@ -537,9 +537,6 @@ test("fails closed on malformed and stale imports and never opens snapshot URLs"
     ).__releaseWimyImport?.();
   });
 
-  await expect(page.getByRole("alert")).toContainText(
-    "Expected revision 3, but the room is at revision 4",
-  );
   await expect(revisionText(page, "Living Room")).toHaveText("Revision 4");
   await expect(
     page
@@ -547,6 +544,10 @@ test("fails closed on malformed and stale imports and never opens snapshot URLs"
       .getByRole("listitem")
       .first(),
   ).toContainText("Import: Rejected. Expected revision 3");
+  const staleShare = await openShare(page);
+  await expect(staleShare.getByRole("alert")).toContainText(
+    "Expected revision 3, but the room is at revision 4",
+  );
   await closeShare(page);
   expect(externalRequests).toEqual([]);
   expect(popups).toEqual([]);

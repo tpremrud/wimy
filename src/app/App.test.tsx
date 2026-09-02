@@ -166,6 +166,31 @@ describe("App", () => {
     expect(opener).toHaveFocus();
   });
 
+  it("dismisses each floating header surface when the user clicks elsewhere", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    const roomView = screen.getByRole("button", { name: "Edit in 2D" });
+
+    await user.click(screen.getByRole("button", { name: "Share room" }));
+    expect(screen.getByRole("dialog", { name: "Share room" })).toBeVisible();
+    await user.click(roomView);
+    expect(screen.queryByRole("dialog", { name: "Share room" })).not.toBeInTheDocument();
+    expect(roomView).toHaveFocus();
+
+    await user.click(screen.getByRole("button", { name: "Help and agent guidance" }));
+    expect(screen.getByRole("dialog", { name: "Browser agent guidance" })).toBeVisible();
+    await user.click(roomView);
+    expect(screen.queryByRole("dialog", { name: "Browser agent guidance" })).not.toBeInTheDocument();
+    expect(roomView).toHaveFocus();
+
+    await user.click(screen.getByRole("button", { name: "Warnings & activity" }));
+    expect(screen.getByRole("complementary", { name: "Activity receipts" })).not.toHaveAttribute("inert");
+    await user.click(roomView);
+    expect(screen.getByRole("complementary", { name: "Activity receipts" })).toHaveAttribute("inert");
+    expect(roomView).toHaveFocus();
+  });
+
   it("keeps only one overlay active and puts real file controls in Share", async () => {
     const user = userEvent.setup();
     render(<App />);

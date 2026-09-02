@@ -275,18 +275,31 @@ export function App({
 
   useEffect(() => {
     if (!activeSurface) return;
+    const opener = activeSurface === "share"
+      ? shareButtonRef
+      : activeSurface === "help"
+        ? helpButtonRef
+        : activityButtonRef;
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
-      const opener = activeSurface === "share"
-        ? shareButtonRef
-        : activeSurface === "help"
-          ? helpButtonRef
-          : activityButtonRef;
       setActiveSurface(null);
       opener.current?.focus();
     };
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      const surface = document.querySelector(
+        `[data-floating-surface="${activeSurface}"]`,
+      );
+      if (opener.current?.contains(target) || surface?.contains(target)) return;
+      setActiveSurface(null);
+    };
     document.addEventListener("keydown", closeOnEscape);
-    return () => document.removeEventListener("keydown", closeOnEscape);
+    document.addEventListener("pointerdown", closeOnOutsidePointer);
+    return () => {
+      document.removeEventListener("keydown", closeOnEscape);
+      document.removeEventListener("pointerdown", closeOnOutsidePointer);
+    };
   }, [activeSurface]);
 
   return (
@@ -342,7 +355,7 @@ export function App({
         </div>
       </header>
       {activeSurface === "help" ? (
-        <section id="browser-agent-guidance" className="app-drawer help-drawer" role="dialog" aria-modal="false" aria-label="Browser agent guidance" aria-labelledby="browser-agent-guidance-heading">
+        <section id="browser-agent-guidance" className="app-drawer help-drawer" data-floating-surface="help" role="dialog" aria-modal="false" aria-label="Browser agent guidance" aria-labelledby="browser-agent-guidance-heading">
           <div className="drawer-heading">
             <div>
               <p className="drawer-kicker">Agent guidance</p>
@@ -440,7 +453,7 @@ export function App({
             </PreviewLoadBoundary>
           )}
         </section>
-        <aside id="activity-drawer" className={`app-drawer activity-drawer${activeSurface === "activity" ? " is-open" : ""}`} role="complementary" aria-label="Activity receipts" inert={activeSurface !== "activity" ? true : undefined}>
+        <aside id="activity-drawer" className={`app-drawer activity-drawer${activeSurface === "activity" ? " is-open" : ""}`} data-floating-surface="activity" role="complementary" aria-label="Activity receipts" inert={activeSurface !== "activity" ? true : undefined}>
           <div className="drawer-heading">
             <h2 id="activity-drawer-heading">Warnings & activity</h2>
             {activeSurface === "activity" ? (
