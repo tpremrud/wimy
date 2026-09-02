@@ -25,6 +25,7 @@ import {
   type RoomShoppingPlan,
   type ShoppingPlanExclusionReason,
 } from "../commerce/shopping-plan";
+import { CatalogItemPreview } from "./CatalogItemPreview";
 
 const CATEGORIES: readonly FurnitureSnapshot["category"][] = [
   "bed",
@@ -54,6 +55,7 @@ type SearchState = {
 };
 
 type ActionState = {
+  catalogKey?: string;
   owner: RoomStore;
   message: string;
 };
@@ -500,6 +502,49 @@ export function CatalogPanel({
     }
   };
 
+  const addCatalogItem = (item: CatalogItem) => {
+    const current = store.getState();
+    const catalogKey = catalogItemKey(item.catalogRef);
+    const match = findFurniture(
+      current.room as WimyRoomV1,
+      { limit: 1 },
+      [item],
+    )[0];
+
+    if (!match) {
+      setActionState({
+        catalogKey,
+        owner: store,
+        message: "This item no longer fits the current room.",
+      });
+      return;
+    }
+
+    const result = current.transact({
+      [LOCAL_CATALOG_TRANSACTION]: true,
+      expectedRevision: current.revision,
+      origin: "human",
+      change: {
+        type: "edit",
+        operations: [
+          {
+            type: "add",
+            productId: match.catalogRef.productId,
+            pose: match.suggestedPose,
+          },
+        ],
+      },
+    });
+
+    setActionState({
+      catalogKey,
+      owner: store,
+      message: result.ok
+        ? `Accepted: ${result.receipt.summary}. Revision ${result.revision}.`
+        : `Rejected: ${result.message}. Revision ${result.revision}.`,
+    });
+  };
+
   const showOfferEvidence = async (item: CatalogItem) => {
     if (item.metadata?.origin !== "project-authored") return;
 
@@ -632,23 +677,39 @@ export function CatalogPanel({
                 const key = catalogItemKey(item.catalogRef);
                 const favorite = favoriteIds.has(key);
                 return (
-                  <li key={key}>
-                    <span>
+                  <li className="catalog-item-row" key={key}>
+                    <CatalogItemPreview snapshot={item.snapshot} />
+                    <div className="catalog-item-copy">
                       <strong>{item.snapshot.name}</strong>
                       <small title={presentationSummary(item.catalogRef.productId, item)}>
                         {item.snapshot.category} · {item.snapshot.dimensions.width} × {item.snapshot.dimensions.depth} m · {presentationLicense(item.catalogRef.productId, item)}
                       </small>
-                    </span>
-                    {onToggleFavorite ? (
+                    </div>
+                    <div className="catalog-item-actions">
                       <button
                         type="button"
-                        className="favorite-toggle"
-                        aria-pressed={favorite}
-                        aria-label={`${favorite ? "Remove" : "Add"} ${item.snapshot.name} ${favorite ? "from" : "to"} favorites`}
-                        onClick={() => onToggleFavorite(key)}
+                        className="catalog-add-item"
+                        aria-label={`Add ${item.snapshot.name} to room`}
+                        onClick={() => addCatalogItem(item)}
                       >
-                        {favorite ? "Saved" : "Save"}
+                        Add
                       </button>
+                      {onToggleFavorite ? (
+                        <button
+                          type="button"
+                          className="favorite-toggle"
+                          aria-pressed={favorite}
+                          aria-label={`${favorite ? "Remove" : "Add"} ${item.snapshot.name} ${favorite ? "from" : "to"} favorites`}
+                          onClick={() => onToggleFavorite(key)}
+                        >
+                          {favorite ? "Favorited" : "Favorite"}
+                        </button>
+                      ) : null}
+                    </div>
+                    {visibleAction?.catalogKey === key ? (
+                      <p role="status" aria-label="Catalog item action result" aria-atomic="true">
+                        {visibleAction.message}
+                      </p>
                     ) : null}
                     {item.metadata?.origin === "project-authored" ? (
                       <>
@@ -695,30 +756,48 @@ export function CatalogPanel({
               <>
                 <ol className="catalog-results" aria-label="Catalog results">
                   {visibleSearch.matches.map((match) => (
-                    <li key={match.catalogRef.productId}>
-                      <strong>{match.snapshot.name}</strong>
-                      <span>
-                        {`${match.snapshot.category} · ${match.snapshot.dimensions.width} × ${match.snapshot.dimensions.depth} m`}
-                      </span>
-                      <span>{`Styles: ${match.snapshot.styleTags.join(", ")}`}</span>
-                      <span>{presentationSummary(match.catalogRef.productId, match)}</span>
-                      {match.metadata ? (
-                        <span>{`${match.metadata.provenance.sourceName} · ${match.metadata.catalogVersion}`}</span>
-                      ) : null}
-                      <span>{priceSummary(match)}</span>
-                      <span>
-                        {`Best fit: x ${match.suggestedPose.x} m, y ${match.suggestedPose.y} m, rotation ${match.suggestedPose.rotationDeg}°`}
-                      </span>
-                      {onToggleFavorite ? (
+                    <li className="catalog-result-card" key={match.catalogRef.productId}>
+                      <CatalogItemPreview snapshot={match.snapshot} />
+                      <div className="catalog-result-copy">
+                        <strong>{match.snapshot.name}</strong>
+                        <span>
+                          {`${match.snapshot.category} · ${match.snapshot.dimensions.width} × ${match.snapshot.dimensions.depth} m`}
+                        </span>
+                        <span>{`Styles: ${match.snapshot.styleTags.join(", ")}`}</span>
+                        <span>{presentationSummary(match.catalogRef.productId, match)}</span>
+                        {match.metadata ? (
+                          <span>{`${match.metadata.provenance.sourceName} · ${match.metadata.catalogVersion}`}</span>
+                        ) : null}
+                        <span>{priceSummary(match)}</span>
+                        <span>
+                          {`Best fit: x ${match.suggestedPose.x} m, y ${match.suggestedPose.y} m, rotation ${match.suggestedPose.rotationDeg}°`}
+                        </span>
+                      </div>
+                      <div className="catalog-item-actions">
                         <button
                           type="button"
-                          className="favorite-toggle"
-                          aria-pressed={favoriteIds.has(catalogItemKey(match.catalogRef))}
-                          aria-label={`${favoriteIds.has(catalogItemKey(match.catalogRef)) ? "Remove" : "Add"} ${match.snapshot.name} ${favoriteIds.has(catalogItemKey(match.catalogRef)) ? "from" : "to"} favorites`}
-                          onClick={() => onToggleFavorite(catalogItemKey(match.catalogRef))}
+                          className="catalog-add-item"
+                          aria-label={`Add ${match.snapshot.name} to room`}
+                          onClick={() => addCatalogItem(match)}
                         >
-                          {favoriteIds.has(catalogItemKey(match.catalogRef)) ? "Saved" : "Save"}
+                          Add
                         </button>
+                        {onToggleFavorite ? (
+                          <button
+                            type="button"
+                            className="favorite-toggle"
+                            aria-pressed={favoriteIds.has(catalogItemKey(match.catalogRef))}
+                            aria-label={`${favoriteIds.has(catalogItemKey(match.catalogRef)) ? "Remove" : "Add"} ${match.snapshot.name} ${favoriteIds.has(catalogItemKey(match.catalogRef)) ? "from" : "to"} favorites`}
+                            onClick={() => onToggleFavorite(catalogItemKey(match.catalogRef))}
+                          >
+                            {favoriteIds.has(catalogItemKey(match.catalogRef)) ? "Favorited" : "Favorite"}
+                          </button>
+                        ) : null}
+                      </div>
+                      {visibleAction?.catalogKey === catalogItemKey(match.catalogRef) ? (
+                        <p role="status" aria-label="Catalog item action result" aria-atomic="true">
+                          {visibleAction.message}
+                        </p>
                       ) : null}
                       {match.metadata?.origin === "project-authored" ? (
                         <>

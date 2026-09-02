@@ -91,6 +91,44 @@ const makeProjectCatalogPackage = (): WimyCatalogV1 => ({
 });
 
 describe("CatalogPanel", () => {
+  it("previews and directly adds an explicitly chosen catalog item", async () => {
+    const store = createCatalogStore(getTemplate("blank-room"));
+    render(<CatalogPanel store={store} />);
+    const user = userEvent.setup();
+    const catalog = screen.getByRole("list", { name: "Available catalog items" });
+    const itemRow = within(catalog)
+      .getByText("Ember Nest Chair")
+      .closest("li");
+    if (!itemRow) throw new Error("expected Ember Nest Chair row");
+
+    expect(
+      within(itemRow).getByRole("img", { name: "Ember Nest Chair preview" }),
+    ).toBeVisible();
+    await user.click(
+      within(itemRow).getByRole("button", {
+        name: "Add Ember Nest Chair to room",
+      }),
+    );
+
+    expect(store.getState()).toMatchObject({
+      revision: 2,
+      room: {
+        items: [
+          expect.objectContaining({
+            catalogRef: {
+              catalogId: "wimy-demo-v1",
+              productId: "ember-nest-chair",
+            },
+          }),
+        ],
+      },
+      receipts: [expect.objectContaining({ status: "accepted" })],
+    });
+    expect(
+      within(itemRow).getByRole("status", { name: "Catalog item action result" }),
+    ).toHaveTextContent("Accepted");
+  });
+
   it("imports a local project-authored package and displays its provenance", async () => {
     const store = createCatalogStore(getTemplate("blank-room"));
     const fetchSpy = vi.spyOn(globalThis, "fetch");

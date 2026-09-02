@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { DEMO_CATALOG } from "../room/catalog-data";
 import { resolveCatalogProduct } from "../room/catalog";
@@ -127,7 +127,15 @@ describe("PlacedPanel substitutes", () => {
     fireEvent.click(
       screen.getByRole("button", { name: "Find substitutes for Ember Nest Chair" }),
     );
-    expect(screen.getByText(/Cedar Arc Chair is a comparable substitute for Ember Nest Chair/u)).toBeVisible();
+    expect(
+      screen.getByRole("img", { name: "Cedar Arc Chair preview" }),
+    ).toBeVisible();
+    const cedarCard = screen.getByText("Cedar Arc Chair").closest("li");
+    if (!cedarCard) throw new Error("expected Cedar Arc Chair substitute card");
+    expect(within(cedarCard).getByText("Why this match")).toBeVisible();
+    expect(
+      within(cedarCard).getByText(/Cedar Arc Chair is a comparable substitute for Ember Nest Chair/u),
+    ).not.toBeVisible();
     expect(screen.getByRole("button", { name: "Replace Ember Nest Chair with Cedar Arc Chair" })).toBeVisible();
     expect(store.getState().revision).toBe(1);
 

@@ -9,6 +9,7 @@ import type { EntityId, RotationDeg, WimyRoomV1 } from "../room/document";
 import { projectFurnitureOrientation } from "../room/orientation";
 import { findNearestLegalRotationPose } from "../room/placement";
 import type { RoomStore } from "../room/store";
+import { CatalogItemPreview } from "./CatalogItemPreview";
 
 type PlacedPanelProps = {
   store: RoomStore;
@@ -161,10 +162,20 @@ export function PlacedPanel({ store }: PlacedPanelProps) {
                   {substituteState.suggestions.length > 0 ? (
                     <ol aria-label={`Comparable substitutes for ${item.snapshot.name}`}>
                       {substituteState.suggestions.map((suggestion) => (
-                        <li key={catalogItemKey(suggestion.catalogRef)}>
-                          <strong>{suggestion.snapshot.name}</strong>
-                          <span>{suggestion.rationale}</span>
-                          <span>{suggestion.tradeoffs.join(" ")}</span>
+                        <li className="substitute-card" key={catalogItemKey(suggestion.catalogRef)}>
+                          <CatalogItemPreview snapshot={suggestion.snapshot} />
+                          <div className="substitute-card-copy">
+                            <strong>{suggestion.snapshot.name}</strong>
+                            <small>
+                              {suggestion.snapshot.dimensions.width} × {suggestion.snapshot.dimensions.depth} m · {suggestion.snapshot.material ?? "Material not recorded"}
+                            </small>
+                            <span className="substitute-fit">Fits at the current position</span>
+                            <details>
+                              <summary>Why this match</summary>
+                              <p>{suggestion.rationale}</p>
+                              <p>{suggestion.tradeoffs.join(" ")}</p>
+                            </details>
+                          </div>
                           <button
                             type="button"
                             aria-label={`Replace ${item.snapshot.name} with ${suggestion.snapshot.name}`}

@@ -339,6 +339,64 @@ test("keeps browsing and search inside the desktop room-tools rail", async ({ pa
   );
 });
 
+test("shows catalog previews, direct add actions, and readable substitutes", async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.goto("/");
+
+  const catalog = page.getByRole("list", { name: "Available catalog items" });
+  const emberRow = catalog.getByRole("listitem").filter({
+    hasText: "Ember Nest Chair",
+  });
+  await expect(
+    emberRow.getByRole("img", { name: "Ember Nest Chair preview" }),
+  ).toBeVisible();
+  await page.screenshot({
+    path: testInfo.outputPath("catalog-add.png"),
+  });
+  await emberRow.getByRole("button", { name: "Add Ember Nest Chair to room" }).click();
+  await expect(page.getByLabel("Current room context")).toContainText("Revision 2");
+
+  await page.getByRole("tab", { name: "Placed" }).click();
+  await page.getByRole("button", {
+    name: "Find substitutes for Ember Nest Chair",
+  }).click();
+  const substitutes = page.getByRole("region", {
+    name: "Substitutes for Ember Nest Chair",
+  });
+  await expect(substitutes).toBeVisible();
+  await expect(
+    substitutes.getByRole("img", { name: "Reed Dining Chair preview" }),
+  ).toBeVisible();
+  const substituteGeometry = await substitutes.evaluate((element) => {
+    const card = element.querySelector("li");
+    const button = card?.querySelector("button");
+    const preview = card?.querySelector('[role="img"]');
+    const bounds = element.getBoundingClientRect();
+    return {
+      clientWidth: element.clientWidth,
+      scrollWidth: element.scrollWidth,
+      width: bounds.width,
+      cardWidth: card?.getBoundingClientRect().width ?? 0,
+      cardHeight: card?.getBoundingClientRect().height ?? 0,
+      buttonWidth: button?.getBoundingClientRect().width ?? 0,
+      previewWidth: preview?.getBoundingClientRect().width ?? 0,
+    };
+  });
+  expect(substituteGeometry.scrollWidth).toBeLessThanOrEqual(
+    substituteGeometry.clientWidth,
+  );
+  expect(substituteGeometry.cardWidth).toBeGreaterThanOrEqual(
+    substituteGeometry.width - 2,
+  );
+  expect(substituteGeometry.cardHeight).toBeGreaterThanOrEqual(112);
+  expect(substituteGeometry.buttonWidth).toBeGreaterThanOrEqual(120);
+  expect(substituteGeometry.previewWidth).toBeGreaterThanOrEqual(72);
+  await substitutes.scrollIntoViewIfNeeded();
+  await page.screenshot({
+    path: testInfo.outputPath("catalog-and-substitutes.png"),
+  });
+});
+
 test("keeps narrow room tools reachable without horizontal overflow", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
