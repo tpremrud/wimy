@@ -123,6 +123,15 @@ afterEach(() => {
 });
 
 describe("App", () => {
+  it("keeps the complete anonymous room workspace beside optional session UX", () => {
+    render(<App />);
+
+    expect(screen.getByText("Anonymous mode")).toBeVisible();
+    expect(screen.getByRole("main")).toBeVisible();
+    expect(screen.getByText("Room surface")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Share room" })).toBeVisible();
+  });
+
   it("keeps agent help closed until explicitly opened", () => {
     render(<App />);
 

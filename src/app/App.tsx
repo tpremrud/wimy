@@ -21,6 +21,11 @@ import { RoomEditor2D } from "../ui/RoomEditor2D";
 import { FavoritesPanel, PlacedPanel } from "../ui/RoomRailPanels";
 import { ShareRoomPanel } from "../ui/ShareRoomPanel";
 import { WebMcpToolList } from "../ui/WebMcpToolList";
+import { CustomerSessionPanel } from "../ui/CustomerSessionPanel";
+import {
+  createCustomerSessionDemo,
+  type CustomerSessionClient,
+} from "../commerce/customer-session-demo";
 import {
   createRoomToolDefinitions,
   registerRoomTools,
@@ -50,6 +55,7 @@ const RejectedRoomPreview3D = lazy(async () =>
 type AppProps = {
   previewLoadFailure?: boolean;
   store?: RoomStore;
+  customerSession?: CustomerSessionClient;
 };
 
 type PreviewLoadBoundaryProps = {
@@ -141,6 +147,7 @@ const registrationStatusText = (state: RegistrationViewState) => {
 export function App({
   previewLoadFailure = false,
   store = roomStore,
+  customerSession: providedCustomerSession,
 }: AppProps) {
   const { room, revision, receipts } = useStore(store);
   const [viewMode, setViewMode] = useState<ViewMode>("2d");
@@ -160,6 +167,10 @@ export function App({
   const offerResolver = useMemo(
     () => createSyntheticRetailerOfferResolver(store.readCatalog),
     [store],
+  );
+  const customerSession = useMemo(
+    () => providedCustomerSession ?? createCustomerSessionDemo(),
+    [providedCustomerSession],
   );
   const webMcpToolDefinitions = useMemo(
     () => createRoomToolDefinitions(store, offerResolver),
@@ -333,6 +344,7 @@ export function App({
             <button aria-pressed={viewMode === "2d"} onClick={() => setViewMode("2d")} type="button">Edit in 2D</button>
             <button aria-pressed={viewMode === "3d"} onClick={() => setViewMode("3d")} type="button">Preview in 3D</button>
           </div>
+          <CustomerSessionPanel client={customerSession} />
           <ShareRoomPanel
             open={activeSurface === "share"}
             onClose={() => closeSurface("share")}

@@ -6,6 +6,132 @@
   text-rendering: optimizeLegibility;
 }
 
+.customer-session {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-width: 12rem;
+  max-width: 19rem;
+  border-left: 1px solid var(--line);
+  padding-left: 0.75rem;
+  gap: 0.65rem;
+}
+
+.customer-session-summary {
+  display: grid;
+  min-width: 7.5rem;
+  gap: 0.1rem;
+}
+
+.customer-session h2 {
+  margin-top: 0.15rem;
+  color: var(--ink);
+  font-size: 0.78rem;
+}
+
+.customer-session .drawer-kicker {
+  white-space: nowrap;
+}
+
+.customer-session-status,
+.customer-session form p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.7rem;
+  line-height: 1.35;
+}
+
+.customer-session > button,
+.customer-session form button {
+  justify-self: start;
+  min-height: 2.15rem;
+  border: 1px solid var(--accent);
+  border-radius: 0.3rem;
+  padding: 0.35rem 0.55rem;
+  color: var(--surface);
+  background: var(--accent);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.customer-session > button:hover,
+.customer-session form button:hover {
+  background: var(--accent-strong);
+}
+
+.customer-session > button:disabled,
+.customer-session form button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.customer-session > button:focus-visible,
+.customer-session form button:focus-visible,
+.customer-session input:focus-visible {
+  outline: 3px solid #b45309;
+  outline-offset: 2px;
+}
+
+.customer-session form {
+  position: absolute;
+  z-index: 32;
+  top: calc(100% + 0.55rem);
+  right: 0;
+  display: grid;
+  width: min(19rem, calc(100vw - 1.5rem));
+  border: 1px solid var(--line);
+  border-radius: 0.55rem;
+  padding: 0.8rem;
+  gap: 0.65rem;
+  background: var(--surface);
+  box-shadow: 0 4px 12px rgb(24 33 38 / 10%);
+}
+
+.customer-session form label {
+  display: grid;
+  gap: 0.3rem;
+  color: var(--ink);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.customer-session input {
+  min-height: 2.35rem;
+  border: 1px solid var(--line);
+  border-radius: 0.3rem;
+  padding: 0.45rem 0.55rem;
+  color: var(--ink);
+  background: var(--surface);
+  font: inherit;
+}
+
+.customer-session form [role="alert"] {
+  margin: 0;
+  color: #9f321f;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+@media (max-width: 42rem) {
+  .customer-session {
+    order: 4;
+    min-width: min(100%, 14rem);
+    max-width: none;
+    border-left: 0;
+    border-top: 1px solid var(--line);
+    padding: 0.55rem 0 0;
+  }
+
+  .customer-session form {
+    top: calc(100% + 0.5rem);
+    right: auto;
+    left: 0;
+  }
+}
+
 * {
   box-sizing: border-box;
 }
@@ -1682,7 +1808,7 @@ body {
 .app-drawer {
   position: fixed;
   z-index: 30;
-  top: 4.65rem;
+  top: 4.75rem;
   right: 1.25rem;
   width: min(32rem, calc(100vw - 2.5rem));
   max-height: calc(100dvh - 5.5rem);
@@ -1760,7 +1886,7 @@ body {
 }
 
 .activity-drawer.is-open {
-  top: 4.65rem;
+  top: 4.75rem;
   bottom: auto;
   max-height: min(28rem, calc(100dvh - 5.5rem));
   transform: translateX(0);
