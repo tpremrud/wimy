@@ -57,6 +57,7 @@ test("searches the fictional catalog and adds its deterministic best fit", async
   await page.goto("/");
 
   await page.getByRole("combobox", { name: "Category" }).selectOption("chair");
+  await page.getByText("More filters").click();
   await page
     .getByRole("textbox", { name: "Style tags" })
     .fill("molded-shell, lounge");

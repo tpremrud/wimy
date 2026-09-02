@@ -143,6 +143,7 @@ for (const viewport of [
   await page.keyboard.press("Enter");
   await expect(page.getByLabel("Selected item actions")).toBeVisible();
   await page.getByRole("combobox", { name: "Category" }).selectOption("chair");
+  await page.getByText("More filters").click();
   await page.getByRole("textbox", { name: "Style tags" }).fill("warm-modern");
   await page
     .getByRole("spinbutton", { name: "Maximum price (USD)" })
@@ -362,6 +363,7 @@ test("round-trips a searched placement through export, blank, and import", async
   await page.goto("/");
 
   await page.getByRole("combobox", { name: "Category" }).selectOption("chair");
+  await page.getByText("More filters").click();
   await page.getByRole("textbox", { name: "Style tags" }).fill("warm-modern");
   await page
     .getByRole("spinbutton", { name: "Maximum price (USD)" })

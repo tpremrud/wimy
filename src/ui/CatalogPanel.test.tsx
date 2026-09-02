@@ -30,8 +30,12 @@ const searchForWarmModernChair = async () => {
     screen.getByRole("combobox", { name: "Category" }),
     "chair",
   );
+  const styleInput = screen.getByRole("textbox", { name: "Style tags" });
+  if (!styleInput.closest("details")?.hasAttribute("open")) {
+    await user.click(screen.getByText("More filters"));
+  }
   await user.type(
-    screen.getByRole("textbox", { name: "Style tags" }),
+    styleInput,
     "warm-modern",
   );
   await user.type(
@@ -43,6 +47,67 @@ const searchForWarmModernChair = async () => {
 };
 
 describe("CatalogPanel", () => {
+  it("keeps quick browse compact and category-driven without hiding catalog choices", async () => {
+    const store = createCatalogStore();
+    render(<CatalogPanel store={store} />);
+    const user = userEvent.setup();
+
+    const available = screen.getByRole("list", {
+      name: "Available catalog items",
+    });
+    expect(within(available).getAllByRole("listitem")).toHaveLength(4);
+    expect(screen.getByText("1–4 of 17")).toBeVisible();
+
+    await user.click(
+      screen.getByRole("button", { name: "Next catalog page" }),
+    );
+    expect(
+      screen.getByRole("status", { name: "Catalog page status" }),
+    ).toHaveTextContent("Page 2 of 5");
+    expect(within(available).getByText("Pebble Drum Table")).toBeVisible();
+    expect(screen.getByText("5–8 of 17")).toBeVisible();
+
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "Category" }),
+      "sofa",
+    );
+    expect(within(available).getAllByRole("listitem")).toHaveLength(3);
+    expect(within(available).getByText("Hearthline Sofa")).toBeVisible();
+    expect(within(available).getByText("Tidal Modular Sofa")).toBeVisible();
+    expect(within(available).getByText("Tideline Corner Sofa")).toBeVisible();
+    expect(within(available).queryByText("Ember Nest Chair")).not.toBeInTheDocument();
+    expect(screen.getByText("1–3 of 3")).toBeVisible();
+
+    expect(
+      screen.getByRole("textbox", { name: "Style tags" }),
+    ).not.toBeVisible();
+    await user.click(screen.getByText("More filters"));
+    expect(
+      screen.getByRole("textbox", { name: "Style tags" }),
+    ).toBeVisible();
+  });
+
+  it("keeps broad search results compact and paginated", async () => {
+    const store = createCatalogStore(
+      makeRoom({ dimensions: { width: 30, depth: 30, height: 3 } }),
+    );
+    render(<CatalogPanel store={store} />);
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole("button", { name: "Search catalog" }));
+
+    const results = screen.getByRole("list", { name: "Catalog results" });
+    expect(within(results).getAllByRole("listitem")).toHaveLength(2);
+    expect(screen.getByText("1–2 of 5 results")).toBeVisible();
+    await user.click(
+      screen.getByRole("button", { name: "Next search results page" }),
+    );
+    expect(
+      screen.getByRole("status", { name: "Search page status" }),
+    ).toHaveTextContent("3–4 of 5 results");
+    expect(screen.getByText("3–4 of 5 results")).toBeVisible();
+  });
+
   it("exposes accessible filters, read-only results, and an explicit no-match state", async () => {
     const store = createCatalogStore();
     store.getState().selectItem("item_living_chair");
@@ -56,6 +121,12 @@ describe("CatalogPanel", () => {
     expect(
       screen.getByRole("combobox", { name: "Category" }),
     ).toBeVisible();
+    expect(screen.getByText("More filters")).toBeVisible();
+    expect(
+      screen.getByRole("textbox", { name: "Style tags" }),
+    ).not.toBeVisible();
+    const revealUser = userEvent.setup();
+    await revealUser.click(screen.getByText("More filters"));
     expect(
       screen.getByRole("textbox", { name: "Style tags" }),
     ).toBeVisible();
@@ -71,6 +142,9 @@ describe("CatalogPanel", () => {
 
     const user = await searchForWarmModernChair();
     const results = screen.getByRole("list", { name: "Catalog results" });
+    expect(
+      screen.queryByRole("list", { name: "Available catalog items" }),
+    ).not.toBeInTheDocument();
     expect(within(results).getByText("Ember Nest Chair")).toBeVisible();
     expect(within(results).getByText("$499 USD")).toBeVisible();
     expect(
@@ -93,6 +167,12 @@ describe("CatalogPanel", () => {
     expect(
       screen.queryByRole("list", { name: "Catalog results" }),
     ).not.toBeInTheDocument();
+    await user.click(
+      screen.getByRole("button", { name: "Back to quick browse" }),
+    );
+    expect(
+      screen.getByRole("list", { name: "Available catalog items" }),
+    ).toBeVisible();
     expect(store.getState()).toBe(before);
     expect(store.getState()).toMatchObject({
       room: before.room,

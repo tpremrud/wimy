@@ -136,6 +136,52 @@ test("keeps selected-item controls on the canvas without opening Placed", async 
   }))).toEqual({ clientHeight: viewport.height, scrollHeight: viewport.height });
 });
 
+test("keeps browsing and search inside the desktop room-tools rail", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.goto("/");
+
+  const railPanel = page
+    .getByRole("complementary", { name: "Furniture catalog" })
+    .locator(".rail-panel-host");
+  await expect.poll(() => railPanel.evaluate((element) => ({
+    clientHeight: element.clientHeight,
+    scrollHeight: element.scrollHeight,
+  }))).toMatchObject({
+    clientHeight: expect.any(Number),
+    scrollHeight: expect.any(Number),
+  });
+  const initialGeometry = await railPanel.evaluate((element) => ({
+    clientHeight: element.clientHeight,
+    scrollHeight: element.scrollHeight,
+  }));
+  expect(initialGeometry.scrollHeight).toBeLessThanOrEqual(
+    initialGeometry.clientHeight,
+  );
+
+  await page.getByRole("combobox", { name: "Category" }).selectOption("sofa");
+  await expect(page.getByRole("list", { name: "Available catalog items" }))
+    .toContainText("Hearthline Sofa");
+  const categoryGeometry = await railPanel.evaluate((element) => ({
+    clientHeight: element.clientHeight,
+    scrollHeight: element.scrollHeight,
+  }));
+  expect(categoryGeometry.scrollHeight).toBeLessThanOrEqual(
+    categoryGeometry.clientHeight,
+  );
+
+  await page.getByRole("combobox", { name: "Category" }).selectOption("");
+  await page.getByRole("button", { name: "Search catalog" }).click();
+  await expect(page.getByRole("list", { name: "Catalog results" }))
+    .toBeVisible();
+  const searchGeometry = await railPanel.evaluate((element) => ({
+    clientHeight: element.clientHeight,
+    scrollHeight: element.scrollHeight,
+  }));
+  expect(searchGeometry.scrollHeight).toBeLessThanOrEqual(
+    searchGeometry.clientHeight,
+  );
+});
+
 test("keeps narrow room tools reachable without horizontal overflow", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
