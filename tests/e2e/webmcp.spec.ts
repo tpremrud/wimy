@@ -445,6 +445,7 @@ test("exposes authenticated cart tools, keeps room state separate, and unregiste
 }) => {
   await page.setViewportSize({ width: 1_280, height: 900 });
   await installModelContextHarness(page);
+  await page.clock.install({ time: new Date("2026-09-02T12:05:00.000Z") });
   await page.goto("/");
 
   await expect(page.getByRole("status", { name: "WebMCP status" })).toContainText(
@@ -522,6 +523,22 @@ test("exposes authenticated cart tools, keeps room state separate, and unregiste
   await expect(cartDialog).toContainText(
     "Latest mutation: webmcp · add · accepted · Revision 2 · Aurora Browser Chair · Northstar Furnishings",
   );
+  await expect(cartDialog.getByRole("button", { name: "Review sandbox checkout" })).toBeVisible();
+  expect(await page.evaluate(() => Object.keys((window as typeof window & { __wimyModelContextHarness: ModelContextHarness }).__wimyModelContextHarness.tools))).not.toContain("confirm_checkout");
+  await cartDialog.getByRole("button", { name: "Review sandbox checkout" }).click();
+  await expect(cartDialog).toContainText("Retailer: Northstar Furnishings");
+  await expect(cartDialog).toContainText("shipping and tax are unknown");
+  await expect(cartDialog.getByRole("button", { name: "Confirm sandbox checkout handoff" })).toBeEnabled();
+  await cartDialog.getByRole("button", { name: "Confirm sandbox checkout handoff" }).click();
+  await expect(cartDialog).toContainText("Sandbox checkout handoff ready");
+  await expect(cartDialog).toContainText("no order or payment was created");
+  await expect(cartDialog).toContainText("Latest checkout receipt: confirm · accepted");
+  await cartDialog.getByRole("button", { name: "Open sandbox checkout (inert)" }).click();
+  await expect(cartDialog).toContainText("Latest checkout receipt: open · accepted");
+  await cartDialog.getByRole("button", { name: "Return to Wimy" }).click();
+  await expect(cartDialog).toContainText("Returned to Wimy through the local synthetic return path.");
+  await expect(page).toHaveURL(/\?checkout=return&session=checkout-/u);
+  expect(await page.locator("body").innerText()).not.toMatch(/order placed|payment completed|purchase successful/iu);
   expect((await callTool(page, "inspect_room", {}))).toMatchObject({ revision: 1 });
 
   const lineId = added.cart.lines[0]!.lineId;

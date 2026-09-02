@@ -400,6 +400,8 @@ export function App({
             store={store}
           />
           <CartReviewPanel
+            key={`checkout-${customerSessionKey}`}
+            checkout={customerSession.checkout}
             client={customerSession.cart}
             onClose={() => closeSurface("cart")}
             onOpen={() => openSurface("cart")}

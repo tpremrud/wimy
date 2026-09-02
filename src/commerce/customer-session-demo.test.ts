@@ -80,4 +80,27 @@ describe("createCustomerSessionDemo", () => {
     await demo.signIn("New demo customer");
     expect(demo.cart!.getLatestReceipt?.()).toBeUndefined();
   });
+
+  it("keeps checkout review behind the authenticated customer client", async () => {
+    const authority = new CustomerSessionAuthority({
+      store: new MemorySessionStore(),
+      now: () => 1_000,
+      createSessionToken: () => "session-token",
+      createCsrfSecret: () => "csrf-secret",
+    });
+    const demo = createCustomerSessionDemo({ authority });
+
+    expect(demo.checkout).toBeDefined();
+    await expect(demo.checkout!.getReview()).resolves.toMatchObject({
+      ok: false,
+      error: { code: "ANONYMOUS_SESSION", recoverable: true },
+    });
+    await demo.signIn("Demo customer");
+    await expect(demo.checkout!.getReview()).resolves.toMatchObject({
+      ok: false,
+      error: { code: "CART_EMPTY", recoverable: true },
+    });
+    expect(JSON.stringify(demo)).not.toContain("session-token");
+    expect(JSON.stringify(demo)).not.toContain("csrf-secret");
+  });
 });

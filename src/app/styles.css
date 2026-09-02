@@ -177,6 +177,75 @@
   padding-top: 0.45rem;
 }
 
+.checkout-review-state {
+  display: grid;
+  border-top: 1px solid #c8d9cb;
+  padding-top: 0.65rem;
+  gap: 0.5rem;
+}
+
+.checkout-review-state h3 {
+  font-size: 0.9rem;
+}
+
+.checkout-review-state p,
+.checkout-review-state li,
+.checkout-review-state a,
+.checkout-review-state button {
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.checkout-review-state button,
+.checkout-review-state a {
+  justify-self: start;
+  min-height: 2.25rem;
+  border: 1px solid #166534;
+  border-radius: 0.3rem;
+  padding: 0.4rem 0.65rem;
+  color: #166534;
+  background: #ffffff;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.checkout-review-state button:hover,
+.checkout-review-state a:hover {
+  background: #edf7ef;
+}
+
+.checkout-review-state button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.checkout-review-state button:focus-visible,
+.checkout-review-state a:focus-visible {
+  outline: 3px solid #b45309;
+  outline-offset: 2px;
+}
+
+.checkout-review-lines {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  gap: 0.45rem;
+  list-style: none;
+}
+
+.checkout-review-lines li {
+  display: grid;
+  gap: 0.15rem;
+  border-top: 1px solid #c8d9cb;
+  padding-top: 0.45rem;
+}
+
+.checkout-review-lines span {
+  color: #555555;
+}
+
 @media (max-width: 42rem) {
   .customer-session {
     order: 4;

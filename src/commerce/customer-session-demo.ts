@@ -19,12 +19,42 @@ import {
   type CartService,
 } from "./cart";
 import type { RetailerOfferResolver } from "./retailer-offer-adapter";
+import {
+  createCheckoutService,
+  createSyntheticSandboxCheckoutProvider,
+  type CheckoutConfirmResult,
+  type CheckoutReceipt,
+  type CheckoutReviewResult,
+  type CheckoutService,
+  type CheckoutSessionResult,
+} from "./checkout";
+
+const checkoutErrorReceipt = (errorCode: CheckoutReceipt["errorCode"]): CheckoutReceipt => ({
+  type: "commerce.checkout.receipt",
+  operation: "review",
+  status: "rejected",
+  cartRevision: 0,
+  lineCount: 0,
+  totalMinor: 0,
+  currency: "USD",
+  errorCode,
+});
 
 export interface CustomerSessionClient {
   getSession: () => Promise<CustomerSessionView>;
   signIn: (customerId: string) => Promise<CustomerSessionView>;
   signOut: () => Promise<CustomerSessionView>;
   cart?: CustomerCartClient;
+  checkout?: CustomerCheckoutClient;
+}
+
+export interface CustomerCheckoutClient {
+  getReview: () => Promise<CheckoutReviewResult>;
+  confirm: (reviewId: string, idempotencyKey: string) => Promise<CheckoutConfirmResult>;
+  cancel: (checkoutSessionId: string) => Promise<CheckoutSessionResult>;
+  returnToWimy: (checkoutSessionId: string) => Promise<CheckoutSessionResult>;
+  open: (checkoutSessionId: string) => Promise<CheckoutSessionResult>;
+  getLatestReceipt: () => ReturnType<CheckoutService["getLatestReceipt"]>;
 }
 
 export interface CustomerCartClient {
@@ -46,6 +76,7 @@ type CustomerSessionDemoOptions = Readonly<{
   authority?: CustomerSessionAuthority;
   cartService?: CartService;
   offerResolver?: RetailerOfferResolver;
+  checkoutService?: CheckoutService;
 }>;
 
 const createBrowserOpaqueValue = () => {
@@ -83,14 +114,26 @@ export const createCustomerSessionDemo = (
 ): CustomerSessionClient => {
   const authority = options.authority ?? createDefaultAuthority();
   let ticket: ServerSessionTicket | undefined;
+  const defaultOfferResolver = options.offerResolver ?? {
+    resolve: async () => ({ status: "no_offers" as const, offers: [] as const }),
+    clearCache: () => undefined,
+  };
+  const humanUiToken = {};
+  const cartStore = options.cartService ? undefined : createInMemoryCartStore();
   const cartService = options.cartService ?? createCartService({
-    store: createInMemoryCartStore(),
+    store: cartStore!,
     sessionAuthority: authority,
-    offerResolver: options.offerResolver ?? {
-      resolve: async () => ({ status: "no_offers" as const, offers: [] as const }),
-      clearCache: () => undefined,
-    },
+    offerResolver: defaultOfferResolver,
   });
+  const checkoutService = options.checkoutService ?? (cartStore
+    ? createCheckoutService({
+        store: cartStore,
+        sessionAuthority: authority,
+        offerResolver: defaultOfferResolver,
+        provider: createSyntheticSandboxCheckoutProvider(),
+        humanUiToken,
+      })
+    : undefined);
   const listeners = new Set<(receipt?: CartReceipt) => void>();
   let latestMutationReceipt: CartReceipt | undefined;
   const notify = (receipt?: CartReceipt) => {
@@ -108,6 +151,38 @@ export const createCustomerSessionDemo = (
     csrfSecret: ticket?.csrfSecret,
     origin: (request as { origin?: CartOrigin }).origin ?? defaultOrigin,
   });
+
+  const getCheckoutReview = async (): Promise<CheckoutReviewResult> => {
+    if (!checkoutService) {
+      return {
+        ok: false,
+        error: {
+          code: "SESSION_UNAVAILABLE",
+          message: "Checkout access is unavailable",
+          recoverable: true,
+        },
+        receipt: checkoutErrorReceipt("SESSION_UNAVAILABLE"),
+      };
+    }
+    const cartResult = await cartService.getCart(withSessionSecrets({}, "human"));
+    if (!cartResult.ok) {
+      return {
+        ok: false,
+        error: {
+          code: cartResult.error.code === "ANONYMOUS_SESSION"
+            ? "ANONYMOUS_SESSION"
+            : "SESSION_UNAVAILABLE",
+          message: cartResult.error.message,
+          recoverable: true,
+        },
+        receipt: checkoutErrorReceipt(cartResult.error.code === "ANONYMOUS_SESSION" ? "ANONYMOUS_SESSION" : "SESSION_UNAVAILABLE"),
+      };
+    }
+    return checkoutService.review({
+      sessionToken: ticket?.sessionToken,
+      cartId: cartResult.cart.cartId,
+    });
+  };
 
   return {
     getSession: () => authority.resolve(ticket?.sessionToken),
@@ -153,5 +228,41 @@ export const createCustomerSessionDemo = (
         return () => listeners.delete(listener);
       },
     },
+    checkout: checkoutService
+      ? {
+          getReview: getCheckoutReview,
+          confirm: (reviewId, idempotencyKey) => checkoutService.confirm({
+            sessionToken: ticket?.sessionToken,
+            csrfSecret: ticket?.csrfSecret,
+            reviewId,
+            idempotencyKey,
+            confirmation: true,
+            origin: "human",
+            humanUiToken,
+          }),
+          cancel: (checkoutSessionId) => checkoutService.cancel({
+            sessionToken: ticket?.sessionToken,
+            csrfSecret: ticket?.csrfSecret,
+            checkoutSessionId,
+            origin: "human",
+            humanUiToken,
+          }),
+          returnToWimy: (checkoutSessionId) => checkoutService.returnToWimy({
+            sessionToken: ticket?.sessionToken,
+            csrfSecret: ticket?.csrfSecret,
+            checkoutSessionId,
+            origin: "human",
+            humanUiToken,
+          }),
+          open: (checkoutSessionId) => checkoutService.open({
+            sessionToken: ticket?.sessionToken,
+            csrfSecret: ticket?.csrfSecret,
+            checkoutSessionId,
+            origin: "human",
+            humanUiToken,
+          }),
+          getLatestReceipt: checkoutService.getLatestReceipt,
+        }
+      : undefined,
   };
 };
