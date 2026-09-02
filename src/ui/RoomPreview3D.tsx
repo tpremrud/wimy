@@ -46,12 +46,13 @@ import {
   deriveSunBeams,
   deriveSunDirection,
   validateSunStudyScenario,
+  type CelestialDirection,
   type SolarPosition,
   type SunBeam,
-  type SunDirection,
   type SunStudyScenario,
 } from "../room/sunlight";
 import {
+  calculateIllustrativeMoonlightStrength,
   calculateLunarIlluminationAtUtc,
   calculateLunarPositionAtUtc,
   deriveMoonDirection,
@@ -76,13 +77,13 @@ type SunStudyInputState = {
 
 type SunStudyRenderState = {
   position: SolarPosition;
-  direction: SunDirection;
+  direction: CelestialDirection;
   shadowsEnabled: boolean;
 };
 
 type MoonStudyRenderState = {
   position: LunarPosition;
-  direction: SunDirection;
+  direction: CelestialDirection;
   illumination: LunarIllumination;
   shadowsEnabled: boolean;
 };
@@ -120,6 +121,24 @@ const minutesFromLocalTime = (localTime: string) => {
 const localTimeFromMinutes = (minutes: number) => {
   const normalized = ((Math.round(minutes) % 1440) + 1440) % 1440;
   return `${String(Math.floor(normalized / 60)).padStart(2, "0")}:${String(normalized % 60).padStart(2, "0")}`;
+};
+
+const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";
+
+const usePrefersReducedMotion = () => {
+  const [preferred, setPreferred] = useState(
+    () => window.matchMedia?.(REDUCED_MOTION_QUERY).matches ?? false,
+  );
+
+  useEffect(() => {
+    const media = window.matchMedia?.(REDUCED_MOTION_QUERY);
+    if (!media) return undefined;
+    const update = () => setPreferred(media.matches);
+    media.addEventListener?.("change", update);
+    return () => media.removeEventListener?.("change", update);
+  }, []);
+
+  return preferred;
 };
 
 const SunStudyControls = ({
@@ -216,6 +235,7 @@ const SunStudyControls = ({
 );
 
 const SkyTimelineDock = ({
+  animationDisabled,
   dayAnimating,
   input,
   moonIllumination,
@@ -225,6 +245,7 @@ const SkyTimelineDock = ({
   settingsButtonRef,
   settingsOpen,
 }: {
+  animationDisabled: boolean;
   dayAnimating: boolean;
   input: SunStudyInputState;
   moonIllumination: LunarIllumination | null;
@@ -265,7 +286,11 @@ const SkyTimelineDock = ({
       </div>
     </div>
     <button
+      aria-label={animationDisabled
+        ? "Day animation disabled because reduced motion is preferred"
+        : dayAnimating ? "Pause" : "Play day"}
       aria-pressed={dayAnimating}
+      disabled={animationDisabled}
       onClick={() => onDayAnimationChange(!dayAnimating)}
       type="button"
     >
@@ -762,12 +787,14 @@ const WindowLightBeamVolume = ({
 const PreviewScene = ({
   scene,
   moonBeams,
+  moonlightStrength,
   moonStudy,
   sunBeams,
   sunStudy,
 }: {
   scene: SceneProjection;
   moonBeams: readonly SunBeam[];
+  moonlightStrength: number;
   moonStudy: MoonStudyRenderState | null;
   sunBeams: readonly SunBeam[];
   sunStudy: SunStudyRenderState | null;
@@ -799,7 +826,10 @@ const PreviewScene = ({
     if (moonLight.current) moonLight.current.target = moonTarget;
   }, [depth, moonTarget, sunTarget, width]);
   const showSun = sunStudy?.direction.isAboveHorizon === true;
-  const showMoon = moonStudy?.direction.isAboveHorizon === true && !showSun;
+  const showMoon =
+    moonStudy?.direction.isAboveHorizon === true &&
+    moonlightStrength > 0 &&
+    !showSun;
   const daylight = showSun && sunStudy
     ? Math.min(Math.max(Math.sin(sunStudy.position.apparentAltitudeDeg * Math.PI / 180), 0.08), 1)
     : 0;
@@ -863,7 +893,7 @@ const PreviewScene = ({
           <directionalLight
             castShadow={moonStudy.shadowsEnabled}
             color="#9fc5ff"
-            intensity={0.12 + moonStudy.illumination.fraction * 0.55}
+            intensity={0.12 + moonlightStrength * 0.55}
             position={[
               width / 2 + moonStudy.direction.lightPosition[0],
               height + moonStudy.direction.lightPosition[1],
@@ -885,7 +915,7 @@ const PreviewScene = ({
               beam={beam}
               color="#8cbcff"
               key={beam.openingId}
-              opacityScale={0.28 + moonStudy.illumination.fraction * 0.5}
+              opacityScale={0.28 + moonlightStrength * 0.5}
             />
           ))}
         </>
@@ -962,9 +992,10 @@ export function RoomPreview3D({
   const [shadowsEnabled, setShadowsEnabled] = useState(true);
   const [dayAnimating, setDayAnimating] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const prefersReducedMotion = usePrefersReducedMotion();
   const settingsButtonRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
-    if (!dayAnimating) return undefined;
+    if (!dayAnimating || prefersReducedMotion) return undefined;
     const timer = window.setInterval(() => {
       setSunStudyInput((current) => ({
         ...current,
@@ -972,7 +1003,7 @@ export function RoomPreview3D({
       }));
     }, 120);
     return () => window.clearInterval(timer);
-  }, [dayAnimating]);
+  }, [dayAnimating, prefersReducedMotion]);
   useEffect(() => {
     if (!settingsOpen) return undefined;
     const closeOnEscape = (event: KeyboardEvent) => {
@@ -1049,11 +1080,14 @@ export function RoomPreview3D({
       : [],
     [scene, sunStudy],
   );
+  const moonlightStrength = moonStudy
+    ? calculateIllustrativeMoonlightStrength(moonStudy.illumination.fraction)
+    : 0;
   const moonBeams = useMemo(
-    () => moonStudy && !sunStudy?.direction.isAboveHorizon
+    () => moonStudy && moonlightStrength > 0 && !sunStudy?.direction.isAboveHorizon
       ? deriveSunBeams(scene.dimensions, scene.openings, moonStudy.direction)
       : [],
-    [moonStudy, scene, sunStudy],
+    [moonStudy, moonlightStrength, scene, sunStudy],
   );
   const moonStatusText = !sunStudyValidation.valid || !moonStudy
     ? "Moon study unavailable. No fixed fallback moonlight is shown."
@@ -1067,6 +1101,8 @@ export function RoomPreview3D({
           : "Moon is at or below the modeled horizon",
         sunStudy?.direction.isAboveHorizon
           ? "Direct sun takes lighting precedence"
+          : moonlightStrength === 0
+            ? "Phase is too dim for illustrative moonlight"
           : moonBeams.length > 0
             ? "Illustrative moonlight reaches a window"
             : "No window-facing moonlight beam",
@@ -1097,13 +1133,15 @@ export function RoomPreview3D({
             className="room-preview-canvas"
             data-wimy-shadows={sunStudy?.shadowsEnabled ? "on" : "off"}
             data-wimy-moonbeams={moonBeams.length}
-            data-wimy-moonlight={moonStudy?.direction.isAboveHorizon && !sunStudy?.direction.isAboveHorizon ? "on" : "off"}
+            data-wimy-moonlight={moonStudy?.direction.isAboveHorizon && moonlightStrength > 0 && !sunStudy?.direction.isAboveHorizon ? "on" : "off"}
             data-wimy-moon-phase={moonStudy?.illumination.phaseName ?? "unavailable"}
+            data-wimy-moon-strength={moonlightStrength}
             data-wimy-sunbeams={sunBeams.length}
             data-wimy-sun-study={sunStudy ? "available" : "unavailable"}
           >
           <PreviewScene
             moonBeams={moonBeams}
+            moonlightStrength={moonlightStrength}
             moonStudy={moonStudy}
             scene={scene}
             sunBeams={sunBeams}
@@ -1113,7 +1151,8 @@ export function RoomPreview3D({
         </PreviewErrorBoundary>
       )}
       <SkyTimelineDock
-        dayAnimating={dayAnimating}
+        animationDisabled={prefersReducedMotion}
+        dayAnimating={dayAnimating && !prefersReducedMotion}
         input={sunStudyInput}
         moonIllumination={moonStudy?.illumination ?? null}
         onDayAnimationChange={setDayAnimating}

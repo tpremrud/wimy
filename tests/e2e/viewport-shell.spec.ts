@@ -210,6 +210,44 @@ test("keeps selected-item controls on the canvas without opening Placed", async 
   }))).toEqual({ clientHeight: viewport.height, scrollHeight: viewport.height });
 });
 
+test("keeps every selected-item pose control reachable at tablet width", async ({ page }) => {
+  const viewport = { width: 768, height: 800 };
+  await page.setViewportSize(viewport);
+  await page.goto("/");
+  await page
+    .getByRole("button", { name: "Select Linen Apartment Sofa" })
+    .click();
+
+  const toolbar = page.getByRole("group", { name: "Selected item actions" });
+  const stage = page.locator(".room-plan-stage");
+  const [toolbarBox, stageBox] = await Promise.all([
+    toolbar.boundingBox(),
+    stage.boundingBox(),
+  ]);
+  if (!toolbarBox || !stageBox) {
+    throw new Error("expected the room stage and selected-item pose controls");
+  }
+  expect(toolbarBox.x).toBeGreaterThanOrEqual(stageBox.x + 8);
+  expect(toolbarBox.x + toolbarBox.width).toBeLessThanOrEqual(
+    stageBox.x + stageBox.width - 8,
+  );
+  for (const control of [
+    page.getByLabel("X position (m)"),
+    page.getByLabel("Y position (m)"),
+    page.getByLabel("Angle"),
+    page.getByRole("button", { name: "Apply pose" }),
+    page.getByRole("button", { name: "Rotate 90 degrees" }),
+    page.getByRole("button", { name: "Remove Linen Apartment Sofa" }),
+    page.getByRole("button", { name: "Close item controls" }),
+  ]) {
+    await expect(control).toBeInViewport();
+  }
+  await expect.poll(() => page.evaluate(() => ({
+    clientHeight: document.documentElement.clientHeight,
+    scrollHeight: document.documentElement.scrollHeight,
+  }))).toEqual({ clientHeight: viewport.height, scrollHeight: viewport.height });
+});
+
 test("keeps browsing and search inside the desktop room-tools rail", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 720 });
   await page.goto("/");

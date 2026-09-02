@@ -1,4 +1,4 @@
-import { deriveSunDirection, type SunDirection } from "./sunlight";
+import { deriveSunDirection, type CelestialDirection } from "./sunlight";
 
 const RADIANS_PER_DEGREE = Math.PI / 180;
 const DEGREES_PER_RADIAN = 180 / Math.PI;
@@ -6,6 +6,7 @@ const DAY_MS = 86_400_000;
 const J1970 = 2_440_588;
 const J2000 = 2_451_545;
 const EARTH_SUN_DISTANCE_KM = 149_598_000;
+const MIN_ILLUSTRATIVE_MOONLIGHT_FRACTION = 0.02;
 const OBLIQUITY = RADIANS_PER_DEGREE * 23.4397;
 
 export type LunarPosition = {
@@ -183,10 +184,24 @@ export const calculateLunarIlluminationAtUtc = (date: Date): LunarIllumination =
   };
 };
 
+export const calculateIllustrativeMoonlightStrength = (fraction: number) => {
+  if (
+    !Number.isFinite(fraction) ||
+    fraction <= MIN_ILLUSTRATIVE_MOONLIGHT_FRACTION
+  ) {
+    return 0;
+  }
+  const bounded = Math.min(fraction, 1);
+  return (
+    (bounded - MIN_ILLUSTRATIVE_MOONLIGHT_FRACTION) /
+    (1 - MIN_ILLUSTRATIVE_MOONLIGHT_FRACTION)
+  );
+};
+
 export const deriveMoonDirection = (
   position: Pick<
     LunarPosition,
     "azimuthDeg" | "geometricAltitudeDeg" | "apparentAltitudeDeg" | "utcDate"
   >,
   planNorthAzimuthDeg: number,
-): SunDirection => deriveSunDirection(position, planNorthAzimuthDeg);
+): CelestialDirection => deriveSunDirection(position, planNorthAzimuthDeg);

@@ -3,6 +3,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type FormEvent,
   type KeyboardEvent,
   type MouseEvent,
   type PointerEvent,
@@ -46,6 +47,14 @@ type LocalSelection = {
   itemId: EntityId;
 };
 
+type PoseDraft = {
+  owner: RoomStore;
+  itemId: EntityId;
+  x: string;
+  y: string;
+  rotationDeg: RotationDeg;
+};
+
 type PendingPointerClick = {
   owner: RoomStore;
   itemId: EntityId;
@@ -71,6 +80,7 @@ export function RoomEditor2D({
   const { room, revision } = useStore(store);
   const [drag, setDrag] = useState<DragState | null>(null);
   const [selection, setSelection] = useState<LocalSelection | null>(null);
+  const [poseDraft, setPoseDraft] = useState<PoseDraft | null>(null);
   const dragRef = useRef<DragState | null>(null);
   const selectionRef = useRef<LocalSelection | null>(null);
   const pendingPointerClickRef = useRef<PendingPointerClick | null>(null);
@@ -96,6 +106,7 @@ export function RoomEditor2D({
     selectionRef.current = null;
     setDrag(null);
     setSelection(null);
+    setPoseDraft(null);
     setHumanActionResult(null);
   }, [store]);
 
@@ -149,9 +160,28 @@ export function RoomEditor2D({
           interactionWasInvalidated(selectionState.itemId)
         ) {
           selectionRef.current = null;
+          setPoseDraft(null);
           setSelection((current) =>
             current === selectionState ? null : current,
           );
+        }
+        const currentSelectionState = selectionRef.current;
+        if (
+          currentSelectionState?.owner === store &&
+          !interactionWasInvalidated(currentSelectionState.itemId)
+        ) {
+          const selected = current.room.items.find(
+            ({ id }) => id === currentSelectionState.itemId,
+          );
+          if (selected) {
+            setPoseDraft({
+              owner: store,
+              itemId: selected.id,
+              x: String(selected.pose.x),
+              y: String(selected.pose.y),
+              rotationDeg: selected.pose.rotationDeg,
+            });
+          }
         }
         const dragState = dragRef.current;
         if (
@@ -229,6 +259,16 @@ export function RoomEditor2D({
     };
     selectionRef.current = nextSelection;
     setSelection(nextSelection);
+    const item = store.getState().room.items.find(({ id }) => id === itemId);
+    if (item) {
+      setPoseDraft({
+        owner: store,
+        itemId,
+        x: String(item.pose.x),
+        y: String(item.pose.y),
+        rotationDeg: item.pose.rotationDeg,
+      });
+    }
   };
 
   const selectFromClick = (
@@ -457,6 +497,43 @@ export function RoomEditor2D({
     announceResult(result);
   };
 
+  const applySelectedPose = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const activeSelection = selectionRef.current;
+    if (!activeSelection || activeSelection.owner !== store) return;
+    const current = store.getState();
+    if (
+      !poseDraft ||
+      poseDraft.owner !== store ||
+      poseDraft.itemId !== activeSelection.itemId
+    ) return;
+    const x = roundMillimeters(Number(poseDraft.x));
+    const y = roundMillimeters(Number(poseDraft.y));
+    const rotationDeg = poseDraft.rotationDeg;
+    const result = current.transact({
+      expectedRevision: current.revision,
+      origin: "human",
+      change: {
+        type: "edit",
+        operations: [
+          {
+            type: "transform",
+            itemId: activeSelection.itemId,
+            pose: { x, y, rotationDeg },
+          },
+        ],
+      },
+    });
+    announceResult(result);
+  };
+
+  const closeSelectedItemActions = () => {
+    selectionRef.current = null;
+    setSelection(null);
+    setPoseDraft(null);
+    roomPlanRef.current?.focus();
+  };
+
   const removeSelectedItem = () => {
     const activeSelection = selectionRef.current;
     if (!activeSelection || activeSelection.owner !== store) return;
@@ -657,8 +734,9 @@ export function RoomEditor2D({
         })}
         </svg>
         {selectedItem ? (
-          <div
+          <form
             className="room-item-actions"
+            onSubmit={applySelectedPose}
             role="group"
             aria-label="Selected item actions"
           >
@@ -668,6 +746,56 @@ export function RoomEditor2D({
                 {`${selectedPlanItem?.orientation.label ?? "No fixed direction"} · ${selectedItem.pose.rotationDeg}° · x ${selectedItem.pose.x} m, y ${selectedItem.pose.y} m`}
               </span>
             </div>
+            <div className="selected-item-pose-fields">
+              <label>
+                X position (m)
+                <input
+                  onChange={(event) => setPoseDraft((current) => current
+                    ? { ...current, x: event.target.value }
+                    : current)}
+                  name="x"
+                  required
+                  step="0.01"
+                  type="number"
+                  value={poseDraft?.owner === store && poseDraft.itemId === selectedItem.id
+                    ? poseDraft.x
+                    : String(selectedItem.pose.x)}
+                />
+              </label>
+              <label>
+                Y position (m)
+                <input
+                  onChange={(event) => setPoseDraft((current) => current
+                    ? { ...current, y: event.target.value }
+                    : current)}
+                  name="y"
+                  required
+                  step="0.01"
+                  type="number"
+                  value={poseDraft?.owner === store && poseDraft.itemId === selectedItem.id
+                    ? poseDraft.y
+                    : String(selectedItem.pose.y)}
+                />
+              </label>
+              <label>
+                Angle
+                <select
+                  name="rotationDeg"
+                  onChange={(event) => setPoseDraft((current) => current
+                    ? { ...current, rotationDeg: Number(event.target.value) as RotationDeg }
+                    : current)}
+                  value={poseDraft?.owner === store && poseDraft.itemId === selectedItem.id
+                    ? poseDraft.rotationDeg
+                    : selectedItem.pose.rotationDeg}
+                >
+                  <option value="0">0°</option>
+                  <option value="90">90°</option>
+                  <option value="180">180°</option>
+                  <option value="270">270°</option>
+                </select>
+              </label>
+            </div>
+            <button type="submit">Apply pose</button>
             <button
               type="button"
               aria-label="Rotate 90 degrees"
@@ -683,7 +811,14 @@ export function RoomEditor2D({
             >
               Remove
             </button>
-          </div>
+            <button
+              type="button"
+              aria-label="Close item controls"
+              onClick={closeSelectedItemActions}
+            >
+              Close
+            </button>
+          </form>
         ) : null}
       </div>
       <p

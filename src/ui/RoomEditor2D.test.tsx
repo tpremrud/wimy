@@ -200,6 +200,37 @@ describe("RoomEditor2D selection", () => {
     });
   });
 
+  it("edits a selected pose from an explicitly dismissible bottom control dock", () => {
+    const store = renderEditor(makeRoom({ items: [makePlacedItem()] }));
+    fireEvent.click(screen.getByRole("button", { name: "Select Test Chair" }), {
+      detail: 0,
+    });
+
+    expect(screen.getByLabelText("X position (m)")).toHaveValue(1);
+    expect(screen.getByLabelText("Y position (m)")).toHaveValue(1);
+    expect(screen.getByLabelText("Angle")).toHaveValue("0");
+
+    fireEvent.change(screen.getByLabelText("X position (m)"), {
+      target: { value: "1.25" },
+    });
+    fireEvent.change(screen.getByLabelText("Y position (m)"), {
+      target: { value: "1.5" },
+    });
+    fireEvent.change(screen.getByLabelText("Angle"), {
+      target: { value: "90" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Apply pose" }));
+
+    expect(store.getState().room.items[0]?.pose).toEqual({
+      x: 1.25,
+      y: 1.5,
+      rotationDeg: 90,
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Close item controls" }));
+    expect(screen.queryByLabelText("Selected item actions")).not.toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Test Room 2D room editor" })).toHaveFocus();
+  });
+
   it("clears stale pointer suppression when a detail-zero click activates the item", () => {
     const secondItem = makePlacedItem({
       id: "item_chair_2",

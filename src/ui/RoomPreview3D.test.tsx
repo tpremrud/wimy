@@ -82,6 +82,7 @@ afterEach(() => {
   canvasHarness.camera.position.values = [0, 0, 0];
   canvasHarness.throws = false;
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 const makeSceneItem = (category: SceneItem["category"]): SceneItem => ({
@@ -842,6 +843,25 @@ describe("RoomPreview3D", () => {
     expect(screen.getByText("08:00")).toBeVisible();
   });
 
+  it("does not offer automatic day playback when reduced motion is preferred", () => {
+    vi.stubGlobal("matchMedia", vi.fn(() => ({
+      matches: true,
+      media: "(prefers-reduced-motion: reduce)",
+      onchange: null,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }) as unknown as MediaQueryList));
+
+    render(<RoomPreview3D room={makeRoom()} webglSupportOverride={false} />);
+
+    expect(screen.getByRole("button", {
+      name: "Day animation disabled because reduced motion is preferred",
+    })).toBeDisabled();
+  });
+
   it("derives the moon phase and horizon position from the same local study controls", () => {
     render(
       <RoomPreview3D
@@ -865,6 +885,23 @@ describe("RoomPreview3D", () => {
     expect(screen.getByRole("status", { name: "Moon study status" })).toHaveTextContent(
       "Moon is above the modeled horizon",
     );
+  });
+
+  it("keeps the rendered moonlight strength at zero for a new moon", () => {
+    render(
+      <RoomPreview3D
+        room={makeRoom({ openings: [makeOpening({ kind: "window" })] })}
+        webglSupportOverride
+      />,
+    );
+    openLightingSettings();
+
+    fireEvent.change(screen.getByLabelText("Local date"), {
+      target: { value: "2026-09-11" },
+    });
+
+    expect(document.querySelector(".room-preview-canvas"))
+      .toHaveAttribute("data-wimy-moon-strength", "0");
   });
 
   it("enables bounded shadows by default when the renderer supports them", () => {

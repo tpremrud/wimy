@@ -34,7 +34,7 @@ export type SolarPosition = {
   utcDate: string;
 };
 
-export type SunDirection = {
+export type CelestialDirection = {
   isAboveHorizon: boolean;
   toward: [number, number, number];
   lightPosition: [number, number, number];
@@ -362,7 +362,7 @@ export const validateSunStudyScenario = (
 export const deriveSunDirection = (
   position: Pick<SolarPosition, "azimuthDeg" | "geometricAltitudeDeg" | "apparentAltitudeDeg" | "utcDate">,
   planNorthAzimuthDeg: number,
-): SunDirection => {
+): CelestialDirection => {
   if (position.geometricAltitudeDeg <= 0) {
     return { isAboveHorizon: false, toward: [0, 0, 0], lightPosition: [0, 0, 0] };
   }
@@ -411,7 +411,7 @@ const firstPositiveBoundaryDistance = (
 export const deriveSunBeams = (
   dimensions: [number, number, number],
   openings: readonly SunBeamOpening[],
-  sun: SunDirection,
+  sun: CelestialDirection,
 ): SunBeam[] => {
   if (!sun.isAboveHorizon) return [];
   const incoming: [number, number, number] = [

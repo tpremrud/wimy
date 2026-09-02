@@ -12,7 +12,7 @@ web
 
 Wimy is for people making concrete decisions about a real room: what fits, what works together, and what to try next. They may work directly in the browser or invite a browser agent to inspect the same canonical room state, search the available catalog, and propose or apply bounded edits.
 
-The primary task is to understand and improve one room without first creating an account. A room owner should be able to move between a 2D plan, a synchronized 3D preview, a catalog, and a portable `.wimy` file without losing identity, dimensions, orientation, or revision history.
+The primary task is to understand and improve one room without first creating an account. A room owner should be able to move between a 2D plan, a synchronized 3D preview, a catalog, and a portable `.wimy` file without losing identity, dimensions, orientation, or portable furniture facts. Runtime revision history, receipts, and undo state remain session-local.
 
 ## Product Purpose
 

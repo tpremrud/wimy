@@ -6,19 +6,6 @@
   text-rendering: optimizeLegibility;
 }
 
-/* The room remains the working surface; sky controls float at its edge. */
-.room-preview {
-  position: relative;
-  grid-template-rows: auto auto minmax(0, 1fr);
-  gap: 0.35rem;
-  overflow: hidden;
-}
-
-.room-preview-canvas,
-.room-preview-fallback {
-  min-height: 0;
-}
-
 .sky-timeline-dock {
   position: absolute;
   z-index: 25;
@@ -32,10 +19,9 @@
   border-radius: 0.75rem;
   padding: 0.45rem 0.55rem;
   gap: 0.55rem;
-  background: rgb(255 255 255 / 94%);
-  box-shadow: 0 4px 12px rgb(24 33 38 / 18%);
+  background: #ffffff;
+  box-shadow: 0 4px 12px rgb(24 33 38 / 10%);
   transform: translateX(-50%);
-  backdrop-filter: blur(8px);
 }
 
 .sky-timeline-readout {
@@ -115,8 +101,8 @@
   gap: 0.75rem;
   overflow-y: auto;
   overscroll-behavior: contain;
-  background: rgb(255 255 255 / 97%);
-  box-shadow: 0 4px 12px rgb(24 33 38 / 18%);
+  background: #ffffff;
+  box-shadow: 0 4px 12px rgb(24 33 38 / 10%);
   scrollbar-gutter: stable;
 }
 
@@ -931,10 +917,14 @@ section > p {
 }
 
 .room-preview {
+  position: relative;
   display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
   min-width: 0;
   margin-top: 1.25rem;
-  gap: 0.75rem;
+  gap: 0.35rem;
+  overflow: hidden;
+  overscroll-behavior: none;
 }
 
 .room-preview-heading-row {
@@ -2770,13 +2760,14 @@ body {
   z-index: 20;
   bottom: 1rem;
   left: 50%;
-  width: max-content;
-  max-width: calc(100% - 2rem);
+  width: min(56rem, calc(100% - 2rem));
   margin: 0;
   border: 0;
   border-radius: 0.75rem;
   padding: 0.4rem;
   gap: 0.4rem;
+  flex-wrap: wrap;
+  justify-content: center;
   color: var(--surface);
   background: var(--ink);
   box-shadow: 0 4px 8px rgb(24 33 38 / 22%);
@@ -2785,6 +2776,7 @@ body {
 
 .selected-item-summary {
   display: grid;
+  flex: 1 1 12rem;
   min-width: 0;
   max-width: 20rem;
   padding: 0 0.45rem;
@@ -2828,6 +2820,40 @@ body {
   outline-color: var(--surface);
 }
 
+.selected-item-pose-fields {
+  display: flex;
+  flex: 1 1 15rem;
+  align-items: end;
+  gap: 0.35rem;
+}
+
+.selected-item-pose-fields label {
+  display: grid;
+  gap: 0.15rem;
+  color: #d5dcda;
+  font-size: 0.62rem;
+  font-weight: 700;
+}
+
+.selected-item-pose-fields input,
+.selected-item-pose-fields select {
+  width: 4.75rem;
+  min-height: 2.25rem;
+  border: 1px solid #657078;
+  border-radius: 0.3rem;
+  padding: 0.3rem 0.4rem;
+  color: var(--surface);
+  background: #263137;
+  font: inherit;
+  font-size: 0.72rem;
+}
+
+.selected-item-pose-fields input:focus-visible,
+.selected-item-pose-fields select:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
 .room-item-actions .remove-item-control {
   color: #ffe7df;
 }
@@ -2860,26 +2886,6 @@ body {
 
   .header-actions > p {
     max-width: 11rem;
-  }
-}
-
-@media (max-width: 70rem) and (min-width: 42.01rem) {
-  .room-preview {
-    overflow-y: auto;
-  }
-
-  .room-preview-canvas {
-    height: clamp(20rem, 48vh, 32rem);
-  }
-}
-
-@media (min-width: 42.01rem) {
-  .room-preview {
-    overflow-y: auto;
-  }
-
-  .room-preview-canvas {
-    height: clamp(20rem, 48vh, 42rem);
   }
 }
 
@@ -3111,16 +3117,6 @@ body {
     bottom: auto;
   }
 
-  .room-preview {
-    overflow-y: auto;
-    overscroll-behavior: contain;
-  }
-
-  .room-preview-canvas {
-    height: clamp(15rem, 42dvh, 19rem);
-    min-height: 15rem;
-  }
-
   .room-item-actions {
     right: 0.75rem;
     bottom: 0.75rem;
@@ -3142,22 +3138,19 @@ body {
     min-height: 2.75rem;
     flex: 1 1 8rem;
   }
-}
 
-/* Final viewport contract: the canvas never yields document scroll to lighting tools. */
-.room-preview {
-  position: relative;
-  grid-template-rows: auto auto minmax(0, 1fr);
-  gap: 0.35rem;
-  overflow: hidden;
-  overscroll-behavior: none;
-}
+  .selected-item-pose-fields {
+    flex: 1 0 100%;
+  }
 
-.room-preview-canvas,
-.room-preview-fallback {
-  height: 100%;
-  min-height: 0;
-  max-height: none;
+  .selected-item-pose-fields label {
+    flex: 1 1 5rem;
+  }
+
+  .selected-item-pose-fields input,
+  .selected-item-pose-fields select {
+    width: 100%;
+  }
 }
 
 .room-preview-accessible-inventory {
