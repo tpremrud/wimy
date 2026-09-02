@@ -72,7 +72,7 @@ const createMaximumWarningRoom = () =>
       id: `O${index.toString().padStart(2, "0")}${"o".repeat(61)}`,
       kind: "door" as const,
       wall: "north" as const,
-      centerOffset: 15,
+      centerOffset: 0.5 + index * 1.5,
       width: 1,
       bottom: 0,
       height: 2.1,
@@ -332,7 +332,7 @@ describe("createRoomToolDefinitions", () => {
       warningsTruncated: boolean;
     };
 
-    expect(output.warningCount).toBe(7_050);
+    expect(output.warningCount).toBe(5_150);
     expect(output.warningsTruncated).toBe(true);
     expect(output.warnings).toHaveLength(50);
     expect(output.warnings.every(({ code }) => code === "OVERLAP")).toBe(
@@ -1654,7 +1654,7 @@ describe("createRoomToolDefinitions", () => {
 
     expect(output).toMatchObject({
       ok: true,
-      warningCount: 6_930,
+      warningCount: 5_049,
       warningsTruncated: true,
     });
     expect(output.warnings).toHaveLength(50);

@@ -30,7 +30,7 @@ describe("serializeWimyRoom", () => {
     const expected = [
       "{",
       '  "format": "wimy-room",',
-      '  "schemaVersion": 1,',
+      '  "schemaVersion": 2,',
       '  "room": {',
       '    "name": "Test Room",',
       '    "dimensions": {',
@@ -68,6 +68,21 @@ describe("serializeWimyRoom", () => {
     expect(text).not.toContain('"orientation"');
     expect(parsed).toEqual({ ok: true, room });
     if (parsed.ok) expect(serializeWimyRoom(parsed.room)).toBe(text);
+  });
+
+  it("round-trips the optional single-room L shape and edited openings", async () => {
+    const room = makeRoom({
+      geometry: {
+        shape: "l-shape",
+        notch: { corner: "south-east", width: 1, depth: 1 },
+      },
+      openings: [makeOpening({ wall: "south", centerOffset: 1.5 })],
+    });
+
+    await expect(parseWimyFile(serializeWimyRoom(room))).resolves.toEqual({
+      ok: true,
+      room,
+    });
   });
 });
 
@@ -197,13 +212,50 @@ describe("parseWimyFile", () => {
   it("distinguishes an unsupported schema version", async () => {
     const input = JSON.stringify({
       format: "wimy-room",
-      schemaVersion: 2,
+      schemaVersion: 3,
       room: makeRoom(),
     });
 
     await expect(parseWimyFile(input)).resolves.toMatchObject({
       ok: false,
       code: "UNSUPPORTED_SCHEMA_VERSION",
+    });
+  });
+
+  it("imports strict version 1 rectangular files into the current room model", async () => {
+    const room = makeRoom();
+    const input = JSON.stringify({
+      format: "wimy-room",
+      schemaVersion: 1,
+      room,
+    });
+
+    await expect(parseWimyFile(input)).resolves.toEqual({ ok: true, room });
+    expect(serializeWimyRoom(room)).toContain('"schemaVersion": 2');
+  });
+
+  it("reports legacy v1 stacked openings instead of claiming a lossless migration", async () => {
+    const opening = makeOpening({
+      id: "window_north_1",
+      kind: "window",
+      wall: "north",
+      centerOffset: 2,
+      width: 1.4,
+      bottom: 0.9,
+      height: 1.2,
+    });
+    const input = JSON.stringify({
+      format: "wimy-room",
+      schemaVersion: 1,
+      room: makeRoom({
+        openings: [opening, { ...opening, id: "window_north_2" }],
+      }),
+    });
+
+    await expect(parseWimyFile(input)).resolves.toMatchObject({
+      ok: false,
+      code: "INVALID_DOCUMENT",
+      path: "room.openings[1]",
     });
   });
 

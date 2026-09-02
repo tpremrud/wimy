@@ -7,6 +7,7 @@ import type {
   RotationDeg,
   WimyRoomV1,
 } from "./document";
+import { isRectangleWithinRoom } from "./geometry";
 
 const PLACEMENT_EPSILON_METERS = 1e-9;
 
@@ -223,14 +224,12 @@ export const validatePlacement = (
 
   const footprint = orientedFootprint(item.snapshot.dimensions, pose.rotationDeg);
 
-  if (
-    pose.x - footprint.width / 2 < -PLACEMENT_EPSILON_METERS ||
-    pose.x + footprint.width / 2 >
-      room.dimensions.width + PLACEMENT_EPSILON_METERS ||
-    pose.y - footprint.depth / 2 < -PLACEMENT_EPSILON_METERS ||
-    pose.y + footprint.depth / 2 >
-      room.dimensions.depth + PLACEMENT_EPSILON_METERS
-  ) {
+  if (!isRectangleWithinRoom(room, {
+    left: pose.x - footprint.width / 2,
+    right: pose.x + footprint.width / 2,
+    top: pose.y - footprint.depth / 2,
+    bottom: pose.y + footprint.depth / 2,
+  })) {
     return {
       ok: false,
       code: "OUT_OF_BOUNDS",

@@ -1,7 +1,8 @@
 import { z } from "zod";
+import { openingsOverlap } from "./geometry";
 
 export const WIMY_FORMAT = "wimy-room" as const;
-export const WIMY_SCHEMA_VERSION = 1 as const;
+export const WIMY_SCHEMA_VERSION = 2 as const;
 export const MAX_WIMY_FILE_BYTES = 1_000_000;
 const CONTAINMENT_EPSILON_METERS = 1e-9;
 
@@ -88,6 +89,18 @@ export const RoomDimensionsSchema = z
   })
   .strict();
 
+export const RoomGeometrySchema = z.discriminatedUnion("shape", [
+  z.object({ shape: z.literal("rectangle") }).strict(),
+  z.object({
+    shape: z.literal("l-shape"),
+    notch: z.object({
+      corner: z.literal("south-east"),
+      width: PositivePortableNumberSchema,
+      depth: PositivePortableNumberSchema,
+    }).strict(),
+  }).strict(),
+]);
+
 export const PoseSchema = z.object({
   x: PortableNumberSchema,
   y: PortableNumberSchema,
@@ -170,6 +183,14 @@ export const PlacedItemSchema = z.object({
 const WimyRoomV1ObjectSchema = z.object({
   name: boundedText(80),
   dimensions: RoomDimensionsSchema,
+  geometry: RoomGeometrySchema.optional(),
+  openings: z.array(OpeningSchema).max(20),
+  items: z.array(PlacedItemSchema).max(100),
+}).strict();
+
+const LegacyWimyRoomV1ObjectSchema = z.object({
+  name: boundedText(80),
+  dimensions: RoomDimensionsSchema,
   openings: z.array(OpeningSchema).max(20),
   items: z.array(PlacedItemSchema).max(100),
 }).strict();
@@ -195,6 +216,21 @@ const validateRoomInvariants = (
   room: z.infer<typeof WimyRoomV1ObjectSchema>,
   context: z.RefinementCtx,
 ) => {
+  const notch = room.geometry?.shape === "l-shape"
+    ? room.geometry.notch
+    : undefined;
+  if (
+    notch &&
+    (notch.width >= room.dimensions.width - CONTAINMENT_EPSILON_METERS ||
+      notch.depth >= room.dimensions.depth - CONTAINMENT_EPSILON_METERS)
+  ) {
+    context.addIssue({
+      code: "custom",
+      message: "An L-shaped room notch must be smaller than the room bounds",
+      path: ["geometry", "notch"],
+    });
+  }
+
   const entityIdentities = [
     ...room.openings.map(({ id }, index) => ({
       id,
@@ -224,10 +260,12 @@ const validateRoomInvariants = (
   }
 
   room.openings.forEach((opening, index) => {
-    const wallLength =
+    let wallLength =
       opening.wall === "north" || opening.wall === "south"
         ? room.dimensions.width
         : room.dimensions.depth;
+    if (notch && opening.wall === "east") wallLength -= notch.depth;
+    if (notch && opening.wall === "south") wallLength -= notch.width;
     const halfWidth = opening.width / 2;
 
     if (
@@ -263,6 +301,20 @@ const validateRoomInvariants = (
     }
   });
 
+  room.openings.forEach((opening, index) => {
+    const overlappingIndex = room.openings.findIndex(
+      (candidate, candidateIndex) =>
+        candidateIndex > index && openingsOverlap(opening, candidate),
+    );
+    if (overlappingIndex >= 0) {
+      context.addIssue({
+        code: "custom",
+        message: `Openings ${opening.id} and ${room.openings[overlappingIndex]?.id ?? "unknown"} overlap on the same wall`,
+        path: ["openings", overlappingIndex],
+      });
+    }
+  });
+
   room.items.forEach((item, index) => {
     const isQuarterTurn =
       item.pose.rotationDeg === 90 || item.pose.rotationDeg === 270;
@@ -286,6 +338,28 @@ const validateRoomInvariants = (
         message: "Placed item footprint must fit inside the room",
         path: ["items", index, "pose"],
       });
+    }
+
+
+    if (notch) {
+      const left = item.pose.x - footprintWidth / 2;
+      const right = item.pose.x + footprintWidth / 2;
+      const top = item.pose.y - footprintDepth / 2;
+      const bottom = item.pose.y + footprintDepth / 2;
+      const notchLeft = room.dimensions.width - notch.width;
+      const notchTop = room.dimensions.depth - notch.depth;
+      if (
+        left < room.dimensions.width - CONTAINMENT_EPSILON_METERS &&
+        right > notchLeft + CONTAINMENT_EPSILON_METERS &&
+        top < room.dimensions.depth - CONTAINMENT_EPSILON_METERS &&
+        bottom > notchTop + CONTAINMENT_EPSILON_METERS
+      ) {
+        context.addIssue({
+          code: "custom",
+          message: "Placed item footprint must fit inside the L-shaped room",
+          path: ["items", index, "pose"],
+        });
+      }
     }
 
     if (
@@ -312,7 +386,16 @@ const validateRoomInvariants = (
 export const WimyRoomV1Schema =
   WimyRoomV1ObjectSchema.superRefine(validateRoomInvariants);
 
+export const LegacyWimyRoomV1Schema =
+  LegacyWimyRoomV1ObjectSchema.superRefine(validateRoomInvariants);
+
 export const WimyFileV1Schema = z.object({
+  format: z.literal(WIMY_FORMAT),
+  schemaVersion: z.literal(1),
+  room: LegacyWimyRoomV1Schema,
+}).strict();
+
+export const WimyFileV2Schema = z.object({
   format: z.literal(WIMY_FORMAT),
   schemaVersion: z.literal(WIMY_SCHEMA_VERSION),
   room: WimyRoomV1Schema,
@@ -323,7 +406,9 @@ export type RotationDeg = z.infer<typeof RotationDegSchema>;
 export type Dimensions = z.infer<typeof DimensionsSchema>;
 export type Pose = z.infer<typeof PoseSchema>;
 export type Opening = z.infer<typeof OpeningSchema>;
+export type RoomGeometry = z.infer<typeof RoomGeometrySchema>;
 export type FurnitureSnapshot = z.infer<typeof FurnitureSnapshotSchema>;
 export type PlacedItem = z.infer<typeof PlacedItemSchema>;
 export type WimyRoomV1 = z.infer<typeof WimyRoomV1Schema>;
 export type WimyFileV1 = z.infer<typeof WimyFileV1Schema>;
+export type WimyFileV2 = z.infer<typeof WimyFileV2Schema>;

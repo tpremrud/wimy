@@ -929,14 +929,17 @@ const PreviewScene = ({
         sectionColor="#8fa0ad"
         sectionSize={1}
       />
-      <mesh
-        receiveShadow
-        position={scene.floor.position}
-        rotation={[-Math.PI / 2, 0, 0]}
-      >
-        <planeGeometry args={scene.floor.size} />
-        <meshStandardMaterial color="#edf0f2" />
-      </mesh>
+      {scene.floorSections.map((floor) => (
+        <mesh
+          key={`${floor.position[0]}-${floor.position[2]}-${floor.size.join("-")}`}
+          receiveShadow
+          position={floor.position}
+          rotation={[-Math.PI / 2, 0, 0]}
+        >
+          <planeGeometry args={floor.size} />
+          <meshStandardMaterial color="#edf0f2" />
+        </mesh>
+      ))}
       {scene.walls.map((wall) => (
         <mesh castShadow key={`${wall.wall}-${wall.position.join("-")}`} position={wall.position} receiveShadow>
           <boxGeometry args={wall.size} />

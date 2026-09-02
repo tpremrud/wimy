@@ -1,7 +1,7 @@
 import {
   WIMY_FORMAT,
   WIMY_SCHEMA_VERSION,
-  type WimyFileV1,
+  type WimyFileV2,
   type WimyRoomV1,
 } from "./document";
 
@@ -13,7 +13,7 @@ export const TEMPLATE_IDS = [
 
 export type TemplateId = (typeof TEMPLATE_IDS)[number];
 
-export const BLANK_ROOM_TEMPLATE: WimyFileV1 = {
+export const BLANK_ROOM_TEMPLATE: WimyFileV2 = {
   format: WIMY_FORMAT,
   schemaVersion: WIMY_SCHEMA_VERSION,
   room: {
@@ -43,7 +43,7 @@ export const BLANK_ROOM_TEMPLATE: WimyFileV1 = {
   },
 };
 
-export const COMPACT_BEDROOM_TEMPLATE: WimyFileV1 = {
+export const COMPACT_BEDROOM_TEMPLATE: WimyFileV2 = {
   format: WIMY_FORMAT,
   schemaVersion: WIMY_SCHEMA_VERSION,
   room: {
@@ -107,7 +107,7 @@ export const COMPACT_BEDROOM_TEMPLATE: WimyFileV1 = {
   },
 };
 
-export const LIVING_ROOM_TEMPLATE: WimyFileV1 = {
+export const LIVING_ROOM_TEMPLATE: WimyFileV2 = {
   format: WIMY_FORMAT,
   schemaVersion: WIMY_SCHEMA_VERSION,
   room: {
@@ -202,7 +202,7 @@ export const LIVING_ROOM_TEMPLATE: WimyFileV1 = {
   },
 };
 
-const TEMPLATE_REGISTRY: Record<TemplateId, WimyFileV1> = {
+const TEMPLATE_REGISTRY: Record<TemplateId, WimyFileV2> = {
   "blank-room": structuredClone(BLANK_ROOM_TEMPLATE),
   "compact-bedroom": structuredClone(COMPACT_BEDROOM_TEMPLATE),
   "living-room": structuredClone(LIVING_ROOM_TEMPLATE),

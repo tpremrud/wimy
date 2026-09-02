@@ -67,6 +67,24 @@ describe("orientedFootprint", () => {
 });
 
 describe("projectRoomToPlan", () => {
+  it("projects the L-shaped floor boundary without changing the one-room viewport", () => {
+    const projection = projectRoomToPlan(makeRoom({
+      geometry: {
+        shape: "l-shape",
+        notch: { corner: "south-east", width: 1, depth: 1 },
+      },
+    }), { width: 500, height: 400, padding: 40 });
+
+    expect(projection.roomPolygon).toEqual([
+      { x: 40, y: 42.5 },
+      { x: 460, y: 42.5 },
+      { x: 460, y: 252.5 },
+      { x: 355, y: 252.5 },
+      { x: 355, y: 357.5 },
+      { x: 40, y: 357.5 },
+    ]);
+  });
+
   it("uses a stable padded scale from the northwest room origin", () => {
     const projection = projectRoomToPlan(makeRoom(), {
       width: 500,
@@ -240,6 +258,22 @@ describe("projectRoomToPlan", () => {
 });
 
 describe("projectRoomToScene", () => {
+  it("splits an L-shaped floor into two sections and closes its notch walls", () => {
+    const scene = projectRoomToScene(makeRoom({
+      geometry: {
+        shape: "l-shape",
+        notch: { corner: "south-east", width: 1, depth: 1 },
+      },
+    }));
+
+    expect(scene.floorSections).toEqual([
+      { position: [2, 0, 1], size: [4, 2] },
+      { position: [1.5, 0, 2.5], size: [3, 1] },
+    ]);
+    expect(scene.walls.some(({ wall }) => wall === "notch-north")).toBe(true);
+    expect(scene.walls.some(({ wall }) => wall === "notch-west")).toBe(true);
+  });
+
   it("cuts a modeled window aperture out of the corresponding solid wall", () => {
     const scene = projectRoomToScene(
       makeRoom({

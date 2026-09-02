@@ -13,6 +13,11 @@ import {
   type OpeningSwing,
 } from "./opening";
 import { orientedFootprint } from "./placement";
+import {
+  roomFloorPolygon,
+  roomFloorRectangles,
+  roomUsableWallLength,
+} from "./geometry";
 
 type DeepReadonly<T> = T extends readonly (infer Item)[]
   ? readonly DeepReadonly<Item>[]
@@ -51,6 +56,7 @@ export type PlanProjection = {
   scale: number;
   origin: PlanPoint;
   roomRect: PlanRect;
+  roomPolygon: PlanPoint[];
   dimensions: {
     width: { value: number; x: number; y: number };
     depth: { value: number; x: number; y: number };
@@ -67,7 +73,7 @@ export type SceneFloor = {
 };
 
 export type SceneWall = {
-  wall: Opening["wall"];
+  wall: Opening["wall"] | "notch-north" | "notch-west";
   position: SceneVector3;
   size: SceneVector3;
 };
@@ -103,6 +109,7 @@ export type SceneItem = {
 export type SceneProjection = {
   dimensions: SceneVector3;
   floor: SceneFloor;
+  floorSections: SceneFloor[];
   walls: SceneWall[];
   openings: SceneOpeningHint[];
   items: SceneItem[];
@@ -153,9 +160,7 @@ const openingScenePosition = (
 const wallLength = (
   wall: Opening["wall"],
   room: DeepReadonly<WimyRoomV1>,
-) => (wall === "north" || wall === "south"
-  ? room.dimensions.width
-  : room.dimensions.depth);
+) => roomUsableWallLength(room, wall);
 
 const projectWallSegments = (
   wall: Opening["wall"],
@@ -254,15 +259,47 @@ export const projectRoomToScene = (
 ): SceneProjection => {
   const { width, depth, height } = room.dimensions;
 
+  const floorSections = roomFloorRectangles(room).map((section) => ({
+    position: [
+      (section.left + section.right) / 2,
+      0,
+      (section.top + section.bottom) / 2,
+    ] as SceneVector3,
+    size: [section.right - section.left, section.bottom - section.top] as [number, number],
+  }));
+  const notchWalls: SceneWall[] = room.geometry?.shape === "l-shape"
+    ? [
+        {
+          wall: "notch-north",
+          position: [
+            width - room.geometry.notch.width / 2,
+            height / 2,
+            depth - room.geometry.notch.depth,
+          ],
+          size: [room.geometry.notch.width, height, WALL_THICKNESS],
+        },
+        {
+          wall: "notch-west",
+          position: [
+            width - room.geometry.notch.width,
+            height / 2,
+            depth - room.geometry.notch.depth / 2,
+          ],
+          size: [WALL_THICKNESS, height, room.geometry.notch.depth],
+        },
+      ]
+    : [];
+
   return {
     dimensions: [width, height, depth],
     floor: {
       position: [width / 2, 0, depth / 2],
       size: [width, depth],
     },
+    floorSections,
     walls: (["north", "east", "south", "west"] as const).flatMap((wall) =>
       projectWallWithWindowApertures(wall, room),
-    ),
+    ).concat(notchWalls),
     openings: room.openings.map((opening) => ({
       id: opening.id,
       ...projectOpeningSemantics(opening),
@@ -357,6 +394,10 @@ export const projectRoomToPlan = (
     width: roomWidth,
     height: roomHeight,
   };
+  const roomPolygon = roomFloorPolygon(room).map((point) => ({
+    x: origin.x + point.x * scale,
+    y: origin.y + point.y * scale,
+  }));
   const items = room.items.map((item): PlanItem => {
     const footprint = orientedFootprint(
       item.snapshot.dimensions,
@@ -390,6 +431,7 @@ export const projectRoomToPlan = (
     scale,
     origin,
     roomRect,
+    roomPolygon,
     dimensions: {
       width: {
         value: room.dimensions.width,

@@ -3,6 +3,7 @@ import {
   WIMY_FORMAT,
   WIMY_SCHEMA_VERSION,
   WimyFileV1Schema,
+  WimyFileV2Schema,
   toCanonicalWimyFileText,
   type WimyRoomV1,
 } from "./document";
@@ -130,16 +131,19 @@ export const parseWimyFile = async (
   if (
     isJsonObject(candidate) &&
     "schemaVersion" in candidate &&
+    candidate.schemaVersion !== 1 &&
     candidate.schemaVersion !== WIMY_SCHEMA_VERSION
   ) {
     return {
       ok: false,
       code: "UNSUPPORTED_SCHEMA_VERSION",
-      message: `Expected Wimy schema version ${WIMY_SCHEMA_VERSION}`,
+      message: `Expected Wimy schema version 1 or ${WIMY_SCHEMA_VERSION}`,
     };
   }
 
-  const parsedEnvelope = WimyFileV1Schema.safeParse(candidate);
+  const parsedEnvelope = isJsonObject(candidate) && candidate.schemaVersion === 1
+    ? WimyFileV1Schema.safeParse(candidate)
+    : WimyFileV2Schema.safeParse(candidate);
   if (!parsedEnvelope.success) {
     const issue = parsedEnvelope.error.issues[0];
     return {
@@ -154,7 +158,7 @@ export const parseWimyFile = async (
 };
 
 export const serializeWimyRoom = (room: WimyRoomV1): string => {
-  const canonicalEnvelope = WimyFileV1Schema.parse({
+  const canonicalEnvelope = WimyFileV2Schema.parse({
     format: WIMY_FORMAT,
     schemaVersion: WIMY_SCHEMA_VERSION,
     room,

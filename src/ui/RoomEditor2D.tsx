@@ -583,12 +583,9 @@ export function RoomEditor2D({
             <path d="M 0 0 L 6 3 L 0 6 z" />
           </marker>
         </defs>
-        <rect
+        <polygon
           className="room-boundary"
-          x={projection.roomRect.x}
-          y={projection.roomRect.y}
-          width={projection.roomRect.width}
-          height={projection.roomRect.height}
+          points={projection.roomPolygon.map(({ x, y }) => `${x},${y}`).join(" ")}
         />
         <text
           className="room-name-label"

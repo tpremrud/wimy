@@ -537,6 +537,7 @@ const inspectRoom = (
     room: {
       name: projectUntrustedText(room.name),
       dimensions: { ...room.dimensions },
+      geometry: room.geometry ?? { shape: "rectangle" as const },
       openings: room.openings.map((opening) => ({
         ...opening,
         ...projectOpeningSemantics(opening),

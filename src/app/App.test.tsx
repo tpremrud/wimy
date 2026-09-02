@@ -222,6 +222,56 @@ describe("App", () => {
     expect(screen.getByRole("dialog", { name: "Share room" })).toBeVisible();
   });
 
+  it("edits one room's dimensions, L shape, and openings atomically", async () => {
+    const user = userEvent.setup();
+    const store = createRoomStore(
+      getTemplate("blank-room"),
+      TEST_TRANSACTION_DEPENDENCIES,
+    );
+    render(<App store={store} />);
+
+    await user.click(screen.getByRole("button", { name: "Room setup" }));
+    const setup = screen.getByRole("dialog", { name: "Room setup" });
+    await user.clear(within(setup).getByRole("spinbutton", { name: "Room width" }));
+    await user.type(within(setup).getByRole("spinbutton", { name: "Room width" }), "5");
+    await user.selectOptions(within(setup).getByRole("combobox", { name: "Room shape" }), "l-shape");
+    await user.click(within(setup).getByRole("button", { name: "Add window" }));
+    await user.click(within(setup).getByRole("button", { name: "Apply room setup" }));
+
+    expect(store.getState().revision).toBe(2);
+    expect(store.getState().room.dimensions.width).toBe(5);
+    expect(store.getState().room.geometry).toEqual({
+      shape: "l-shape",
+      notch: { corner: "south-east", width: 1, depth: 1 },
+    });
+    expect(store.getState().room.openings).toHaveLength(3);
+    expect(store.getState().room.openings.at(-1)?.kind).toBe("window");
+  });
+
+  it("rejects a stale room-setup draft instead of overwriting a newer room", async () => {
+    const user = userEvent.setup();
+    const store = createRoomStore(
+      getTemplate("blank-room"),
+      TEST_TRANSACTION_DEPENDENCIES,
+    );
+    render(<App store={store} />);
+
+    await user.click(screen.getByRole("button", { name: "Room setup" }));
+    const setup = screen.getByRole("dialog", { name: "Room setup" });
+    act(() => {
+      store.getState().transact({
+        expectedRevision: 1,
+        origin: "template",
+        change: { type: "replace", room: getTemplate("compact-bedroom") },
+      });
+    });
+    await user.click(within(setup).getByRole("button", { name: "Apply room setup" }));
+
+    expect(within(setup).getByRole("status")).toHaveTextContent("revision 1");
+    expect(store.getState().revision).toBe(2);
+    expect(store.getState().room.name).toBe("Compact Bedroom");
+  });
+
   it("opens activity feedback after an accepted catalog transaction", async () => {
     const user = userEvent.setup();
     const store = createRoomStore(

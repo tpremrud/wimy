@@ -23,6 +23,7 @@ import { ShareRoomPanel } from "../ui/ShareRoomPanel";
 import { WebMcpToolList } from "../ui/WebMcpToolList";
 import { CustomerSessionPanel } from "../ui/CustomerSessionPanel";
 import { CartReviewPanel } from "../ui/CartReviewPanel";
+import { RoomGeometryPanel } from "../ui/RoomGeometryPanel";
 import {
   createCustomerSessionDemo,
   type CustomerSessionClient,
@@ -36,7 +37,7 @@ import {
 
 type ViewMode = "2d" | "3d";
 type RailTab = "add" | "placed" | "favorites";
-type ActiveSurface = "share" | "help" | "activity" | "cart" | null;
+type ActiveSurface = "share" | "help" | "activity" | "cart" | "geometry" | null;
 
 type PreviewProps = {
   room: ReturnType<RoomStore["getState"]>["room"];
@@ -170,6 +171,7 @@ export function App({
   const helpButtonRef = useRef<HTMLButtonElement>(null);
   const activityButtonRef = useRef<HTMLButtonElement>(null);
   const cartButtonRef = useRef<HTMLButtonElement>(null);
+  const geometryButtonRef = useRef<HTMLButtonElement>(null);
   const [favoriteIds, setFavoriteIds] = useState<Set<string>>(
     () => new Set(),
   );
@@ -347,7 +349,9 @@ export function App({
         ? helpButtonRef
         : surface === "activity"
           ? activityButtonRef
-          : cartButtonRef;
+          : surface === "cart"
+            ? cartButtonRef
+            : geometryButtonRef;
     opener.current?.focus();
   };
 
@@ -359,7 +363,9 @@ export function App({
         ? helpButtonRef
         : activeSurface === "activity"
           ? activityButtonRef
-          : cartButtonRef;
+          : activeSurface === "cart"
+            ? cartButtonRef
+            : geometryButtonRef;
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       setActiveSurface(null);
@@ -466,6 +472,18 @@ export function App({
           </ol>
         </section>
       ) : null}
+      {activeSurface === "geometry" ? (
+        <div id="room-geometry-drawer">
+          <RoomGeometryPanel
+            initialRevision={revision}
+            key={activeSurface}
+            onClose={() => closeSurface("geometry")}
+            openerRef={geometryButtonRef}
+            room={room}
+            store={store}
+          />
+        </div>
+      ) : null}
       <div className={`workspace-grid${railCollapsed ? " is-rail-collapsed" : ""}`} id="room-workspace" tabIndex={-1}>
         <aside
           className={`workspace-catalog${railCollapsed ? " is-collapsed" : ""}`}
@@ -529,7 +547,20 @@ export function App({
               <p className="room-revision">Revision {revision}</p>
               <p className="room-item-count">{room.items.length} placed item{room.items.length === 1 ? "" : "s"}</p>
             </div>
+            <div className="workspace-room-actions">
               <span className="room-surface-hint">Room remains visible while tools scroll independently.</span>
+              <button
+                aria-controls="room-geometry-drawer"
+                aria-expanded={activeSurface === "geometry"}
+                aria-label="Room setup"
+                className="header-action-button"
+                onClick={() => openSurface("geometry")}
+                ref={geometryButtonRef}
+                type="button"
+              >
+                Room setup
+              </button>
+            </div>
           </div>
           {viewMode === "2d" ? (
             <RoomEditor2D store={store} />

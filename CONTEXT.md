@@ -9,7 +9,7 @@ The complete, portable source of truth for one room layout at a particular revis
 _Avoid_: Project, scene, floor plan
 
 **Room Geometry**:
-The rectangular interior volume in which items may be placed.
+The single interior volume in which items may be placed. It may be rectangular or use one southeast notch to form an L shape; this does not create a second room.
 _Avoid_: Canvas, stage
 
 **Opening**:

@@ -8,7 +8,7 @@ Built for [The WebMCP Challenge](https://webmcp.devpost.com/). The repository is
 
 ## What is shipped
 
-- A rectangular room with dimensions in meters, doors and windows, and a primary SVG 2D editor.
+- One rectangular or L-shaped room with dimensions in meters, movable/addable/removable doors and windows, and a primary SVG 2D editor.
 - Human selection, keyboard activation, drag-to-move, quarter-turn rotation, add, and remove actions. Accepted changes show a visible activity receipt and advance the runtime revision.
 - A read-only procedural 3D preview derived from the same committed room. It uses room geometry and item snapshots to draw floors, walls, openings, and category-shaped primitives; it never edits the room. If WebGL or the preview chunk is unavailable, the room summary and placed-item list remain usable.
 - Three independent room templates: Blank Room, Compact Bedroom, and Living Room.
@@ -18,9 +18,9 @@ Built for [The WebMCP Challenge](https://webmcp.devpost.com/). The repository is
 
 ## One canonical room
 
-The portable source of truth is a `wimy-room` schema version `1` document:
+The portable source of truth is a `wimy-room` schema version `2` document. Version 1 rectangular files that also satisfy the current non-overlapping-opening constraint remain importable and migrate in memory without changing their room content; legacy files with stacked openings fail closed and must be corrected before import:
 
-- `room.name`, `room.dimensions`, and `room.openings` describe the rectangular room. The coordinate origin is the northwest interior floor corner; `+x` points east/right and `+y` points south/down.
+- `room.name`, `room.dimensions`, optional `room.geometry`, and `room.openings` describe one room. Omitted geometry means a rectangle; the v2 L shape uses a southeast notch. The coordinate origin is the northwest interior floor corner; `+x` points east/right and `+y` points south/down.
 - Each placed item has a document-scoped `id`, a pose (`x`, `y`, and a clockwise quarter-turn), and an embedded Furniture Snapshot containing its name, category, dimensions, color, optional material, style tags, and optional commerce snapshot.
 - `catalogRef` is an optional lookup hint. The embedded snapshot is authoritative, so an imported item with an unavailable catalog reference still renders and can be edited; the UI reports a catalog warning.
 - Exports use fixed key order, two-space indentation, and one trailing newline. Imports validate the complete document before one atomic replacement. Entity IDs and array order survive a round trip.

@@ -71,7 +71,7 @@ const createMaximumWarningRoom = () =>
       id: `door_${index}`,
       kind: "door" as const,
       wall: "north" as const,
-      centerOffset: 15,
+      centerOffset: 0.5 + index * 1.5,
       width: 1,
       bottom: 0,
       height: 2.1,
@@ -761,10 +761,10 @@ describe("FileAndTemplateControls", () => {
     const warningRegion = screen.getByRole("region", {
       name: "Room warnings",
     });
-    expect(warningRegion).toHaveTextContent("7,050 current room warnings.");
+    expect(warningRegion).toHaveTextContent("5,150 current room warnings.");
     expect(within(warningRegion).getAllByRole("listitem")).toHaveLength(50);
     expect(warningRegion).toHaveTextContent(
-      "Showing the first 50 of 7,050 room warnings.",
+      "Showing the first 50 of 5,150 room warnings.",
     );
   });
 });
