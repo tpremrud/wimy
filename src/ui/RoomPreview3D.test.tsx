@@ -14,6 +14,11 @@ import {
   probeWebGL2PreviewSupport,
   RoomPreview3D,
 } from "./RoomPreview3D";
+import type { SunBeam } from "../room/sunlight";
+import {
+  MAX_SHADOW_CASTING_WINDOW_LIGHTS,
+  selectShadowCastingWindowLightIds,
+} from "./window-lighting";
 
 const canvasHarness = vi.hoisted(() => ({
   cameras: [] as unknown[],
@@ -772,6 +777,22 @@ describe("projectFurniturePrimitiveLayout", () => {
 });
 
 describe("RoomPreview3D", () => {
+  it("bounds shadow maps when many windows receive direct light", () => {
+    const beams: SunBeam[] = Array.from({ length: 20 }, (_, index) => ({
+      openingId: `window_${index}`,
+      position: [0, 1, 1],
+      direction: [1, -0.5, 0],
+      aperture: [1, 1],
+      length: 2,
+      strength: 0.8,
+    }));
+
+    expect(selectShadowCastingWindowLightIds(beams, true)).toHaveLength(
+      MAX_SHADOW_CASTING_WINDOW_LIGHTS,
+    );
+    expect(selectShadowCastingWindowLightIds(beams, false)).toEqual([]);
+  });
+
   it("keeps the room dominant while lighting settings collapse into a drawer", () => {
     render(
       <RoomPreview3D
@@ -926,6 +947,25 @@ describe("RoomPreview3D", () => {
     openLightingSettings();
 
     expect(screen.getByLabelText("Enable bounded shadows")).toBeChecked();
+  });
+
+  it("limits every direct shadow-casting light source to room windows", () => {
+    const { rerender } = render(
+      <RoomPreview3D room={makeRoom()} shadowSupportOverride webglSupportOverride />,
+    );
+    const canvas = document.querySelector(".room-preview-canvas");
+    expect(canvas).toHaveAttribute("data-wimy-direct-light-source", "windows-only");
+    expect(canvas).toHaveAttribute("data-wimy-direct-light-count", "0");
+
+    rerender(
+      <RoomPreview3D
+        room={makeRoom({ openings: [makeOpening({ kind: "window", wall: "south" })] })}
+        shadowSupportOverride
+        webglSupportOverride
+      />,
+    );
+    expect(document.querySelector(".room-preview-canvas"))
+      .toHaveAttribute("data-wimy-direct-light-source", "windows-only");
   });
 
   it("fails closed for invalid location input and does not invent a sun", () => {

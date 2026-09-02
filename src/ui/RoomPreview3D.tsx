@@ -18,7 +18,6 @@ import {
   Object3D,
   Quaternion,
   Vector3,
-  type DirectionalLight,
 } from "three";
 import {
   projectRoomToScene,
@@ -59,6 +58,10 @@ import {
   type LunarIllumination,
   type LunarPosition,
 } from "../room/moonlight";
+import {
+  MAX_SHADOW_CASTING_WINDOW_LIGHTS,
+  selectShadowCastingWindowLightIds,
+} from "./window-lighting";
 
 type RoomPreview3DProps = {
   room: Parameters<typeof projectRoomToScene>[0];
@@ -784,6 +787,55 @@ const WindowLightBeamVolume = ({
   );
 };
 
+const WindowDirectLight = ({
+  beam,
+  castShadow,
+  color,
+  intensity,
+}: {
+  beam: SunBeam;
+  castShadow: boolean;
+  color: string;
+  intensity: number;
+}) => {
+  const target = useMemo(() => new Object3D(), []);
+  const source = useMemo(() => beam.position.map((coordinate, axis) =>
+    coordinate - beam.direction[axis]! * (beam.length / 2 + 0.35),
+  ) as SceneVector3, [beam]);
+  useLayoutEffect(() => {
+    target.position.set(
+      source[0] + beam.direction[0] * (beam.length + 0.7),
+      source[1] + beam.direction[1] * (beam.length + 0.7),
+      source[2] + beam.direction[2] * (beam.length + 0.7),
+    );
+    target.updateMatrixWorld();
+  }, [beam, source, target]);
+  const angle = Math.min(
+    Math.max(Math.atan2(Math.max(...beam.aperture) / 2, 0.35), 0.45),
+    1.25,
+  );
+
+  return (
+    <>
+      <primitive object={target} />
+      <spotLight
+        angle={angle}
+        castShadow={castShadow}
+        color={color}
+        decay={1.25}
+        distance={beam.length + 1.2}
+        intensity={intensity * (0.35 + beam.strength * 0.65)}
+        penumbra={0.42}
+        position={source}
+        shadow-bias={-0.00015}
+        shadow-mapSize={[1024, 1024]}
+        shadow-normalBias={0.02}
+        target={target}
+      />
+    </>
+  );
+};
+
 const PreviewScene = ({
   scene,
   moonBeams,
@@ -800,11 +852,6 @@ const PreviewScene = ({
   sunStudy: SunStudyRenderState | null;
 }) => {
   const [width, height, depth] = scene.dimensions;
-  const span = Math.max(width, depth);
-  const sunTarget = useMemo(() => new Object3D(), []);
-  const moonTarget = useMemo(() => new Object3D(), []);
-  const sunLight = useRef<DirectionalLight>(null);
-  const moonLight = useRef<DirectionalLight>(null);
   const renderKey = [
     sunStudy?.position.utcDate ?? "no-sun-study",
     sunStudy?.position.azimuthDeg ?? 0,
@@ -817,19 +864,25 @@ const PreviewScene = ({
     () => deriveRoomPreviewCamera([width, height, depth], 1),
     [depth, height, width],
   );
-  useLayoutEffect(() => {
-    sunTarget.position.set(width / 2, 0, depth / 2);
-    sunTarget.updateMatrixWorld();
-    if (sunLight.current) sunLight.current.target = sunTarget;
-    moonTarget.position.set(width / 2, 0, depth / 2);
-    moonTarget.updateMatrixWorld();
-    if (moonLight.current) moonLight.current.target = moonTarget;
-  }, [depth, moonTarget, sunTarget, width]);
   const showSun = sunStudy?.direction.isAboveHorizon === true;
   const showMoon =
     moonStudy?.direction.isAboveHorizon === true &&
     moonlightStrength > 0 &&
     !showSun;
+  const sunShadowIds = useMemo(
+    () => new Set(selectShadowCastingWindowLightIds(
+      sunBeams,
+      sunStudy?.shadowsEnabled ?? false,
+    )),
+    [sunBeams, sunStudy?.shadowsEnabled],
+  );
+  const moonShadowIds = useMemo(
+    () => new Set(selectShadowCastingWindowLightIds(
+      moonBeams,
+      moonStudy?.shadowsEnabled ?? false,
+    )),
+    [moonBeams, moonStudy?.shadowsEnabled],
+  );
   const daylight = showSun && sunStudy
     ? Math.min(Math.max(Math.sin(sunStudy.position.apparentAltitudeDeg * Math.PI / 180), 0.08), 1)
     : 0;
@@ -861,74 +914,49 @@ const PreviewScene = ({
       <hemisphereLight args={["#fff7e8", "#51606a", 0.18 + daylight * 0.28]} />
       {showSun ? (
         <>
-          <primitive object={sunTarget} />
-          <directionalLight
-            castShadow={sunStudy.shadowsEnabled}
-            color="#ffe2a8"
-            intensity={0.65 + daylight * 1.75}
-            position={[
-              width / 2 + sunStudy.direction.lightPosition[0],
-              height + sunStudy.direction.lightPosition[1],
-              depth / 2 + sunStudy.direction.lightPosition[2],
-            ]}
-            ref={sunLight}
-            shadow-bias={-0.00015}
-            shadow-camera-bottom={-span}
-            shadow-camera-far={span * 4}
-            shadow-camera-left={-span}
-            shadow-camera-right={span}
-            shadow-camera-top={span}
-            shadow-mapSize={[2048, 2048]}
-            shadow-normalBias={0.02}
-            target={sunTarget}
-          />
           {sunBeams.map((beam) => (
-            <WindowLightBeamVolume beam={beam} key={beam.openingId} />
+            <group key={beam.openingId}>
+              <WindowDirectLight
+                beam={beam}
+                castShadow={sunShadowIds.has(beam.openingId)}
+                color="#ffe2a8"
+                intensity={0.65 + daylight * 1.75}
+              />
+              <WindowLightBeamVolume beam={beam} />
+            </group>
           ))}
         </>
       ) : null}
       {showMoon && moonStudy ? (
         <>
-          <primitive object={moonTarget} />
-          <directionalLight
-            castShadow={moonStudy.shadowsEnabled}
-            color="#9fc5ff"
-            intensity={0.12 + moonlightStrength * 0.55}
-            position={[
-              width / 2 + moonStudy.direction.lightPosition[0],
-              height + moonStudy.direction.lightPosition[1],
-              depth / 2 + moonStudy.direction.lightPosition[2],
-            ]}
-            ref={moonLight}
-            shadow-bias={-0.00015}
-            shadow-camera-bottom={-span}
-            shadow-camera-far={span * 4}
-            shadow-camera-left={-span}
-            shadow-camera-right={span}
-            shadow-camera-top={span}
-            shadow-mapSize={[2048, 2048]}
-            shadow-normalBias={0.02}
-            target={moonTarget}
-          />
           {moonBeams.map((beam) => (
-            <WindowLightBeamVolume
-              beam={beam}
-              color="#8cbcff"
-              key={beam.openingId}
-              opacityScale={0.28 + moonlightStrength * 0.5}
-            />
+            <group key={beam.openingId}>
+              <WindowDirectLight
+                beam={beam}
+                castShadow={moonShadowIds.has(beam.openingId)}
+                color="#9fc5ff"
+                intensity={0.12 + moonlightStrength * 0.55}
+              />
+              <WindowLightBeamVolume
+                beam={beam}
+                color="#8cbcff"
+                opacityScale={0.28 + moonlightStrength * 0.5}
+              />
+            </group>
           ))}
         </>
       ) : null}
-      <Grid
-        args={[width, depth]}
-        cellColor="#c6cfd6"
-        cellSize={0.5}
-        infiniteGrid={false}
-        position={[width / 2, 0.005, depth / 2]}
-        sectionColor="#8fa0ad"
-        sectionSize={1}
-      />
+      {scene.floorSections.length === 1 ? (
+        <Grid
+          args={[width, depth]}
+          cellColor="#c6cfd6"
+          cellSize={0.5}
+          infiniteGrid={false}
+          position={[width / 2, 0.005, depth / 2]}
+          sectionColor="#8fa0ad"
+          sectionSize={1}
+        />
+      ) : null}
       {scene.floorSections.map((floor) => (
         <mesh
           key={`${floor.position[0]}-${floor.position[2]}-${floor.size.join("-")}`}
@@ -1146,6 +1174,16 @@ export function RoomPreview3D({
           <div
             className="room-preview-canvas"
             data-wimy-shadows={sunStudy?.shadowsEnabled ? "on" : "off"}
+            data-wimy-direct-light-count={sunBeams.length + moonBeams.length}
+            data-wimy-direct-light-source="windows-only"
+            data-wimy-shadow-light-count={
+              shadowsEnabled && shadowSupport
+                ? Math.min(
+                    sunBeams.length + moonBeams.length,
+                    MAX_SHADOW_CASTING_WINDOW_LIGHTS,
+                  )
+                : 0
+            }
             data-wimy-moonbeams={moonBeams.length}
             data-wimy-moonlight={moonStudy?.direction.isAboveHorizon && moonlightStrength > 0 && !sunStudy?.direction.isAboveHorizon ? "on" : "off"}
             data-wimy-moon-phase={moonStudy?.illumination.phaseName ?? "unavailable"}
