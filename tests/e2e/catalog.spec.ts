@@ -96,3 +96,64 @@ test("searches the fictional catalog and adds its deterministic best fit", async
     "Search 1 results refreshed: 1 match. Best match: Dune Shell Lounger at x 3.8 m, y 1.3 m, rotation 0°.",
   );
 });
+
+test("imports a project-authored catalog package without fetching its metadata", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1_280, height: 900 });
+  await page.goto("/");
+
+  const projectPackage = {
+    format: "wimy-catalog",
+    schemaVersion: 1,
+    publisher: {
+      publisherId: "00000000-0000-4000-8000-000000000301",
+      name: "Wimy Project Studio",
+    },
+    catalog: {
+      catalogId: "00000000-0000-4000-8000-000000000302",
+      name: "Project Authored Browser Fixture",
+      version: "2026.09.02",
+      license: { name: "Wimy Project Authored License", spdxId: "MIT" },
+      provenance: {
+        sourceName: "Wimy Project Studio",
+        sourceUrl: "https://wimy.example.invalid/catalog",
+        observedAt: "2026-09-02T01:00:00-04:00",
+      },
+    },
+    items: [
+      {
+        itemId: "00000000-0000-4000-8000-000000000303",
+        name: "Aurora Browser Chair",
+        variants: [
+          {
+            variantId: "00000000-0000-4000-8000-000000000304",
+            snapshot: {
+              name: "Aurora Browser Chair",
+              category: "chair",
+              dimensions: { width: 0.55, depth: 0.55, height: 0.8 },
+              appearance: { color: "#76543A" },
+              styleTags: ["project-authored"],
+            },
+            externalIdentifiers: [],
+            classifications: [],
+          },
+        ],
+      },
+    ],
+  };
+
+  await page
+    .getByLabel("Import project-authored catalog package")
+    .setInputFiles({
+      name: "project-authored.wimy-catalog",
+      mimeType: "application/json",
+      buffer: Buffer.from(JSON.stringify(projectPackage)),
+    });
+
+  await expect(
+    page.getByRole("status", { name: "Catalog import result" }),
+  ).toContainText("Imported 1 project-authored catalog item: Aurora Browser Chair");
+  await expect(page.getByText("Aurora Browser Chair", { exact: true })).toBeVisible();
+  await expect(page.getByText("Wimy Project Studio · 2026.09.02")).toBeVisible();
+});

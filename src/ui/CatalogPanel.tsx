@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
+import { useStore } from "zustand";
 import {
   catalogItemKey,
   findFurniture,
@@ -10,6 +11,8 @@ import { getCatalogPresentation } from "../room/catalog-presentation";
 import type { FurnitureSnapshot, WimyRoomV1 } from "../room/document";
 import type { RoomStore } from "../room/store";
 import { LOCAL_CATALOG_TRANSACTION } from "../room/transaction";
+import { parseWimyCatalogFile } from "../catalog/package-file";
+import type { CatalogItem } from "../room/catalog";
 
 const CATEGORIES: readonly FurnitureSnapshot["category"][] = [
   "bed",
@@ -42,21 +45,40 @@ type ActionState = {
   message: string;
 };
 
+type ImportState = {
+  owner: RoomStore;
+  message: string;
+};
+
 const optionalNumber = (value: string) =>
   value === "" ? undefined : Number(value);
 
 const categoryLabel = (category: FurnitureSnapshot["category"]) =>
   `${category[0]?.toUpperCase() ?? ""}${category.slice(1)}`;
 
-const presentationSummary = (productId: string) => {
+const presentationSummary = (productId: string, item?: CatalogItem) => {
+  const metadata = item?.metadata;
+  if (metadata?.origin === "fictional") {
+    return `Fictional demo catalog · ${metadata.license.spdxId ?? metadata.license.name}`;
+  }
+  if (metadata?.origin === "project-authored") {
+    return `Project-authored catalog · ${metadata.license.spdxId ?? metadata.license.name}`;
+  }
   const presentation = getCatalogPresentation(productId);
   if (!presentation) return "Generic procedural fallback";
 
   return `${presentation.origin === "project-authored" ? "Project-authored" : "Catalog"} procedural geometry · ${presentation.license.spdxId}`;
 };
 
-const presentationLicense = (productId: string) =>
-  getCatalogPresentation(productId)?.license.spdxId ?? "Procedural";
+const presentationLicense = (productId: string, item?: CatalogItem) =>
+  item?.metadata?.license.spdxId ??
+  getCatalogPresentation(productId)?.license.spdxId ??
+  "Procedural";
+
+const priceSummary = (item: CatalogItem) =>
+  item.snapshot.commerce
+    ? `$${item.snapshot.commerce.price.amount} ${item.snapshot.commerce.price.currency}`
+    : "No price snapshot";
 
 const searchSummary = (
   attempt: number,
@@ -85,10 +107,13 @@ export function CatalogPanel({
   const [maxDepth, setMaxDepth] = useState("");
   const [searchState, setSearchState] = useState<SearchState | null>(null);
   const [actionState, setActionState] = useState<ActionState | null>(null);
+  const [importState, setImportState] = useState<ImportState | null>(null);
   const searchButtonRef = useRef<HTMLButtonElement>(null);
   const moreFiltersRef = useRef<HTMLDetailsElement>(null);
   const visibleSearch = searchState?.owner === store ? searchState : null;
   const visibleAction = actionState?.owner === store ? actionState : null;
+  const visibleImport = importState?.owner === store ? importState : null;
+  useStore(store, (state) => state.catalogRevision);
   const catalog = store.readCatalog();
   const categoryCounts = new Map<FurnitureSnapshot["category"], number>();
   for (const item of catalog) {
@@ -242,11 +267,77 @@ export function CatalogPanel({
     }
   };
 
+  const importCatalogPackage = async (
+    event: ChangeEvent<HTMLInputElement>,
+  ) => {
+    const input = event.currentTarget;
+    const files = Array.from(input.files ?? []);
+    if (files.length === 0) return;
+
+    try {
+      const parsedCatalogs = await Promise.all(
+        files.map((file) => parseWimyCatalogFile(file)),
+      );
+      const rejected = parsedCatalogs.find((parsed) => !parsed.ok);
+      if (rejected && !rejected.ok) {
+        setImportState({
+          owner: store,
+          message: `Catalog import rejected. ${rejected.code}${rejected.path ? ` at ${rejected.path}` : ""}: ${rejected.message}.`,
+        });
+        return;
+      }
+
+      const catalogs = parsedCatalogs.flatMap((parsed) =>
+        parsed.ok ? [parsed.catalog] : [],
+      );
+      const result = store.importCatalogPackages(catalogs);
+      if (!result.ok) {
+        setImportState({
+          owner: store,
+          message: `${result.message}${result.conflicts?.[0] ? ` (${result.conflicts[0].code})` : ""}.`,
+        });
+        return;
+      }
+
+      const names = catalogs.flatMap(({ items }) =>
+        items.flatMap(({ variants }) => variants.map(({ snapshot }) => snapshot.name)),
+      );
+      const publishers = [...new Set(catalogs.map(({ publisher }) => publisher.name))];
+      const versions = [...new Set(catalogs.map(({ catalog }) => catalog.version))];
+      const duplicateText =
+        result.duplicatePackages > 0 ? " Package/version was already imported." : "";
+      setImportState({
+        owner: store,
+        message: `Imported ${result.addedItems} project-authored catalog item${result.addedItems === 1 ? "" : "s"}: ${names.join(", ")}. ${publishers.join(", ")} · ${versions.join(", ")}.${duplicateText}`,
+      });
+    } finally {
+      input.value = "";
+    }
+  };
+
   return (
     <section className="catalog-panel" aria-labelledby="catalog-heading">
       <div className="catalog-panel-heading">
         <h2 id="catalog-heading">Furniture catalog</h2>
         <p>Find a local catalog item that fits the current room.</p>
+        <p>Fictional/project-authored records only; imports stay local to this session.</p>
+      </div>
+      <div className="catalog-import">
+        <label>
+          Import project-authored catalog package
+          <input
+            aria-label="Import project-authored catalog package"
+            accept=".wimy-catalog,application/json"
+            multiple
+            type="file"
+            onChange={(event) => void importCatalogPackage(event)}
+          />
+        </label>
+        {visibleImport ? (
+          <p role="status" aria-label="Catalog import result" aria-atomic="true">
+            {visibleImport.message}
+          </p>
+        ) : null}
       </div>
       <div className="catalog-content">
         {!visibleSearch ? (
@@ -263,8 +354,8 @@ export function CatalogPanel({
                   <li key={key}>
                     <span>
                       <strong>{item.snapshot.name}</strong>
-                      <small title={presentationSummary(item.catalogRef.productId)}>
-                        {item.snapshot.category} · {item.snapshot.dimensions.width} × {item.snapshot.dimensions.depth} m · {presentationLicense(item.catalogRef.productId)}
+                      <small title={presentationSummary(item.catalogRef.productId, item)}>
+                        {item.snapshot.category} · {item.snapshot.dimensions.width} × {item.snapshot.dimensions.depth} m · {presentationLicense(item.catalogRef.productId, item)}
                       </small>
                     </span>
                     {onToggleFavorite ? (
@@ -314,8 +405,11 @@ export function CatalogPanel({
                         {`${match.snapshot.category} · ${match.snapshot.dimensions.width} × ${match.snapshot.dimensions.depth} m`}
                       </span>
                       <span>{`Styles: ${match.snapshot.styleTags.join(", ")}`}</span>
-                      <span>{presentationSummary(match.catalogRef.productId)}</span>
-                      <span>{`$${match.snapshot.commerce.price.amount} USD`}</span>
+                      <span>{presentationSummary(match.catalogRef.productId, match)}</span>
+                      {match.metadata ? (
+                        <span>{`${match.metadata.provenance.sourceName} · ${match.metadata.catalogVersion}`}</span>
+                      ) : null}
+                      <span>{priceSummary(match)}</span>
                       <span>
                         {`Best fit: x ${match.suggestedPose.x} m, y ${match.suggestedPose.y} m, rotation ${match.suggestedPose.rotationDeg}°`}
                       </span>

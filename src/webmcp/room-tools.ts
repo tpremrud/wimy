@@ -330,7 +330,9 @@ const findFurnitureForRoom = (
       category: match.snapshot.category,
       dimensions: { ...match.snapshot.dimensions },
       styleTags: [...match.snapshot.styleTags],
-      price: { ...match.snapshot.commerce.price },
+      ...(match.snapshot.commerce
+        ? { price: { ...match.snapshot.commerce.price } }
+        : {}),
       suggestedPose: { ...match.suggestedPose },
     }),
   );

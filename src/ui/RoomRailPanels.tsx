@@ -151,7 +151,7 @@ function FavoriteItem({
     <li>
       <div>
         <strong>{item.snapshot.name}</strong>
-        <small>{item.snapshot.category} · ${item.snapshot.commerce.price.amount} USD</small>
+        <small>{item.snapshot.category} · {item.snapshot.commerce ? `$${item.snapshot.commerce.price.amount} ${item.snapshot.commerce.price.currency}` : "No price snapshot"}</small>
       </div>
       <button type="button" aria-label={`Remove ${item.snapshot.name} from favorites`} onClick={onRemove}>
         Remove

@@ -1,6 +1,9 @@
 import { createStore, type StoreApi } from "zustand/vanilla";
+import {
+  createCatalogRegistry,
+  type CatalogRegistryImportResult,
+} from "../catalog/registry";
 import { resolveCatalogProduct, type CatalogItem } from "./catalog";
-import { DEMO_CATALOG } from "./catalog-data";
 import {
   CatalogRefSchema,
   FurnitureSnapshotSchema,
@@ -78,6 +81,7 @@ const catalogFactsFingerprint = ({
 export type RoomStoreState = {
   readonly room: DeepReadonly<WimyRoomV1>;
   readonly revision: number;
+  readonly catalogRevision: number;
   readonly receipts: readonly ReadonlyActivityReceipt[];
   readonly previousRoom: DeepReadonly<WimyRoomV1> | null;
   readonly selectedItemId: EntityId | null;
@@ -95,6 +99,9 @@ export type RoomStore = Pick<
 > & {
   readonly readCatalog: () => readonly CatalogItem[];
   readonly resolveProduct: ProductResolver;
+  readonly importCatalogPackages: (
+    packages: readonly unknown[],
+  ) => CatalogRegistryImportResult;
 };
 
 export type RoomStoreOptions = {
@@ -110,9 +117,20 @@ export const createRoomStore = (
   dependencies: TransactionDependencies,
   options: RoomStoreOptions = {},
 ): RoomStore => {
-  const catalog = DEMO_CATALOG;
+  const catalogRegistry = createCatalogRegistry();
+  let publishCatalogRevision = () => {};
+  const importedProduct = (productId: string) => {
+    const resolved = catalogRegistry.resolveProduct(productId);
+    if (!resolved) return undefined;
+
+    const item = catalogRegistry
+      .getItems()
+      .find(({ catalogRef }) => catalogRef.productId === productId);
+    return item?.metadata?.origin === "project-authored" ? resolved : undefined;
+  };
   const resolveAnyProduct: ProductResolver = (productId) => {
-    const resolved: unknown = dependencies.resolveProduct(productId);
+    const resolved: unknown =
+      importedProduct(productId) ?? dependencies.resolveProduct(productId);
     if (
       resolved === null ||
       typeof resolved !== "object" ||
@@ -145,7 +163,7 @@ export const createRoomStore = (
     const normalized = resolveAnyProduct(productId);
     if (!normalized) return undefined;
 
-    const catalogItem = catalog.find(
+    const catalogItem = catalogRegistry.getItems().find(
       ({ catalogRef: candidateRef }) =>
         candidateRef.productId === productId,
     );
@@ -168,7 +186,7 @@ export const createRoomStore = (
     createItemId: dependencies.createItemId,
   };
   const readCatalog = () =>
-    catalog.filter(({ catalogRef }) => {
+    catalogRegistry.getItems().filter(({ catalogRef }) => {
       const resolved = resolveProduct(catalogRef.productId);
       return (
         resolved?.catalogRef.catalogId === catalogRef.catalogId &&
@@ -176,6 +194,9 @@ export const createRoomStore = (
       );
     });
   const store = createStore<RoomStoreState>((set, get) => {
+    publishCatalogRevision = () => {
+      set((state) => ({ catalogRevision: state.catalogRevision + 1 }));
+    };
     let activeTransaction:
       | { reentrantReceipts: ActivityReceipt[] }
       | undefined;
@@ -292,7 +313,7 @@ export const createRoomStore = (
     };
     const getLayoutWarnings = () =>
       structuredClone(
-        getRoomLayoutWarnings(get().room as WimyRoomV1, dependencies),
+        getRoomLayoutWarnings(get().room as WimyRoomV1, transactionDependencies),
       );
     const selectItem = (itemId: EntityId | null) => {
       replaceState({ ...get(), selectedItemId: itemId });
@@ -301,6 +322,7 @@ export const createRoomStore = (
     return deepFreeze({
       room: structuredClone(initialRoom),
       revision: 1,
+      catalogRevision: 1,
       receipts: [],
       previousRoom: null,
       selectedItemId: null,
@@ -338,12 +360,21 @@ export const createRoomStore = (
     return store.subscribe(listenerBoundary);
   };
 
+  const importCatalogPackages = (packages: readonly unknown[]) => {
+    const result = catalogRegistry.importPackages(packages);
+    if (result.ok && result.addedPackages > 0) {
+      publishCatalogRevision();
+    }
+    return result;
+  };
+
   return {
     getInitialState: store.getInitialState,
     getState: store.getState,
     subscribe,
     readCatalog,
     resolveProduct,
+    importCatalogPackages,
   };
 };
 

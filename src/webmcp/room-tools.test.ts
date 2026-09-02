@@ -47,6 +47,7 @@ const createTrackingStore = () => {
     subscribe: source.subscribe,
     readCatalog: source.readCatalog,
     resolveProduct: source.resolveProduct,
+    importCatalogPackages: source.importCatalogPackages,
   };
 
   return { store, transact };
@@ -1080,6 +1081,7 @@ describe("createRoomToolDefinitions", () => {
       subscribe: source.subscribe,
       readCatalog: source.readCatalog,
       resolveProduct: source.resolveProduct,
+      importCatalogPackages: source.importCatalogPackages,
     };
 
     const output = await execute("apply_room_edit", store, {
@@ -1721,6 +1723,7 @@ describe("createRoomToolDefinitions", () => {
       subscribe: source.subscribe,
       readCatalog: source.readCatalog,
       resolveProduct: source.resolveProduct,
+      importCatalogPackages: source.importCatalogPackages,
     };
 
     await expect(
@@ -1819,6 +1822,7 @@ describe("createRoomToolDefinitions", () => {
       subscribe: source.subscribe,
       readCatalog: source.readCatalog,
       resolveProduct: source.resolveProduct,
+      importCatalogPackages: source.importCatalogPackages,
     };
     const apply = createRoomToolDefinitions(store).find(
       ({ name }) => name === "apply_room_edit",
@@ -2169,6 +2173,7 @@ describe("registerRoomTools", () => {
       subscribe: source.subscribe,
       readCatalog: source.readCatalog,
       resolveProduct: source.resolveProduct,
+      importCatalogPackages: source.importCatalogPackages,
     };
     const modelContext = new FakeModelContext([]);
     await registerRoomTools(modelContext, store, controller);

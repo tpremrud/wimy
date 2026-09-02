@@ -6,7 +6,8 @@ import {
   within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import type { WimyCatalogV1 } from "../catalog/package";
 import { resolveCatalogProduct } from "../room/catalog";
 import { createRoomStore, type RoomStore } from "../room/store";
 import { getTemplate } from "../room/templates";
@@ -46,7 +47,74 @@ const searchForWarmModernChair = async () => {
   return user;
 };
 
+const makeProjectCatalogPackage = (): WimyCatalogV1 => ({
+  format: "wimy-catalog",
+  schemaVersion: 1,
+  publisher: {
+    publisherId: "00000000-0000-4000-8000-000000000201",
+    name: "Wimy Project Studio",
+  },
+  catalog: {
+    catalogId: "00000000-0000-4000-8000-000000000202",
+    name: "Project Authored UI Fixture",
+    version: "2026.09.02",
+    license: { name: "Wimy Project Authored License", spdxId: "MIT" },
+    provenance: {
+      sourceName: "Wimy Project Studio",
+      sourceUrl: "https://wimy.example.invalid/catalog",
+      observedAt: "2026-09-02T01:00:00-04:00",
+    },
+  },
+  items: [
+    {
+      itemId: "00000000-0000-4000-8000-000000000203",
+      name: "Aurora Project Chair",
+      variants: [
+        {
+          variantId: "00000000-0000-4000-8000-000000000204",
+          snapshot: {
+            name: "Aurora Project Chair",
+            category: "chair",
+            dimensions: { width: 0.55, depth: 0.55, height: 0.8 },
+            appearance: { color: "#76543A" },
+            styleTags: ["project-authored", "compact"],
+          },
+          externalIdentifiers: [],
+          classifications: [],
+        },
+      ],
+    },
+  ],
+});
+
 describe("CatalogPanel", () => {
+  it("imports a local project-authored package and displays its provenance", async () => {
+    const store = createCatalogStore(getTemplate("blank-room"));
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    render(<CatalogPanel store={store} />);
+    const user = userEvent.setup();
+    const catalogPackage = makeProjectCatalogPackage();
+
+    expect(screen.getByText(/fictional.*project-authored/iu)).toBeVisible();
+    const input = screen.getByLabelText(
+      "Import project-authored catalog package",
+    );
+    await user.upload(
+      input,
+      new File([JSON.stringify(catalogPackage)], "project.wimy-catalog", {
+        type: "application/json",
+      }),
+    );
+
+    expect(
+      await screen.findByRole("status", { name: "Catalog import result" }),
+    ).toHaveTextContent(/Imported.*Aurora Project Chair/iu);
+    expect(screen.getByText("Aurora Project Chair")).toBeVisible();
+    expect(screen.getByText(/Wimy Project Studio.*2026\.09\.02/iu)).toBeVisible();
+    expect(fetchSpy).not.toHaveBeenCalled();
+    fetchSpy.mockRestore();
+  });
+
   it("shows one continuous category-driven catalog without pagination", async () => {
     const store = createCatalogStore();
     render(<CatalogPanel store={store} />);
@@ -138,7 +206,7 @@ describe("CatalogPanel", () => {
     expect(within(results).getByText("Ember Nest Chair")).toBeVisible();
     expect(within(results).getByText("$499 USD")).toBeVisible();
     expect(
-      within(results).getAllByText("Project-authored procedural geometry · MIT"),
+      within(results).getAllByText("Fictional demo catalog · MIT"),
     ).toHaveLength(2);
     expect(within(results).getByText(/x 0\.3 m, y 0\.3 m, rotation 0°/u))
       .toBeVisible();
@@ -321,6 +389,7 @@ describe("CatalogPanel", () => {
       subscribe: source.subscribe,
       readCatalog: source.readCatalog,
       resolveProduct: source.resolveProduct,
+      importCatalogPackages: source.importCatalogPackages,
     };
     render(<CatalogPanel store={store} />);
     const user = await searchForWarmModernChair();

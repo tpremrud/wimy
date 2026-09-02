@@ -593,9 +593,9 @@ describe("demo catalog integrity", () => {
       );
       expect(item.snapshot.appearance.color).toMatch(/^#[0-9A-F]{6}$/iu);
       expect(item.snapshot.styleTags.length).toBeGreaterThan(0);
-      expect(item.snapshot.commerce.price).toMatchObject({ currency: "USD" });
-      expect(item.snapshot.commerce.productUrl).toBeUndefined();
-      expect(item.snapshot.commerce.observedAt).toBeUndefined();
+      expect(item.snapshot.commerce!.price).toMatchObject({ currency: "USD" });
+      expect(item.snapshot.commerce!.productUrl).toBeUndefined();
+      expect(item.snapshot.commerce!.observedAt).toBeUndefined();
       expect(Object.isFrozen(item)).toBe(true);
       expect(Object.isFrozen(item.catalogRef)).toBe(true);
       expect(Object.isFrozen(item.snapshot)).toBe(true);
@@ -603,7 +603,7 @@ describe("demo catalog integrity", () => {
       expect(Object.isFrozen(item.snapshot.appearance)).toBe(true);
       expect(Object.isFrozen(item.snapshot.styleTags)).toBe(true);
       expect(Object.isFrozen(item.snapshot.commerce)).toBe(true);
-      expect(Object.isFrozen(item.snapshot.commerce.price)).toBe(true);
+      expect(Object.isFrozen(item.snapshot.commerce!.price)).toBe(true);
     }
 
     expect(JSON.stringify(DEMO_CATALOG)).not.toMatch(/https?:\/\/|www\./iu);
