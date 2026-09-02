@@ -259,6 +259,17 @@ test("keeps browsing and search inside the desktop room-tools rail", async ({ pa
   }));
   expect(contentGeometry.overflowY).toBe("auto");
   expect(contentGeometry.scrollHeight).toBeGreaterThan(contentGeometry.clientHeight);
+  const utilities = page.getByText("Catalog utilities", { exact: true });
+  await expect(utilities).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Favorites" })).toHaveCSS(
+    "white-space",
+    "nowrap",
+  );
+  await expect(page.getByLabel("Import project-authored catalog package"))
+    .not.toBeVisible();
+  await utilities.click();
+  await expect(page.getByLabel("Import project-authored catalog package"))
+    .toBeVisible();
   await expect(
     page.getByRole("button", { name: "Next catalog page" }),
   ).toHaveCount(0);
@@ -302,18 +313,41 @@ test("keeps narrow room tools reachable without horizontal overflow", async ({ p
   await expect(page.getByRole("dialog", { name: "Browser agent guidance" })).toBeVisible();
   await page.keyboard.press("Escape");
   const rail = page.getByRole("complementary", { name: "Furniture catalog" });
-  await expect.poll(() => rail.locator(".rail-panel-host").evaluate((element) => ({
-    scrollHeight: element.scrollHeight,
-    clientHeight: element.clientHeight,
-    overflowY: getComputedStyle(element).overflowY,
-  })).then(({ scrollHeight, clientHeight, overflowY }) => ({
-    scrollHeight,
-    clientHeight,
-    overflowY,
-    fits: scrollHeight <= clientHeight,
-  }))).toMatchObject({ overflowY: "visible", fits: true });
-  await page.getByRole("button", { name: "Collapse room tools" }).click();
   await expect(page.getByRole("button", { name: "Expand room tools" })).toBeVisible();
+  const compactHeader = await page.locator(".app-header").boundingBox();
+  if (!compactHeader) throw new Error("expected the mobile app header");
+  expect(compactHeader.height).toBeLessThanOrEqual(176);
+
+  await page.getByRole("button", { name: "Expand room tools" }).click();
+  await expect(page.getByRole("button", { name: "Collapse room tools" })).toBeVisible();
+  const railGeometry = await rail.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    return {
+      bottom: window.innerHeight - rect.bottom,
+      height: rect.height,
+      position: getComputedStyle(element).position,
+    };
+  });
+  expect(railGeometry.position).toBe("fixed");
+  expect(railGeometry.bottom).toBeLessThanOrEqual(1);
+  expect(railGeometry.height).toBeLessThanOrEqual(844 * 0.8);
+  await expect(rail.locator(".rail-panel-host")).toHaveCSS("overflow-y", "auto");
+
+  await page.getByRole("button", { name: "Collapse room tools" }).click();
+  const expandTools = page.getByRole("button", { name: "Expand room tools" });
+  await expect(expandTools).toBeVisible();
+  const [expandBox, webMcpBox] = await Promise.all([
+    expandTools.boundingBox(),
+    page.locator(".webmcp-tool-list-trigger").boundingBox(),
+  ]);
+  if (!expandBox || !webMcpBox) {
+    throw new Error("expected the mobile tools launcher and WebMCP badge");
+  }
+  expect(expandBox.x + expandBox.width).toBeLessThanOrEqual(webMcpBox.x);
+  await expect.poll(() => page.evaluate(() => ({
+    clientHeight: document.documentElement.clientHeight,
+    scrollHeight: document.documentElement.scrollHeight,
+  }))).toEqual({ clientHeight: 844, scrollHeight: 844 });
 });
 
 test("keeps floating surfaces clear of wrapped header controls", async ({ page }) => {

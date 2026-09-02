@@ -128,6 +128,11 @@ type RegistrationViewState =
       status: WebMcpRegistrationStatus;
     };
 
+const startsWithCompactRoomTools = () =>
+  typeof window !== "undefined" &&
+  typeof window.matchMedia === "function" &&
+  window.matchMedia("(max-width: 42rem)").matches;
+
 const registrationStatusText = (state: RegistrationViewState) => {
   if (state.phase === "pending") {
     return "WebMCP registration pending";
@@ -154,7 +159,7 @@ export function App({
   const { room, revision, receipts } = useStore(store);
   const [viewMode, setViewMode] = useState<ViewMode>("2d");
   const [railTab, setRailTab] = useState<RailTab>("add");
-  const [railCollapsed, setRailCollapsed] = useState(false);
+  const [railCollapsed, setRailCollapsed] = useState(startsWithCompactRoomTools);
   const [activeSurface, setActiveSurface] = useState<ActiveSurface>(null);
   const [customerSessionView, setCustomerSessionView] = useState<CustomerSessionView>({ authenticated: false });
   const customerSessionKey = customerSessionView.authenticated
@@ -224,6 +229,16 @@ export function App({
       }
     };
   }, [customerSessionKey, store]);
+
+  useEffect(() => {
+    if (typeof window.matchMedia !== "function") return;
+    const compactRoomTools = window.matchMedia("(max-width: 42rem)");
+    const collapseWhenCompact = (event: MediaQueryListEvent) => {
+      if (event.matches) setRailCollapsed(true);
+    };
+    compactRoomTools.addEventListener("change", collapseWhenCompact);
+    return () => compactRoomTools.removeEventListener("change", collapseWhenCompact);
+  }, []);
 
   useEffect(() => {
     const generation = registrationGenerationRef.current;
@@ -383,8 +398,8 @@ export function App({
         </div>
         <div className="header-actions">
           <div aria-label="Room view" className="room-view-controls" role="group">
-            <button aria-pressed={viewMode === "2d"} onClick={() => setViewMode("2d")} type="button">Edit in 2D</button>
-            <button aria-pressed={viewMode === "3d"} onClick={() => setViewMode("3d")} type="button">Preview in 3D</button>
+            <button aria-label="Edit in 2D" aria-pressed={viewMode === "2d"} onClick={() => setViewMode("2d")} type="button">2D plan</button>
+            <button aria-label="Preview in 3D" aria-pressed={viewMode === "3d"} onClick={() => setViewMode("3d")} type="button">3D preview</button>
           </div>
           <CustomerSessionPanel
             key={customerSessionKey}
@@ -413,11 +428,12 @@ export function App({
             ref={helpButtonRef}
             type="button"
             className="header-action-button"
+            aria-label="Help and agent guidance"
             aria-expanded={activeSurface === "help"}
             aria-controls="browser-agent-guidance"
             onClick={() => openSurface("help")}
           >
-            Help and agent guidance
+            Guide
           </button>
           <button
             ref={activityButtonRef}
@@ -428,7 +444,7 @@ export function App({
             aria-controls="activity-drawer"
             onClick={() => openSurface("activity")}
           >
-            Warnings & activity{warningCount > 0 ? ` · ${warningCount}` : ""}
+            Activity{warningCount > 0 ? ` · ${warningCount}` : ""}
           </button>
         </div>
       </header>

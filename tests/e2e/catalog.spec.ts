@@ -44,6 +44,11 @@ test("keeps the room dominant and stacks secondary surfaces on mobile", async ({
     throw new Error("expected rendered mobile workspace regions");
   }
 
+  await expect(page.getByRole("button", { name: "Expand room tools" })).toBeVisible();
+  const mobileCatalogPosition = await catalog.evaluate(
+    (element) => getComputedStyle(element).position,
+  );
+  expect(mobileCatalogPosition).toBe("fixed");
   expect(mobileRoom.y).toBeLessThan(mobileCatalog.y);
   expect(mobileRoom.y + mobileRoom.height).toBeLessThan(mobileActivity.y);
   expect(await page.evaluate(() => document.documentElement.scrollWidth))

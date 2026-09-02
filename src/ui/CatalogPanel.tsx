@@ -593,27 +593,32 @@ export function CatalogPanel({
         <h2 id="catalog-heading">Furniture catalog</h2>
         <p>Find a local catalog item that fits the current room.</p>
         <p>Fictional/project-authored records only; imports stay local to this session.</p>
-        <button type="button" className="shopping-plan-toggle" onClick={() => void showShoppingPlan()}>
-          Build room shopping plan
-        </button>
       </div>
-      <div className="catalog-import">
-        <label>
-          Import project-authored catalog package
-          <input
-            aria-label="Import project-authored catalog package"
-            accept=".wimy-catalog,application/json"
-            multiple
-            type="file"
-            onChange={(event) => void importCatalogPackage(event)}
-          />
-        </label>
-        {visibleImport ? (
-          <p role="status" aria-label="Catalog import result" aria-atomic="true">
-            {visibleImport.message}
-          </p>
-        ) : null}
-      </div>
+      <details className="catalog-utilities" open={visibleImport ? true : undefined}>
+        <summary>Catalog utilities</summary>
+        <div className="catalog-utility-actions">
+          <button type="button" className="shopping-plan-toggle" onClick={() => void showShoppingPlan()}>
+            Build room shopping plan
+          </button>
+          <div className="catalog-import">
+            <label>
+              Import catalog package
+              <input
+                aria-label="Import project-authored catalog package"
+                accept=".wimy-catalog,application/json"
+                multiple
+                type="file"
+                onChange={(event) => void importCatalogPackage(event)}
+              />
+            </label>
+            {visibleImport ? (
+              <p role="status" aria-label="Catalog import result" aria-atomic="true">
+                {visibleImport.message}
+              </p>
+            ) : null}
+          </div>
+        </div>
+      </details>
       <div className="catalog-content">
         {visibleShoppingPlan ? <RoomShoppingPlanPanel state={visibleShoppingPlan} /> : null}
         {!visibleSearch ? (

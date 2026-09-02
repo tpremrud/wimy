@@ -137,6 +137,10 @@ for (const viewport of [
     expect(workspaceAfter).toEqual(workspaceBefore);
     await closeShare(page);
 
+  if (viewport.width <= 672) {
+    await page.getByRole("button", { name: "Expand room tools" }).click();
+  }
+
   await page
     .getByRole("button", { name: "Select Linen Apartment Sofa" })
     .focus();
