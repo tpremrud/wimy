@@ -28,6 +28,12 @@ test("keeps the directional sun study local and deterministic", async ({
     name: "3D preview of Living Room",
   });
   await expect(preview).toBeVisible();
+  await expect(preview.getByLabel("Sky timeline")).toBeVisible();
+  await expect(
+    preview.getByRole("group", { name: "Sun study controls" }),
+  ).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollHeight <= innerHeight)).toBe(true);
+  await preview.getByRole("button", { name: "Open lighting settings" }).click();
   await expect(
     preview.getByRole("group", { name: "Sun study controls" }),
   ).toBeVisible();
@@ -46,16 +52,17 @@ test("keeps the directional sun study local and deterministic", async ({
   await expect(status).toContainText("Plan North 90°");
   await timeSlider.fill("480");
   await expect(preview).toContainText("Local 2026-09-01 08:00");
-  await preview.getByRole("button", { name: "Play 24-hour cycle" }).click();
+  await preview.getByRole("button", { name: "Close lighting settings" }).click();
+  await preview.getByRole("button", { name: "Play day" }).click();
   await expect.poll(() => timeSlider.inputValue()).not.toBe("480");
-  await preview.getByRole("button", { name: "Pause 24-hour cycle" }).click();
+  await preview.getByRole("button", { name: "Pause" }).click();
   await expect(canvas).toHaveAttribute("data-wimy-shadows", "on");
   await expect.poll(
     async () => Number(await canvas.getAttribute("data-wimy-sunbeams")),
   ).toBeGreaterThan(0);
+  await preview.getByRole("button", { name: "Open lighting settings" }).click();
   await expect(preview).toContainText("Approximate directional sun and moon geometry");
   await expect(preview).toContainText("does not estimate daylight or moonlight intensity, lux, or energy performance");
-
   await preview.getByLabel("Plan North true bearing").fill("0");
   await preview.getByLabel("Local date").fill("2026-09-26");
   await timeSlider.fill("1200");
@@ -68,6 +75,12 @@ test("keeps the directional sun study local and deterministic", async ({
     async () => Number(await canvas.getAttribute("data-wimy-moonbeams")),
   ).toBeGreaterThan(0);
   await canvas.screenshot({ path: testInfo.outputPath("moonlight-canvas.png") });
+  await preview.getByRole("complementary", { name: "Lighting settings" }).screenshot({
+    path: testInfo.outputPath("lighting-settings-drawer.png"),
+  });
+  await preview.getByRole("button", { name: "Close lighting settings" }).click();
+  await preview.screenshot({ path: testInfo.outputPath("sky-timeline-dock.png") });
+  await preview.getByRole("button", { name: "Open lighting settings" }).click();
 
   const exported = page.waitForEvent("download");
   await page.getByRole("button", { name: "Share room", exact: true }).click();
@@ -118,8 +131,35 @@ test("fails closed instead of showing a plausible sun for invalid input", async 
   const preview = page.getByRole("region", {
     name: "3D preview of Living Room",
   });
+  await preview.getByRole("button", { name: "Open lighting settings" }).click();
   await preview.getByLabel("Latitude").fill("91");
   await expect(
     preview.getByRole("status", { name: "Sun study status" }),
   ).toHaveText("Sun study unavailable. No fixed fallback sun is shown.");
+});
+
+test("keeps the sky dock and settings drawer inside a mobile viewport", async ({
+  page,
+}, testInfo) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Preview in 3D" }).click();
+  const preview = page.getByRole("region", { name: "3D preview of Living Room" });
+  const dock = preview.getByLabel("Sky timeline");
+  await expect(dock).toBeVisible();
+  await expect.poll(() => page.evaluate(() => ({
+    horizontal: document.documentElement.scrollWidth <= innerWidth,
+    vertical: document.documentElement.scrollHeight <= innerHeight,
+  }))).toEqual({ horizontal: true, vertical: true });
+
+  await preview.getByRole("button", { name: "Open lighting settings" }).click();
+  const drawer = preview.getByRole("complementary", { name: "Lighting settings" });
+  await expect(drawer).toBeVisible();
+  const bounds = await drawer.boundingBox();
+  expect(bounds).not.toBeNull();
+  expect(bounds?.x).toBeGreaterThanOrEqual(0);
+  expect((bounds?.x ?? 0) + (bounds?.width ?? 0)).toBeLessThanOrEqual(390);
+  expect(bounds?.y).toBeGreaterThanOrEqual(0);
+  expect((bounds?.y ?? 0) + (bounds?.height ?? 0)).toBeLessThanOrEqual(844);
+  await page.screenshot({ path: testInfo.outputPath("mobile-lighting-drawer.png") });
 });

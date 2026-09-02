@@ -118,6 +118,10 @@ const PreviewToggle = () => {
   );
 };
 
+const openLightingSettings = () => {
+  fireEvent.click(screen.getByRole("button", { name: "Open lighting settings" }));
+};
+
 const webglContextHarness = vi.hoisted(() => ({
   loseContext: vi.fn(),
 }));
@@ -767,6 +771,27 @@ describe("projectFurniturePrimitiveLayout", () => {
 });
 
 describe("RoomPreview3D", () => {
+  it("keeps the room dominant while lighting settings collapse into a drawer", () => {
+    render(
+      <RoomPreview3D
+        room={makeRoom({ openings: [makeOpening({ kind: "window" })] })}
+        webglSupportOverride={false}
+      />,
+    );
+
+    expect(screen.getByRole("slider", { name: "Local time of day" })).toBeVisible();
+    const openSettings = screen.getByRole("button", { name: "Open lighting settings" });
+    expect(openSettings).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("group", { name: "Sun study controls" })).not.toBeInTheDocument();
+
+    fireEvent.click(openSettings);
+    expect(screen.getByRole("group", { name: "Sun study controls" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Close lighting settings" })).toBeVisible();
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("group", { name: "Sun study controls" })).not.toBeInTheDocument();
+  });
+
   it("shows bounded sunlight controls and honest assumptions", () => {
     render(
       <RoomPreview3D
@@ -774,6 +799,8 @@ describe("RoomPreview3D", () => {
         webglSupportOverride={false}
       />,
     );
+
+    openLightingSettings();
 
     expect(screen.getByRole("group", { name: "Sun study controls" })).toBeVisible();
     expect(screen.getByLabelText("Latitude" )).toHaveValue(40.71);
@@ -791,6 +818,7 @@ describe("RoomPreview3D", () => {
     const room = makeRoom({ openings: [makeOpening({ kind: "window" })] });
     const before = structuredClone(room);
     render(<RoomPreview3D room={room} webglSupportOverride={false} />);
+    openLightingSettings();
 
     const status = screen.getByRole("status", { name: "Sun study status" });
     expect(status).toHaveTextContent("Apparent solar azimuth");
@@ -811,7 +839,7 @@ describe("RoomPreview3D", () => {
     fireEvent.change(slider, { target: { value: "480" } });
 
     expect(slider).toHaveValue("480");
-    expect(screen.getByText(/Local 2026-09-01 08:00/u)).toBeVisible();
+    expect(screen.getByText("08:00")).toBeVisible();
   });
 
   it("derives the moon phase and horizon position from the same local study controls", () => {
@@ -821,6 +849,8 @@ describe("RoomPreview3D", () => {
         webglSupportOverride={false}
       />,
     );
+
+    openLightingSettings();
 
     fireEvent.change(screen.getByLabelText("Local date"), {
       target: { value: "2026-09-26" },
@@ -846,11 +876,14 @@ describe("RoomPreview3D", () => {
       />,
     );
 
+    openLightingSettings();
+
     expect(screen.getByLabelText("Enable bounded shadows")).toBeChecked();
   });
 
   it("fails closed for invalid location input and does not invent a sun", () => {
     render(<RoomPreview3D room={makeRoom()} webglSupportOverride={false} />);
+    openLightingSettings();
 
     fireEvent.change(screen.getByLabelText("Latitude"), {
       target: { value: "91" },
@@ -870,6 +903,8 @@ describe("RoomPreview3D", () => {
         webglSupportOverride={true}
       />,
     );
+
+    openLightingSettings();
 
     expect(screen.getByLabelText("Enable bounded shadows")).toBeDisabled();
     expect(screen.getByRole("status", { name: "Sun study status" })).toHaveTextContent(

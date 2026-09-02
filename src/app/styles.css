@@ -6,6 +6,216 @@
   text-rendering: optimizeLegibility;
 }
 
+/* The room remains the working surface; sky controls float at its edge. */
+.room-preview {
+  position: relative;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 0.35rem;
+  overflow: hidden;
+}
+
+.room-preview-canvas,
+.room-preview-fallback {
+  min-height: 0;
+}
+
+.sky-timeline-dock {
+  position: absolute;
+  z-index: 25;
+  bottom: 0.85rem;
+  left: 50%;
+  display: grid;
+  width: min(48rem, calc(100% - 1.5rem));
+  grid-template-columns: auto minmax(12rem, 1fr) auto auto;
+  align-items: center;
+  border: 1px solid rgb(213 220 218 / 90%);
+  border-radius: 0.75rem;
+  padding: 0.45rem 0.55rem;
+  gap: 0.55rem;
+  background: rgb(255 255 255 / 94%);
+  box-shadow: 0 4px 12px rgb(24 33 38 / 18%);
+  transform: translateX(-50%);
+  backdrop-filter: blur(8px);
+}
+
+.sky-timeline-readout {
+  display: grid;
+  min-width: 5.5rem;
+  gap: 0.05rem;
+}
+
+.sky-timeline-readout output {
+  color: var(--ink);
+  font-size: 1rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+}
+
+.sky-timeline-dock .moon-phase-indicator {
+  max-width: 11rem;
+  overflow: hidden;
+  font-size: 0.65rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sky-timeline-dock .sun-study-timeline {
+  display: grid;
+  min-width: 0;
+  border: 0;
+  padding: 0;
+  gap: 0.1rem;
+}
+
+.sky-timeline-dock .sun-study-timeline input[type="range"] {
+  min-width: 0;
+  margin: 0;
+}
+
+.sky-timeline-dock .sun-study-timeline-ticks {
+  color: var(--muted);
+  font-size: 0.58rem;
+}
+
+.sky-timeline-dock button,
+.lighting-settings-heading button {
+  min-height: 2.15rem;
+  border: 1px solid var(--line);
+  border-radius: 0.3rem;
+  padding: 0.35rem 0.55rem;
+  color: var(--accent-strong);
+  background: var(--surface);
+  cursor: pointer;
+  font-size: 0.72rem;
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+.sky-timeline-dock button:hover,
+.sky-timeline-dock button[aria-pressed="true"],
+.sky-timeline-dock button[aria-expanded="true"],
+.lighting-settings-heading button:hover {
+  border-color: var(--accent);
+  color: var(--surface);
+  background: var(--accent);
+}
+
+.lighting-settings-drawer {
+  position: absolute;
+  z-index: 30;
+  top: 0.5rem;
+  right: 0.5rem;
+  bottom: 0.5rem;
+  display: grid;
+  width: min(23rem, calc(100% - 1rem));
+  align-content: start;
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
+  padding: 0.85rem;
+  gap: 0.75rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: rgb(255 255 255 / 97%);
+  box-shadow: 0 4px 12px rgb(24 33 38 / 18%);
+  scrollbar-gutter: stable;
+}
+
+.lighting-settings-heading {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.lighting-settings-heading span {
+  color: var(--muted);
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.lighting-settings-heading h4 {
+  margin-top: 0.1rem;
+  font-size: 1rem;
+}
+
+.lighting-settings-drawer .sun-study-controls {
+  border: 0;
+  padding: 0;
+  background: transparent;
+}
+
+.lighting-settings-drawer .sun-study-input-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.lighting-settings-drawer .sun-study-status,
+.lighting-settings-drawer .moon-study-status,
+.lighting-settings-drawer .sun-study-time,
+.lighting-settings-drawer .sun-study-assumptions {
+  font-size: 0.72rem;
+}
+
+.lighting-scene-details {
+  border-top: 1px solid var(--line);
+  padding-top: 0.6rem;
+}
+
+.lighting-scene-details summary {
+  color: var(--accent-strong);
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.lighting-scene-details .room-preview-items,
+.lighting-scene-details .room-preview-openings {
+  display: grid;
+  margin-top: 0.5rem;
+  gap: 0.3rem;
+  font-size: 0.7rem;
+}
+
+@media (max-width: 42rem) {
+  .room-preview {
+    overflow: hidden;
+  }
+
+  .room-preview-canvas {
+    height: 100%;
+    min-height: 0;
+  }
+
+  .sky-timeline-dock {
+    right: 0.5rem;
+    bottom: 0.5rem;
+    left: 0.5rem;
+    width: auto;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    gap: 0.35rem;
+    transform: none;
+  }
+
+  .sky-timeline-dock .sun-study-timeline {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
+  .sky-timeline-readout {
+    min-width: 0;
+  }
+
+  .lighting-settings-drawer {
+    top: auto;
+    right: 0.5rem;
+    bottom: 0.5rem;
+    left: 0.5rem;
+    width: auto;
+    max-height: min(72%, 34rem);
+  }
+}
+
 .customer-session {
   position: relative;
   display: flex;
@@ -2932,4 +3142,30 @@ body {
     min-height: 2.75rem;
     flex: 1 1 8rem;
   }
+}
+
+/* Final viewport contract: the canvas never yields document scroll to lighting tools. */
+.room-preview {
+  position: relative;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 0.35rem;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+.room-preview-canvas,
+.room-preview-fallback {
+  height: 100%;
+  min-height: 0;
+  max-height: none;
+}
+
+.room-preview-accessible-inventory {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }

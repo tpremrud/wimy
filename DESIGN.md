@@ -210,6 +210,12 @@ Header controls remain compact and right-aligned on desktop. The left rail uses 
 
 The room canvas is the visual anchor and should consume the remaining viewport after the compact header. A selected item exposes one bottom-centered dark Control Dock with concise actions; controls should not require a detour through the Placed tab for ordinary transforms.
 
+### Sky Timeline and Lighting Drawer
+
+The 3D preview keeps one compact Sky Timeline dock at the bottom edge of the room. It owns the current local time, moon phase, one continuous 24-hour slider, playback, and a Settings disclosure; it must never force document scrolling or materially cover the room. Location, date, timezone, Plan North, shadow controls, diagnostics, assumptions, and scene details belong in a bounded right-side Lighting Drawer on desktop and a bottom sheet on compact screens. The drawer owns its overflow and closes by its explicit action or Escape.
+
+Sun and moon direction are operational state, not decorative mood. Warm sunlight and cool moonlight may distinguish the two, but phase, horizon, window-facing geometry, and the intentionally amplified illustrative moonlight must remain legible in text. Never present this preview as a lux, energy, weather, glazing, terrain, or exterior-obstruction simulation.
+
 ### Floating Review Panels
 
 Share, cart, guidance, activity, and sign-in surfaces align inside the viewport with nonzero edge margins, dismiss on outside interaction or Escape where appropriate, and own their internal scroll. They should show only the information needed to review the current action.

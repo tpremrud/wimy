@@ -9,6 +9,7 @@ import {
   useState,
   useLayoutEffect,
   type ReactNode,
+  type RefObject,
 } from "react";
 import {
   AdditiveBlending,
@@ -127,18 +128,12 @@ const SunStudyControls = ({
   shadowsEnabled,
   shadowsSupported,
   onShadowsChange,
-  dayAnimating,
-  onDayAnimationChange,
-  moonIllumination,
 }: {
   input: SunStudyInputState;
   onChange: (field: keyof SunStudyInputState, value: string) => void;
   shadowsEnabled: boolean;
   shadowsSupported: boolean;
   onShadowsChange: (enabled: boolean) => void;
-  dayAnimating: boolean;
-  onDayAnimationChange: (playing: boolean) => void;
-  moonIllumination: LunarIllumination | null;
 }) => (
   <fieldset className="sun-study-controls" aria-label="Sun study controls">
     <legend>Sun study (experimental)</legend>
@@ -208,16 +203,47 @@ const SunStudyControls = ({
         />
       </label>
     </div>
-    <div className="sun-study-timeline">
-      <div className="sun-study-timeline-heading">
-        <span>Time of day</span>
-        <output htmlFor="sun-study-time-slider">{input.localTime}</output>
-      </div>
+    <label className="sun-study-shadow-toggle">
+      <input
+        checked={shadowsEnabled && shadowsSupported}
+        disabled={!shadowsSupported}
+        onChange={(event) => onShadowsChange(event.target.checked)}
+        type="checkbox"
+      />
+      Enable bounded shadows
+    </label>
+  </fieldset>
+);
+
+const SkyTimelineDock = ({
+  dayAnimating,
+  input,
+  moonIllumination,
+  onChange,
+  onDayAnimationChange,
+  onOpenSettings,
+  settingsButtonRef,
+  settingsOpen,
+}: {
+  dayAnimating: boolean;
+  input: SunStudyInputState;
+  moonIllumination: LunarIllumination | null;
+  onChange: (field: keyof SunStudyInputState, value: string) => void;
+  onDayAnimationChange: (playing: boolean) => void;
+  onOpenSettings: () => void;
+  settingsButtonRef: RefObject<HTMLButtonElement | null>;
+  settingsOpen: boolean;
+}) => (
+  <div className="sky-timeline-dock" aria-label="Sky timeline">
+    <div className="sky-timeline-readout">
+      <output htmlFor="sun-study-time-slider">{input.localTime}</output>
       {moonIllumination ? (
         <span className="moon-phase-indicator">
           {moonIllumination.phaseName} · {Math.round(moonIllumination.fraction * 100)}%
         </span>
       ) : null}
+    </div>
+    <div className="sun-study-timeline">
       <input
         aria-label="Local time of day"
         id="sun-study-time-slider"
@@ -231,30 +257,31 @@ const SunStudyControls = ({
         value={minutesFromLocalTime(input.localTime)}
       />
       <div aria-hidden="true" className="sun-study-timeline-ticks">
-        <span>00:00</span>
-        <span>06:00</span>
-        <span>12:00</span>
-        <span>18:00</span>
-        <span>23:55</span>
+        <span>00</span>
+        <span>06</span>
+        <span>12</span>
+        <span>18</span>
+        <span>24</span>
       </div>
-      <button
-        aria-pressed={dayAnimating}
-        onClick={() => onDayAnimationChange(!dayAnimating)}
-        type="button"
-      >
-        {dayAnimating ? "Pause 24-hour cycle" : "Play 24-hour cycle"}
-      </button>
     </div>
-    <label className="sun-study-shadow-toggle">
-      <input
-        checked={shadowsEnabled && shadowsSupported}
-        disabled={!shadowsSupported}
-        onChange={(event) => onShadowsChange(event.target.checked)}
-        type="checkbox"
-      />
-      Enable bounded shadows
-    </label>
-  </fieldset>
+    <button
+      aria-pressed={dayAnimating}
+      onClick={() => onDayAnimationChange(!dayAnimating)}
+      type="button"
+    >
+      {dayAnimating ? "Pause" : "Play day"}
+    </button>
+    <button
+      ref={settingsButtonRef}
+      aria-controls="lighting-settings-drawer"
+      aria-expanded={settingsOpen}
+      aria-label="Open lighting settings"
+      onClick={onOpenSettings}
+      type="button"
+    >
+      Settings
+    </button>
+  </div>
 );
 
 let cachedWebGLPreviewSupport: boolean | undefined;
@@ -934,6 +961,8 @@ export function RoomPreview3D({
   const [sunStudyInput, setSunStudyInput] = useState(DEFAULT_SUN_STUDY_INPUT);
   const [shadowsEnabled, setShadowsEnabled] = useState(true);
   const [dayAnimating, setDayAnimating] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const settingsButtonRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     if (!dayAnimating) return undefined;
     const timer = window.setInterval(() => {
@@ -944,6 +973,16 @@ export function RoomPreview3D({
     }, 120);
     return () => window.clearInterval(timer);
   }, [dayAnimating]);
+  useEffect(() => {
+    if (!settingsOpen) return undefined;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setSettingsOpen(false);
+      settingsButtonRef.current?.focus();
+    };
+    document.addEventListener("keydown", closeOnEscape);
+    return () => document.removeEventListener("keydown", closeOnEscape);
+  }, [settingsOpen]);
   const sunStudyValidation = useMemo(
     () => validateSunStudyScenario(toSunStudyScenario(sunStudyInput)),
     [sunStudyInput],
@@ -1040,51 +1079,6 @@ export function RoomPreview3D({
         <p>Read-only procedural preview</p>
       </div>
       <p className="room-preview-summary">{summary}</p>
-      <SunStudyControls
-        dayAnimating={dayAnimating}
-        input={sunStudyInput}
-        moonIllumination={moonStudy?.illumination ?? null}
-        onDayAnimationChange={setDayAnimating}
-        onChange={updateSunStudyInput}
-        onShadowsChange={setShadowsEnabled}
-        shadowsEnabled={shadowsEnabled}
-        shadowsSupported={shadowSupport && webglSupported && sunStudyValidation.valid}
-      />
-      <p
-        aria-label="Sun study status"
-        className="sun-study-status"
-        role="status"
-      >
-        {statusText}
-      </p>
-      <p
-        aria-label="Moon study status"
-        className="moon-study-status"
-        role="status"
-      >
-        {moonStatusText}
-      </p>
-      {sunStudyValidation.valid && sunStudy ? (
-        <p className="sun-study-time">
-          Local {sunStudyValidation.value.date} {sunStudyValidation.value.localTime}{" "}
-          ({sunStudyValidation.value.timeZone}); UTC {sunStudy.position.utcDate}.
-        </p>
-      ) : null}
-      <aside className="sun-study-assumptions" aria-label="Sun study assumptions">
-        <strong>Approximate directional sun and moon geometry</strong>
-        <p>
-          Plan North is the room-local top edge; the true bearing is used only
-          to orient the sky. This does not estimate daylight or moonlight
-          intensity, lux, or energy performance.
-        </p>
-        <p>
-          Clear sky, no weather, glazing, blinds, terrain, or exterior
-          obstructions are modeled. Window openings are geometric apertures;
-          furniture and walls use a bounded shadow map when enabled. Moonlight
-          is intentionally amplified and labeled illustrative so its direction
-          and phase can be understood in the preview.
-        </p>
-      </aside>
       {!webglSupported ? (
         <p className="room-preview-fallback" role="status">
           The interactive 3D canvas is unavailable. The room summary and placed
@@ -1118,9 +1112,19 @@ export function RoomPreview3D({
           </div>
         </PreviewErrorBoundary>
       )}
+      <SkyTimelineDock
+        dayAnimating={dayAnimating}
+        input={sunStudyInput}
+        moonIllumination={moonStudy?.illumination ?? null}
+        onDayAnimationChange={setDayAnimating}
+        onChange={updateSunStudyInput}
+        onOpenSettings={() => setSettingsOpen(true)}
+        settingsButtonRef={settingsButtonRef}
+        settingsOpen={settingsOpen}
+      />
       <ul
         aria-label={`Placed items in ${room.name}`}
-        className="room-preview-items"
+        className="room-preview-accessible-inventory"
       >
         {scene.items.map((item) => (
           <li key={item.id}>
@@ -1129,15 +1133,95 @@ export function RoomPreview3D({
           </li>
         ))}
       </ul>
-      {scene.openings.length > 0 ? (
-        <ul
-          aria-label={`Openings in ${room.name}`}
-          className="room-preview-openings"
+      {settingsOpen ? (
+        <aside
+          aria-label="Lighting settings"
+          className="lighting-settings-drawer"
+          id="lighting-settings-drawer"
         >
-          {scene.openings.map((opening) => (
-            <li key={opening.id}>{opening.label}</li>
-          ))}
-        </ul>
+          <div className="lighting-settings-heading">
+            <div>
+              <span>Sun + Moon</span>
+              <h4>Lighting settings</h4>
+            </div>
+            <button
+              aria-label="Close lighting settings"
+              onClick={() => {
+                setSettingsOpen(false);
+                settingsButtonRef.current?.focus();
+              }}
+              type="button"
+            >
+              Close
+            </button>
+          </div>
+          <SunStudyControls
+            input={sunStudyInput}
+            onChange={updateSunStudyInput}
+            onShadowsChange={setShadowsEnabled}
+            shadowsEnabled={shadowsEnabled}
+            shadowsSupported={shadowSupport && webglSupported && sunStudyValidation.valid}
+          />
+          <p
+            aria-label="Sun study status"
+            className="sun-study-status"
+            role="status"
+          >
+            {statusText}
+          </p>
+          <p
+            aria-label="Moon study status"
+            className="moon-study-status"
+            role="status"
+          >
+            {moonStatusText}
+          </p>
+          {sunStudyValidation.valid && sunStudy ? (
+            <p className="sun-study-time">
+              Local {sunStudyValidation.value.date} {sunStudyValidation.value.localTime}{" "}
+              ({sunStudyValidation.value.timeZone}); UTC {sunStudy.position.utcDate}.
+            </p>
+          ) : null}
+          <aside className="sun-study-assumptions" aria-label="Sun study assumptions">
+            <strong>Approximate directional sun and moon geometry</strong>
+            <p>
+              Plan North is the room-local top edge; the true bearing is used only
+              to orient the sky. This does not estimate daylight or moonlight
+              intensity, lux, or energy performance.
+            </p>
+            <p>
+              Clear sky, no weather, glazing, blinds, terrain, or exterior
+              obstructions are modeled. Window openings are geometric apertures;
+              furniture and walls use a bounded shadow map when enabled. Moonlight
+              is intentionally amplified and labeled illustrative so its direction
+              and phase can be understood in the preview.
+            </p>
+          </aside>
+          <details className="lighting-scene-details">
+            <summary>Scene details</summary>
+            <ul
+              aria-label={`Placed item details in ${room.name}`}
+              className="room-preview-items"
+            >
+              {scene.items.map((item) => (
+                <li key={item.id}>
+                  {item.name} — x {item.position[0]} m, y {item.position[2]} m,
+                  {" "}rotation {item.rotationDeg}° — {item.orientation.label}
+                </li>
+              ))}
+            </ul>
+            {scene.openings.length > 0 ? (
+              <ul
+                aria-label={`Openings in ${room.name}`}
+                className="room-preview-openings"
+              >
+                {scene.openings.map((opening) => (
+                  <li key={opening.id}>{opening.label}</li>
+                ))}
+              </ul>
+            ) : null}
+          </details>
+        </aside>
       ) : null}
     </section>
   );
