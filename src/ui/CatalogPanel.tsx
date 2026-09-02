@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { useStore } from "zustand";
 import {
   catalogItemKey,
@@ -13,6 +13,13 @@ import type { RoomStore } from "../room/store";
 import { LOCAL_CATALOG_TRANSACTION } from "../room/transaction";
 import { parseWimyCatalogFile } from "../catalog/package-file";
 import type { CatalogItem } from "../room/catalog";
+import {
+  getRetailerOfferEvidenceState,
+  type RetailerOffer,
+  type RetailerOfferResolution,
+  type RetailerOfferResolver,
+} from "../commerce/retailer-offer-adapter";
+import { createSyntheticRetailerOfferResolver } from "../commerce/synthetic-retailer-offers";
 
 const CATEGORIES: readonly FurnitureSnapshot["category"][] = [
   "bed",
@@ -29,6 +36,7 @@ const CATEGORIES: readonly FurnitureSnapshot["category"][] = [
 type CatalogPanelProps = {
   favoriteIds?: ReadonlySet<string>;
   onToggleFavorite?: (key: string) => void;
+  offerResolver?: RetailerOfferResolver;
   store: RoomStore;
 };
 
@@ -48,6 +56,14 @@ type ActionState = {
 type ImportState = {
   owner: RoomStore;
   message: string;
+};
+
+type OfferState = {
+  owner: RoomStore;
+  catalogKey: string;
+  itemName: string;
+  phase: "loading" | RetailerOfferResolution["status"];
+  offers: readonly RetailerOffer[];
 };
 
 const optionalNumber = (value: string) =>
@@ -80,6 +96,82 @@ const priceSummary = (item: CatalogItem) =>
     ? `$${item.snapshot.commerce.price.amount} ${item.snapshot.commerce.price.currency}`
     : "No price snapshot";
 
+const offerStateLabel = (offer: RetailerOffer) => {
+  switch (getRetailerOfferEvidenceState(offer)) {
+    case "exact":
+      return "Exact product";
+    case "ambiguous":
+      return "Unverified candidate · ambiguous mapping";
+    case "substitute":
+      return "Substitute · unverified mapping";
+    case "stale":
+      return "Stale evidence";
+    case "unavailable":
+      return "Unavailable";
+  }
+};
+
+const availabilityLabel = (availability: RetailerOffer["availability"]) => {
+  switch (availability) {
+    case "in_stock":
+      return "In stock";
+    case "out_of_stock":
+      return "Out of stock";
+    case "unknown":
+      return "Availability unknown";
+  }
+};
+
+const offerPrice = (offer: RetailerOffer) =>
+  `${offer.price.currency} ${(offer.price.amountMinor / 100).toFixed(2)}`;
+
+function OfferEvidencePanel({ state }: { state: OfferState }) {
+  if (state.phase === "loading") {
+    return (
+      <section className="offer-evidence" aria-label={`Offer evidence for ${state.itemName}`}>
+        <p role="status" aria-label="Offer evidence status">Loading synthetic offer evidence…</p>
+      </section>
+    );
+  }
+
+  return (
+    <section className="offer-evidence" aria-label={`Offer evidence for ${state.itemName}`}>
+      <div className="offer-evidence-heading">
+        <h4>Offer evidence</h4>
+        <span>{state.offers.length} synthetic offer{state.offers.length === 1 ? "" : "s"}</span>
+      </div>
+      {state.phase !== "ok" ? (
+        <p role="status" aria-label="Offer evidence status">
+          No offer evidence is available ({state.phase.replaceAll("_", " ")}).
+        </p>
+      ) : (
+        <ul className="offer-evidence-list" aria-label="Retailer offer evidence">
+          {state.offers.map((offer) => {
+            const identityEvidence = offer.identityEvidence;
+            return (
+              <li key={offer.offerId} data-offer-state={getRetailerOfferEvidenceState(offer)}>
+                <strong>{offer.provenance.sourceName}</strong>
+                <span>{offerStateLabel(offer)}</span>
+                <span>{offerPrice(offer)} · {availabilityLabel(offer.availability)}</span>
+                <span>
+                  Product URL: <code>{offer.productUrl}</code>
+                </span>
+                <span>Observed {offer.observedAt} · Expires {offer.expiresAt}</span>
+                <span>
+                  Identity confidence: {identityEvidence.confidence ?? "not provided"} · {identityEvidence.method}
+                </span>
+                {identityEvidence.evidence?.map((evidence) => (
+                  <span key={evidence}>Evidence: {evidence}</span>
+                ))}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
+  );
+}
+
 const searchSummary = (
   attempt: number,
   matches: CatalogMatch[],
@@ -98,6 +190,7 @@ const searchSummary = (
 export function CatalogPanel({
   favoriteIds = new Set<string>(),
   onToggleFavorite,
+  offerResolver,
   store,
 }: CatalogPanelProps) {
   const [category, setCategory] = useState("");
@@ -108,11 +201,18 @@ export function CatalogPanel({
   const [searchState, setSearchState] = useState<SearchState | null>(null);
   const [actionState, setActionState] = useState<ActionState | null>(null);
   const [importState, setImportState] = useState<ImportState | null>(null);
+  const [offerState, setOfferState] = useState<OfferState | null>(null);
   const searchButtonRef = useRef<HTMLButtonElement>(null);
   const moreFiltersRef = useRef<HTMLDetailsElement>(null);
+  const offerRequestRef = useRef(0);
   const visibleSearch = searchState?.owner === store ? searchState : null;
   const visibleAction = actionState?.owner === store ? actionState : null;
   const visibleImport = importState?.owner === store ? importState : null;
+  const visibleOffer = offerState?.owner === store ? offerState : null;
+  const resolvedOfferResolver = useMemo(
+    () => offerResolver ?? createSyntheticRetailerOfferResolver(store.readCatalog),
+    [offerResolver, store],
+  );
   useStore(store, (state) => state.catalogRevision);
   const catalog = store.readCatalog();
   const categoryCounts = new Map<FurnitureSnapshot["category"], number>();
@@ -151,6 +251,7 @@ export function CatalogPanel({
             null;
         setSearchState(null);
         setActionState(null);
+        setOfferState(null);
         if (restoreSearchFocus) {
           searchButtonRef.current?.focus();
         }
@@ -267,6 +368,30 @@ export function CatalogPanel({
     }
   };
 
+  const showOfferEvidence = async (item: CatalogItem) => {
+    if (item.metadata?.origin !== "project-authored") return;
+
+    const requestId = offerRequestRef.current + 1;
+    offerRequestRef.current = requestId;
+    const catalogKey = catalogItemKey(item.catalogRef);
+    setOfferState({
+      owner: store,
+      catalogKey,
+      itemName: item.snapshot.name,
+      phase: "loading",
+      offers: [],
+    });
+    const resolution = await resolvedOfferResolver.resolve({ catalogRef: item.catalogRef });
+    if (offerRequestRef.current !== requestId) return;
+    setOfferState({
+      owner: store,
+      catalogKey,
+      itemName: item.snapshot.name,
+      phase: resolution.status,
+      offers: resolution.offers,
+    });
+  };
+
   const importCatalogPackage = async (
     event: ChangeEvent<HTMLInputElement>,
   ) => {
@@ -369,6 +494,21 @@ export function CatalogPanel({
                         {favorite ? "Saved" : "Save"}
                       </button>
                     ) : null}
+                    {item.metadata?.origin === "project-authored" ? (
+                      <>
+                        <button
+                          type="button"
+                          className="offer-evidence-toggle"
+                          aria-expanded={visibleOffer?.catalogKey === key}
+                          onClick={() => void showOfferEvidence(item)}
+                        >
+                          Show offer evidence for {item.snapshot.name}
+                        </button>
+                        {visibleOffer?.catalogKey === key ? (
+                          <OfferEvidencePanel state={visibleOffer} />
+                        ) : null}
+                      </>
+                    ) : null}
                   </li>
                 );
               })}
@@ -423,6 +563,21 @@ export function CatalogPanel({
                         >
                           {favoriteIds.has(catalogItemKey(match.catalogRef)) ? "Saved" : "Save"}
                         </button>
+                      ) : null}
+                      {match.metadata?.origin === "project-authored" ? (
+                        <>
+                          <button
+                            type="button"
+                            className="offer-evidence-toggle"
+                            aria-expanded={visibleOffer?.catalogKey === catalogItemKey(match.catalogRef)}
+                            onClick={() => void showOfferEvidence(match)}
+                          >
+                            Show offer evidence for {match.snapshot.name}
+                          </button>
+                          {visibleOffer?.catalogKey === catalogItemKey(match.catalogRef) ? (
+                            <OfferEvidencePanel state={visibleOffer} />
+                          ) : null}
+                        </>
                       ) : null}
                     </li>
                   ))}

@@ -14,6 +14,7 @@ import {
 import { useStore } from "zustand";
 import { roomStore, type RoomStore } from "../room/store";
 import { CatalogPanel } from "../ui/CatalogPanel";
+import { createSyntheticRetailerOfferResolver } from "../commerce/synthetic-retailer-offers";
 import { RoomWarnings } from "../ui/FileAndTemplateControls";
 import { ReceiptPanel } from "../ui/ReceiptPanel";
 import { RoomEditor2D } from "../ui/RoomEditor2D";
@@ -156,9 +157,13 @@ export function App({
   const Preview3D = previewLoadFailure
     ? RejectedRoomPreview3D
     : RoomPreview3D;
-  const webMcpToolDefinitions = useMemo(
-    () => createRoomToolDefinitions(store),
+  const offerResolver = useMemo(
+    () => createSyntheticRetailerOfferResolver(store.readCatalog),
     [store],
+  );
+  const webMcpToolDefinitions = useMemo(
+    () => createRoomToolDefinitions(store, offerResolver),
+    [offerResolver, store],
   );
   const registrationGenerationRef = useRef<{
     controller: AbortController;
@@ -417,7 +422,7 @@ export function App({
           </nav>
           <div className="rail-panel-host">
             <div id="add-panel" role="tabpanel" aria-labelledby="add-tab" hidden={railTab !== "add"}>
-              <CatalogPanel favoriteIds={favoriteIds} onToggleFavorite={toggleFavorite} store={store} />
+              <CatalogPanel favoriteIds={favoriteIds} onToggleFavorite={toggleFavorite} offerResolver={offerResolver} store={store} />
             </div>
             <div id="placed-panel" role="tabpanel" aria-labelledby="placed-tab" hidden={railTab !== "placed"}>
               <PlacedPanel store={store} />

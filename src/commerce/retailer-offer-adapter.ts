@@ -43,6 +43,33 @@ const HttpsUrlSchema = boundedText(2_048).refine((value) => {
 
 const TimestampSchema = z.string().datetime({ offset: true });
 
+const IdentityEvidenceSchema = z.discriminatedUnion("match", [
+  z
+    .object({
+      match: z.literal("exact"),
+      method: z.literal("authorized_catalog_variant_uuid"),
+      confidence: z.enum(["high", "medium", "low"]).optional(),
+      evidence: z.array(boundedText(240)).max(8).optional(),
+    })
+    .strict(),
+  z
+    .object({
+      match: z.literal("ambiguous"),
+      method: z.literal("name_dimensions_style"),
+      confidence: z.enum(["high", "medium", "low"]).optional(),
+      evidence: z.array(boundedText(240)).max(8).optional(),
+    })
+    .strict(),
+  z
+    .object({
+      match: z.literal("substitute"),
+      method: z.literal("category_style_similarity"),
+      confidence: z.enum(["high", "medium", "low"]).optional(),
+      evidence: z.array(boundedText(240)).max(8).optional(),
+    })
+    .strict(),
+]);
+
 const RetailerOfferSchema = z
   .object({
     offerId: StableIdSchema,
@@ -67,12 +94,7 @@ const RetailerOfferSchema = z
         sourceKind: z.literal("authorized_api"),
       })
       .strict(),
-    identityEvidence: z
-      .object({
-        match: z.literal("exact"),
-        method: z.literal("authorized_catalog_variant_uuid"),
-      })
-      .strict(),
+    identityEvidence: IdentityEvidenceSchema,
   })
   .strict();
 
@@ -85,7 +107,7 @@ type RawRetailerOffer = z.infer<typeof RetailerOfferSchema>;
 export type RetailerOfferLookup = z.infer<typeof LookupSchema>;
 
 export type RetailerOffer = RawRetailerOffer & {
-  eligibility: "purchasable" | "stale" | "unavailable";
+  eligibility: "purchasable" | "stale" | "unavailable" | "unverified";
   provenance: RawRetailerOffer["provenance"] & {
     adapterId: string;
     retailerId: string;
@@ -127,7 +149,15 @@ export type RetailerOfferResolverOptions = {
   readonly cacheTtlMs?: number;
   readonly maxOffers?: number;
   readonly minIntervalMs?: number;
+  readonly allowInferredIdentityEvidence?: boolean;
 };
+
+export type RetailerOfferEvidenceState =
+  | "exact"
+  | "ambiguous"
+  | "substitute"
+  | "stale"
+  | "unavailable";
 
 type CachedOffers = {
   readonly cachedAt: number;
@@ -179,8 +209,17 @@ const eligibilityFor = (
   offer: RawRetailerOffer,
   now: number,
 ): RetailerOffer["eligibility"] => {
+  if (offer.identityEvidence.match !== "exact") return "unverified";
   if (offer.availability !== "in_stock") return "unavailable";
   return Date.parse(offer.expiresAt) > now ? "purchasable" : "stale";
+};
+
+export const getRetailerOfferEvidenceState = (
+  offer: Pick<RetailerOffer, "eligibility" | "identityEvidence">,
+): RetailerOfferEvidenceState => {
+  if (offer.eligibility === "unverified") return offer.identityEvidence.match;
+  if (offer.eligibility === "stale") return "stale";
+  return "unavailable" === offer.eligibility ? "unavailable" : "exact";
 };
 
 const revalidateEligibility = (
@@ -198,6 +237,7 @@ const normalizeOffers = (
   response: unknown,
   now: number,
   maxOffers: number,
+  allowInferredIdentityEvidence: boolean,
 ): readonly RetailerOffer[] | undefined => {
   const parsed = z.array(RetailerOfferSchema).safeParse(response);
   if (!parsed.success || parsed.data.length > maxOffers) return undefined;
@@ -210,7 +250,9 @@ const normalizeOffers = (
       offer.retailerId !== adapter.retailerId ||
       offer.sellerId !== adapter.sellerId ||
       !sameCatalogRef(offer.catalogRef, lookup.catalogRef) ||
-      !offerIsFreshlyStructured(offer, now)
+      !offerIsFreshlyStructured(offer, now) ||
+      (offer.identityEvidence.match !== "exact" &&
+        !allowInferredIdentityEvidence)
     ) {
       return undefined;
     }
@@ -281,6 +323,7 @@ export const createRetailerOfferResolver = (
   const cacheTtlMs = optionNumber("cacheTtlMs", options.cacheTtlMs, DEFAULT_CACHE_TTL_MS);
   const maxOffers = optionNumber("maxOffers", options.maxOffers, MAX_OFFERS, MAX_OFFERS);
   const minIntervalMs = optionNumber("minIntervalMs", options.minIntervalMs, 0);
+  const allowInferredIdentityEvidence = options.allowInferredIdentityEvidence ?? false;
   const cache = new Map<string, CachedOffers>();
   const lastCallAt = new Map<string, number>();
 
@@ -331,6 +374,7 @@ export const createRetailerOfferResolver = (
         result.response,
         now,
         maxOffers,
+        allowInferredIdentityEvidence,
       );
       if (normalized === undefined) return emptyResolution("invalid_response");
 

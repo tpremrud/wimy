@@ -247,6 +247,74 @@ section > p {
   gap: 0.25rem;
 }
 
+.offer-evidence-toggle {
+  justify-self: start;
+  min-height: 2.25rem;
+  border: 1px solid #075985;
+  border-radius: 0.25rem;
+  padding: 0.4rem 0.6rem;
+  color: #075985;
+  background: #ffffff;
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.offer-evidence-toggle:focus-visible {
+  outline: 3px solid #b45309;
+  outline-offset: 2px;
+}
+
+.offer-evidence {
+  display: grid;
+  margin-top: 0.5rem;
+  border-left: 3px solid #075985;
+  padding: 0.65rem 0 0.65rem 0.75rem;
+  gap: 0.5rem;
+  background: #f7fbfd;
+}
+
+.offer-evidence-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.offer-evidence-heading span,
+.offer-evidence > p,
+.offer-evidence-list span {
+  color: #555555;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+
+.offer-evidence-list {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  gap: 0.65rem;
+  list-style: none;
+}
+
+.offer-evidence-list li {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.offer-evidence-list li[data-offer-state="ambiguous"],
+.offer-evidence-list li[data-offer-state="substitute"],
+.offer-evidence-list li[data-offer-state="stale"],
+.offer-evidence-list li[data-offer-state="unavailable"] {
+  border-top: 1px solid #c8c2b6;
+  padding-top: 0.5rem;
+}
+
+.offer-evidence-list code {
+  overflow-wrap: anywhere;
+}
+
 .room-editor {
   margin-top: 1.25rem;
 }

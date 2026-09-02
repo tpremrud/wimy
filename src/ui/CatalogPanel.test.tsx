@@ -115,6 +115,42 @@ describe("CatalogPanel", () => {
     fetchSpy.mockRestore();
   });
 
+  it("shows volatile synthetic offer evidence for an imported project-authored variant", async () => {
+    const store = createCatalogStore(getTemplate("blank-room"));
+    render(<CatalogPanel store={store} />);
+    const user = userEvent.setup();
+    const catalogPackage = makeProjectCatalogPackage();
+
+    await user.upload(
+      screen.getByLabelText("Import project-authored catalog package"),
+      new File([JSON.stringify(catalogPackage)], "project.wimy-catalog", {
+        type: "application/json",
+      }),
+    );
+    await screen.findByRole("status", { name: "Catalog import result" });
+
+    await user.click(
+      screen.getByRole("button", {
+        name: "Show offer evidence for Aurora Project Chair",
+      }),
+    );
+
+    const evidence = await screen.findByRole("region", {
+      name: "Offer evidence for Aurora Project Chair",
+    });
+    expect(evidence).toHaveTextContent("Northstar Furnishings");
+    expect(evidence).toHaveTextContent("Exact product");
+    expect(evidence).toHaveTextContent("Unverified candidate");
+    expect(evidence).toHaveTextContent("Substitute");
+    expect(evidence).toHaveTextContent("Stale evidence");
+    expect(evidence).toHaveTextContent("Unavailable");
+    expect(evidence).toHaveTextContent("Observed 2026-09-02T12:00:00.000Z");
+    expect(evidence).toHaveTextContent("https://offers.example.invalid/");
+    expect(evidence).not.toHaveTextContent(/purchase|checkout|cart/iu);
+    expect(store.getState().room).toEqual(getTemplate("blank-room"));
+    expect(store.getState().receipts).toEqual([]);
+  });
+
   it("shows one continuous category-driven catalog without pagination", async () => {
     const store = createCatalogStore();
     render(<CatalogPanel store={store} />);

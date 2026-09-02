@@ -1,6 +1,11 @@
 /// <reference types="webmcp-types" />
 
 import { z } from "zod";
+import {
+  getRetailerOfferEvidenceState,
+  type RetailerOfferResolver,
+} from "../commerce/retailer-offer-adapter";
+import { createSyntheticRetailerOfferResolver } from "../commerce/synthetic-retailer-offers";
 import { findFurniture } from "../room/catalog";
 import {
   EntityIdSchema,
@@ -240,6 +245,23 @@ const FindFurnitureInputSchema = z
   })
   .strict();
 
+const INSPECT_RETAILER_OFFERS_INPUT_SCHEMA = {
+  type: "object",
+  properties: {
+    catalogId: { type: "string", format: "uuid" },
+    productId: { type: "string", format: "uuid" },
+  },
+  required: ["catalogId", "productId"],
+  additionalProperties: false,
+} as const;
+
+const InspectRetailerOffersInputSchema = z
+  .object({
+    catalogId: z.string().uuid(),
+    productId: z.string().uuid(),
+  })
+  .strict();
+
 const ENTITY_ID_INPUT_SCHEMA = {
   type: "string",
   pattern: "^[A-Za-z][A-Za-z0-9_-]{0,63}$",
@@ -341,6 +363,51 @@ const findFurnitureForRoom = (
     revision: state.revision,
     units: "meters" as const,
     matches,
+  });
+};
+
+const inspectRetailerOffers = async (
+  resolver: RetailerOfferResolver,
+  rawInput: unknown,
+  signal?: AbortSignal,
+) => {
+  throwIfAborted(signal);
+  const parsedInput = InspectRetailerOffersInputSchema.safeParse(rawInput);
+  if (!parsedInput.success) {
+    throw new TypeError(
+      "inspect_retailer_offers input must contain canonical catalog and product UUIDs",
+    );
+  }
+
+  const resolution = await resolver.resolve(
+    { catalogRef: parsedInput.data },
+    { signal },
+  );
+  throwIfAborted(signal);
+
+  return enforceWebMcpOutputBound({
+    catalogId: parsedInput.data.catalogId,
+    productId: parsedInput.data.productId,
+    status: resolution.status,
+    offers: resolution.offers.map((offer) => ({
+      offerId: offer.offerId,
+      retailer: offer.provenance.sourceName,
+      sellerId: offer.sellerId,
+      displayName: projectUntrustedText(offer.displayName),
+      price: { ...offer.price },
+      availability: offer.availability,
+      productUrl: offer.productUrl,
+      observedAt: offer.observedAt,
+      expiresAt: offer.expiresAt,
+      state: getRetailerOfferEvidenceState(offer),
+      eligibility: offer.eligibility,
+      identityEvidence: {
+        match: offer.identityEvidence.match,
+        method: offer.identityEvidence.method,
+        confidence: offer.identityEvidence.confidence ?? "not_provided",
+        evidence: offer.identityEvidence.evidence?.map(projectUntrustedText) ?? [],
+      },
+    })),
   });
 };
 
@@ -557,6 +624,9 @@ const applyRoomEdit = (
 
 export const createRoomToolDefinitions = (
   store: RoomStore,
+  offerResolver: RetailerOfferResolver = createSyntheticRetailerOfferResolver(
+    store.readCatalog,
+  ),
 ): WebMcpToolDefinition[] => {
   const definitions: WebMcpToolDefinition[] = [
     {
@@ -599,6 +669,19 @@ export const createRoomToolDefinitions = (
         untrustedContentHint: true,
       },
       execute: (input, { signal }) => applyRoomEdit(store, input, signal),
+    },
+    {
+      name: "inspect_retailer_offers",
+      title: "Inspect retailer offer evidence",
+      description:
+        "Read synthetic retailer offer evidence for one project-authored catalog variant by canonical UUID; this never changes the room.",
+      inputSchema: INSPECT_RETAILER_OFFERS_INPUT_SCHEMA,
+      annotations: {
+        readOnlyHint: true,
+        untrustedContentHint: true,
+      },
+      execute: (input, { signal }) =>
+        inspectRetailerOffers(offerResolver, input, signal),
     },
   ];
 

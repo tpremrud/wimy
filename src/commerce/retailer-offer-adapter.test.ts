@@ -307,6 +307,33 @@ describe("createRetailerOfferResolver", () => {
       offers: [],
     });
   });
+
+  it("keeps inferred mappings explicitly unverified when evidence mode is enabled", async () => {
+    const inferredOffer = {
+      ...freshOffer,
+      offerId: "offer-ambiguous-chair",
+      identityEvidence: {
+        match: "ambiguous",
+        method: "name_dimensions_style",
+        confidence: "medium",
+        evidence: ["Name and dimensions match; variant UUID is absent"],
+      },
+    };
+    const resolver = resolverFor(adapterReturning([inferredOffer]), {
+      allowInferredIdentityEvidence: true,
+    });
+
+    await expect(resolver.resolve(lookup)).resolves.toMatchObject({
+      status: "ok",
+      offers: [
+        {
+          offerId: "offer-ambiguous-chair",
+          eligibility: "unverified",
+          identityEvidence: inferredOffer.identityEvidence,
+        },
+      ],
+    });
+  });
 });
 
 describe("SANDBOX_RETAILER_ADAPTER", () => {

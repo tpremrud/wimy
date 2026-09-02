@@ -150,7 +150,7 @@ class FakeModelContext extends EventTarget implements WebMCP.ModelContext {
 }
 
 describe("createRoomToolDefinitions", () => {
-  it("publishes the exact three-tool identity contract", () => {
+  it("publishes the room and retailer evidence tool identity contract", () => {
     const definitions = createRoomToolDefinitions(
       createRoomStore(
         getTemplate("living-room"),
@@ -182,6 +182,12 @@ describe("createRoomToolDefinitions", () => {
         title: "Apply room edit",
         description:
           "Atomically add, transform, or remove placed items at an exact room revision.",
+      },
+      {
+        name: "inspect_retailer_offers",
+        title: "Inspect retailer offer evidence",
+        description:
+          "Read synthetic retailer offer evidence for one project-authored catalog variant by canonical UUID; this never changes the room.",
       },
     ]);
   });
@@ -838,6 +844,92 @@ describe("createRoomToolDefinitions", () => {
     expect(store.getState().room.items).not.toContainEqual(
       expect.objectContaining({ id: "item_shadow_chair" }),
     );
+  });
+
+  it("exposes volatile offer evidence through a read-only canonical-identity tool", async () => {
+    const store = createRoomStore(
+      getTemplate("living-room"),
+      CATALOG_TRANSACTION_DEPENDENCIES,
+    );
+    const catalogPackage = {
+      format: "wimy-catalog" as const,
+      schemaVersion: 1 as const,
+      publisher: {
+        publisherId: "00000000-0000-4000-8000-000000000401",
+        name: "Wimy Project Studio",
+      },
+      catalog: {
+        catalogId: "00000000-0000-4000-8000-000000000402",
+        name: "Project Authored Tool Fixture",
+        version: "2026.09.02",
+        license: { name: "Wimy Project Authored License", spdxId: "MIT" },
+        provenance: {
+          sourceName: "Wimy Project Studio",
+          sourceUrl: "https://wimy.example.invalid/catalog",
+          observedAt: "2026-09-02T01:00:00-04:00",
+        },
+      },
+      items: [
+        {
+          itemId: "00000000-0000-4000-8000-000000000403",
+          name: "Aurora Tool Chair",
+          variants: [
+            {
+              variantId: "00000000-0000-4000-8000-000000000404",
+              snapshot: {
+                name: "Aurora Tool Chair",
+                category: "chair" as const,
+                dimensions: { width: 0.55, depth: 0.55, height: 0.8 },
+                appearance: { color: "#76543A" },
+                styleTags: ["project-authored"],
+              },
+              externalIdentifiers: [],
+              classifications: [],
+            },
+          ],
+        },
+      ],
+    };
+    expect(store.importCatalogPackages([catalogPackage])).toMatchObject({
+      ok: true,
+      addedItems: 1,
+    });
+    const tool = createRoomToolDefinitions(store).find(
+      ({ name }) => name === "inspect_retailer_offers",
+    );
+    if (!tool) throw new Error("inspect_retailer_offers was not defined");
+
+    expect(tool.annotations).toEqual({
+      readOnlyHint: true,
+      untrustedContentHint: true,
+    });
+    const before = store.getState();
+    const output = await tool.execute(
+      {
+        catalogId: "00000000-0000-4000-8000-000000000402",
+        productId: "00000000-0000-4000-8000-000000000404",
+      },
+      { signal: new AbortController().signal },
+    );
+
+    expect(output).toMatchObject({
+      catalogId: "00000000-0000-4000-8000-000000000402",
+      productId: "00000000-0000-4000-8000-000000000404",
+      status: "ok",
+      offers: expect.arrayContaining([
+        expect.objectContaining({
+          retailer: "Northstar Furnishings",
+          state: "exact",
+          observedAt: "2026-09-02T12:00:00.000Z",
+        }),
+        expect.objectContaining({ state: "ambiguous" }),
+        expect.objectContaining({ state: "substitute" }),
+      ]),
+    });
+    expect(JSON.stringify(output)).not.toMatch(/purchase|checkout|cart/iu);
+    expect(store.getState().room).toBe(before.room);
+    expect(store.getState().revision).toBe(before.revision);
+    expect(store.getState().receipts).toBe(before.receipts);
   });
 
   it.each([
@@ -1940,6 +2032,7 @@ describe("registerRoomTools", () => {
       "inspect_room",
       "find_furniture",
       "apply_room_edit",
+      "inspect_retailer_offers",
     ]);
     expect(settled).toBe(false);
 
@@ -1954,7 +2047,7 @@ describe("registerRoomTools", () => {
     third.resolve();
     await expect(registration).resolves.toEqual({
       available: true,
-      registered: ["inspect_room", "find_furniture", "apply_room_edit"],
+      registered: ["inspect_room", "find_furniture", "apply_room_edit", "inspect_retailer_offers"],
       errors: [],
     });
   });
@@ -1976,7 +2069,7 @@ describe("registerRoomTools", () => {
     const registration = registerRoomTools(modelContext, store, controller);
 
     await Promise.resolve();
-    expect(modelContext.definitions).toHaveLength(3);
+    expect(modelContext.definitions).toHaveLength(4);
 
     controller.abort();
     first.resolve();
@@ -2034,7 +2127,7 @@ describe("registerRoomTools", () => {
       fulfilled: true,
       value: {
         available: true,
-        registered: ["find_furniture", "apply_room_edit"],
+        registered: ["find_furniture", "apply_room_edit", "inspect_retailer_offers"],
         errors: ["inspect_room: client denied by policy"],
       },
     });
@@ -2055,13 +2148,14 @@ describe("registerRoomTools", () => {
       registerRoomTools(modelContext, store, new AbortController()),
     ).resolves.toEqual({
       available: true,
-      registered: ["inspect_room", "find_furniture"],
+      registered: ["inspect_room", "find_furniture", "inspect_retailer_offers"],
       errors: ["apply_room_edit: mutating tool denied"],
     });
     expect(modelContext.definitions.map(({ name }) => name)).toEqual([
       "inspect_room",
       "find_furniture",
       "apply_room_edit",
+      "inspect_retailer_offers",
     ]);
   });
 
@@ -2102,6 +2196,7 @@ describe("registerRoomTools", () => {
       "inspect_room",
       "find_furniture",
       "apply_room_edit",
+      "inspect_retailer_offers",
     ]);
     expect(settled).toBe(false);
 
@@ -2114,7 +2209,7 @@ describe("registerRoomTools", () => {
       fulfilled: true,
       value: {
         available: true,
-        registered: ["find_furniture", "apply_room_edit"],
+        registered: ["find_furniture", "apply_room_edit", "inspect_retailer_offers"],
         errors: ["inspect_room: synchronous client refusal"],
       },
     });
@@ -2144,6 +2239,7 @@ describe("registerRoomTools", () => {
       new Set(["inspect_room", "find_furniture", "apply_room_edit"]),
     );
     expect(modelContext.options.map((options) => options?.signal)).toEqual([
+      controller.signal,
       controller.signal,
       controller.signal,
       controller.signal,
