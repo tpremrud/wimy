@@ -133,7 +133,7 @@ describe("RoomEditor2D selection", () => {
 
     expect(screen.getByText("Facing south")).toBeVisible();
     expect(
-      screen.getByText(/x 1 m, y 1 m, rotation 180°, Facing south/u),
+      screen.getByText(/Facing south · 180° · x 1 m, y 1 m/u),
     ).toBeVisible();
     expect(document.querySelectorAll(".room-item-orientation-cue")).toHaveLength(1);
     expect(document.querySelector(".room-item-orientation-cue")).toHaveAttribute(
@@ -1095,7 +1095,7 @@ describe("RoomEditor2D drag", () => {
     });
 
     expect(screen.getByText("chair")).toHaveAttribute("x", "250");
-    expect(screen.getByText(/x 2 m, y 1 m, rotation 0°/u)).toBeVisible();
+    expect(screen.getByText(/Facing north · 0° · x 2 m, y 1 m/u)).toBeVisible();
 
     fireEvent.pointerUp(item, {
       pointerId: 5,

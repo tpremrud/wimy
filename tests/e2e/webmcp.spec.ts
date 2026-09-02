@@ -204,7 +204,7 @@ test("inspect, find, and apply visibly collaborate while stale edits recover", a
     .focus();
   await page.keyboard.press("Enter");
   await expect(page.getByLabel("Selected item actions"))
-    .toContainText("Ember Nest Chair — x 0.3 m, y 0.3 m, rotation 0°");
+    .toContainText("Facing north · 0° · x 0.3 m, y 0.3 m");
   await expect(
     page
       .getByRole("region", { name: "Activity receipts" })
@@ -219,7 +219,7 @@ test("inspect, find, and apply visibly collaborate while stale edits recover", a
     page.getByRole("region", { name: "Living Room" }),
   ).toContainText("Revision 3");
   await expect(page.getByLabel("Selected item actions"))
-    .toContainText("Ember Nest Chair — x 0.3 m, y 0.3 m, rotation 90°");
+    .toContainText("Facing east · 90° · x 0.3 m, y 0.3 m");
   await expect(
     page
       .getByRole("region", { name: "Activity receipts" })
@@ -278,7 +278,7 @@ test("inspect, find, and apply visibly collaborate while stale edits recover", a
   await page.keyboard.press("Enter");
   await expect(
     page.getByLabel("Selected item actions"),
-  ).toContainText("x 2.2 m, y 0.6 m, rotation 0°");
+  ).toContainText("Facing north · 0° · x 2.2 m, y 0.6 m");
   await expect(
     page
       .getByRole("region", { name: "Activity receipts" })
@@ -333,7 +333,7 @@ test("the room remains functional without modelContext", async ({ page }) => {
     page.getByRole("region", { name: "Living Room" }),
   ).toContainText("Revision 2");
   await expect(page.getByLabel("Selected item actions"))
-    .toContainText("rotation 180°");
+    .toContainText("Facing south · 180°");
   await expect(
     page
       .getByRole("region", { name: "Activity receipts" })

@@ -101,6 +101,41 @@ test("keeps floating header surfaces inset and dismisses them outside", async ({
   }
 });
 
+test("keeps selected-item controls on the canvas without opening Placed", async ({ page }) => {
+  const viewport = { width: 1440, height: 900 };
+  await page.setViewportSize(viewport);
+  await page.goto("/");
+
+  await page
+    .getByRole("button", { name: "Select Linen Apartment Sofa" })
+    .click();
+
+  const toolbar = page.getByRole("group", { name: "Selected item actions" });
+  const plan = page.getByRole("group", { name: "Living Room 2D room editor" });
+  await expect(toolbar).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Add" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+
+  const [toolbarBox, planBox] = await Promise.all([
+    toolbar.boundingBox(),
+    plan.boundingBox(),
+  ]);
+  if (!toolbarBox || !planBox) {
+    throw new Error("expected the room plan and selected-item toolbar");
+  }
+  const toolbarCenter = toolbarBox.x + toolbarBox.width / 2;
+  const planCenter = planBox.x + planBox.width / 2;
+  expect(Math.abs(toolbarCenter - planCenter)).toBeLessThanOrEqual(2);
+  expect(toolbarBox.y).toBeGreaterThan(planBox.y + 12);
+  expect(toolbarBox.y + toolbarBox.height).toBeLessThan(planBox.y + planBox.height - 12);
+  await expect.poll(() => page.evaluate(() => ({
+    clientHeight: document.documentElement.clientHeight,
+    scrollHeight: document.documentElement.scrollHeight,
+  }))).toEqual({ clientHeight: viewport.height, scrollHeight: viewport.height });
+});
+
 test("keeps narrow room tools reachable without horizontal overflow", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");

@@ -309,6 +309,31 @@ describe("App", () => {
     expect(screen.getByRole("button", { name: "Share room" })).toBeVisible();
   });
 
+  it("shows contextual item controls without making the user open Placed", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    expect(screen.getByRole("tab", { name: "Add" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Select Linen Apartment Sofa" }),
+    );
+
+    expect(
+      screen.getByRole("group", { name: "Selected item actions" }),
+    ).toBeVisible();
+    expect(screen.getByRole("tab", { name: "Add" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(screen.getByRole("tab", { name: "Placed" })).toHaveAttribute(
+      "aria-selected",
+      "false",
+    );
+  });
+
   it("moves through room tool tabs with the arrow keys", async () => {
     const user = userEvent.setup();
     render(<App />);

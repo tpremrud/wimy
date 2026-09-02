@@ -478,14 +478,15 @@ export function RoomEditor2D({
         <h3 id="room-editor-heading">2D room editor</h3>
         <p>Drag items to move them. Select an item for more actions.</p>
       </div>
-      <svg
-        ref={roomPlanRef}
-        className="room-plan"
-        role="group"
-        tabIndex={-1}
-        aria-label={`${room.name} 2D room editor`}
-        viewBox={`0 0 ${viewport.width} ${viewport.height}`}
-      >
+      <div className="room-plan-stage">
+        <svg
+          ref={roomPlanRef}
+          className="room-plan"
+          role="group"
+          tabIndex={-1}
+          aria-label={`${room.name} 2D room editor`}
+          viewBox={`0 0 ${viewport.width} ${viewport.height}`}
+        >
         <defs>
           <marker
             id="room-item-orientation-arrow"
@@ -648,29 +649,37 @@ export function RoomEditor2D({
             </g>
           );
         })}
-      </svg>
-      {selectedItem ? (
-        <div className="room-item-actions" aria-label="Selected item actions">
-          <p>
-            <strong>{selectedItem.snapshot.name}</strong>
-            {` — x ${selectedItem.pose.x} m, y ${selectedItem.pose.y} m, rotation ${selectedItem.pose.rotationDeg}°, ${selectedPlanItem?.orientation.label ?? "No fixed direction"}`}
-          </p>
-          <button
-            type="button"
-            aria-label="Rotate 90 degrees"
-            onClick={rotateSelectedItem}
+        </svg>
+        {selectedItem ? (
+          <div
+            className="room-item-actions"
+            role="group"
+            aria-label="Selected item actions"
           >
-            Rotate 90°
-          </button>
-          <button
-            type="button"
-            aria-label={`Remove ${selectedItem.snapshot.name}`}
-            onClick={removeSelectedItem}
-          >
-            Remove
-          </button>
-        </div>
-      ) : null}
+            <div className="selected-item-summary">
+              <strong>{selectedItem.snapshot.name}</strong>
+              <span>
+                {`${selectedPlanItem?.orientation.label ?? "No fixed direction"} · ${selectedItem.pose.rotationDeg}° · x ${selectedItem.pose.x} m, y ${selectedItem.pose.y} m`}
+              </span>
+            </div>
+            <button
+              type="button"
+              aria-label="Rotate 90 degrees"
+              onClick={rotateSelectedItem}
+            >
+              Rotate 90°
+            </button>
+            <button
+              type="button"
+              className="remove-item-control"
+              aria-label={`Remove ${selectedItem.snapshot.name}`}
+              onClick={removeSelectedItem}
+            >
+              Remove
+            </button>
+          </div>
+        ) : null}
+      </div>
       <p
         role={humanActionResult?.owner === store ? "status" : undefined}
         aria-label="Human edit result"
