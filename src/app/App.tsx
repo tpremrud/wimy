@@ -25,6 +25,7 @@ import {
 
 type ViewMode = "2d" | "3d";
 type RailTab = "add" | "placed" | "favorites";
+type ActiveSurface = "share" | "help" | "activity" | null;
 
 type PreviewProps = {
   room: ReturnType<RoomStore["getState"]>["room"];
@@ -140,6 +141,12 @@ export function App({
   const { room, revision, receipts } = useStore(store);
   const [viewMode, setViewMode] = useState<ViewMode>("2d");
   const [railTab, setRailTab] = useState<RailTab>("add");
+  const [railCollapsed, setRailCollapsed] = useState(false);
+  const [activeSurface, setActiveSurface] = useState<ActiveSurface>(null);
+  const previousReceiptRef = useRef(receipts[0]);
+  const shareButtonRef = useRef<HTMLButtonElement>(null);
+  const helpButtonRef = useRef<HTMLButtonElement>(null);
+  const activityButtonRef = useRef<HTMLButtonElement>(null);
   const [favoriteIds, setFavoriteIds] = useState<Set<string>>(
     () => new Set(),
   );
@@ -164,6 +171,8 @@ export function App({
           owner: store,
           phase: "pending",
         };
+
+  const warningCount = store.getState().getLayoutWarnings().length;
 
   useLayoutEffect(() => {
     const generation = {
@@ -205,6 +214,14 @@ export function App({
     );
   }, [store]);
 
+  useEffect(() => {
+    const newestReceiptChanged = receipts[0] !== previousReceiptRef.current;
+    if (newestReceiptChanged && activeSurface === null) {
+      setActiveSurface("activity");
+    }
+    previousReceiptRef.current = receipts[0];
+  }, [activeSurface, receipts]);
+
   const toggleFavorite = (key: string) => {
     setFavoriteIds((current) => {
       const next = new Set(current);
@@ -241,6 +258,37 @@ export function App({
     document.getElementById(`${nextTab.id}-tab`)?.focus();
   };
 
+  const openSurface = (surface: Exclude<ActiveSurface, null>) => {
+    setActiveSurface(surface);
+  };
+
+  const closeSurface = (surface: Exclude<ActiveSurface, null>) => {
+    if (activeSurface !== surface) return;
+    setActiveSurface(null);
+    const opener = surface === "share"
+      ? shareButtonRef
+      : surface === "help"
+        ? helpButtonRef
+        : activityButtonRef;
+    opener.current?.focus();
+  };
+
+  useEffect(() => {
+    if (!activeSurface) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      const opener = activeSurface === "share"
+        ? shareButtonRef
+        : activeSurface === "help"
+          ? helpButtonRef
+          : activityButtonRef;
+      setActiveSurface(null);
+      opener.current?.focus();
+    };
+    document.addEventListener("keydown", closeOnEscape);
+    return () => document.removeEventListener("keydown", closeOnEscape);
+  }, [activeSurface]);
+
   return (
     <main className="app-shell">
       <a className="skip-link" href="#room-workspace">
@@ -251,29 +299,79 @@ export function App({
           <h1>Wimy</h1>
           <p>Fit, find, and place furniture with a human or browser agent.</p>
         </div>
+        <div className="room-context" aria-label="Current room context">
+          <strong>{room.name}</strong>
+          <span>Revision {revision}</span>
+        </div>
         <div className="header-actions">
           <p role="status" aria-label="WebMCP status" aria-live="polite">
             {registrationStatusText(visibleRegistration)}
           </p>
-          <ShareRoomPanel store={store} />
+          <div aria-label="Room view" className="room-view-controls" role="group">
+            <button aria-pressed={viewMode === "2d"} onClick={() => setViewMode("2d")} type="button">Edit in 2D</button>
+            <button aria-pressed={viewMode === "3d"} onClick={() => setViewMode("3d")} type="button">Preview in 3D</button>
+          </div>
+          <ShareRoomPanel
+            open={activeSurface === "share"}
+            onClose={() => closeSurface("share")}
+            onOpen={() => openSurface("share")}
+            openerRef={shareButtonRef}
+            store={store}
+          />
+          <button
+            ref={helpButtonRef}
+            type="button"
+            className="header-action-button"
+            aria-expanded={activeSurface === "help"}
+            aria-controls="browser-agent-guidance"
+            onClick={() => openSurface("help")}
+          >
+            Help and agent guidance
+          </button>
+          <button
+            ref={activityButtonRef}
+            type="button"
+            className="header-action-button"
+            aria-label="Warnings & activity"
+            aria-expanded={activeSurface === "activity"}
+            aria-controls="activity-drawer"
+            onClick={() => openSurface("activity")}
+          >
+            Warnings & activity{warningCount > 0 ? ` · ${warningCount}` : ""}
+          </button>
         </div>
       </header>
-      <section aria-labelledby="webmcp-workflow-heading" className="agent-workflow">
-        <details open>
-          <summary><h2 id="webmcp-workflow-heading">Work with a browser agent</h2></summary>
+      {activeSurface === "help" ? (
+        <section id="browser-agent-guidance" className="app-drawer help-drawer" role="dialog" aria-modal="false" aria-label="Browser agent guidance" aria-labelledby="browser-agent-guidance-heading">
+          <div className="drawer-heading">
+            <div>
+              <p className="drawer-kicker">Agent guidance</p>
+              <h2 id="browser-agent-guidance-heading">Browser agent guidance</h2>
+            </div>
+            <button type="button" aria-label="Close browser agent guidance" onClick={() => closeSurface("help")} autoFocus>Close</button>
+          </div>
           <p>WebMCP can inspect the room, find a catalog fit, and apply one exact edit while you review each change.</p>
           <ol>
             <li>Inspect the room dimensions and placed items.</li>
             <li>Find a catalog item that fits the room.</li>
             <li>Apply one exact placement at the current revision.</li>
           </ol>
-        </details>
-      </section>
-      <div className="workspace-grid" id="room-workspace" tabIndex={-1}>
+        </section>
+      ) : null}
+      <div className={`workspace-grid${railCollapsed ? " is-rail-collapsed" : ""}`} id="room-workspace" tabIndex={-1}>
         <aside
-          className="workspace-catalog"
+          className={`workspace-catalog${railCollapsed ? " is-collapsed" : ""}`}
           aria-labelledby="catalog-heading"
         >
+          <button
+            type="button"
+            className="rail-collapse-control"
+            aria-label={railCollapsed ? "Expand room tools" : "Collapse room tools"}
+            aria-expanded={!railCollapsed}
+            onClick={() => setRailCollapsed((collapsed) => !collapsed)}
+          >
+            {railCollapsed ? "Expand tools" : "Collapse"}
+          </button>
           <nav className="rail-navigation" aria-label="Room tools">
             <div className="rail-title">
               <span>Room tools</span>
@@ -300,14 +398,16 @@ export function App({
               ))}
             </div>
           </nav>
-          <div id="add-panel" role="tabpanel" aria-labelledby="add-tab" hidden={railTab !== "add"}>
-            <CatalogPanel favoriteIds={favoriteIds} onToggleFavorite={toggleFavorite} store={store} />
-          </div>
-          <div id="placed-panel" role="tabpanel" aria-labelledby="placed-tab" hidden={railTab !== "placed"}>
-            <PlacedPanel store={store} />
-          </div>
-          <div id="favorites-panel" role="tabpanel" aria-labelledby="favorites-tab" hidden={railTab !== "favorites"}>
-            <FavoritesPanel favoriteIds={favoriteIds} onToggleFavorite={toggleFavorite} store={store} />
+          <div className="rail-panel-host">
+            <div id="add-panel" role="tabpanel" aria-labelledby="add-tab" hidden={railTab !== "add"}>
+              <CatalogPanel favoriteIds={favoriteIds} onToggleFavorite={toggleFavorite} store={store} />
+            </div>
+            <div id="placed-panel" role="tabpanel" aria-labelledby="placed-tab" hidden={railTab !== "placed"}>
+              <PlacedPanel store={store} />
+            </div>
+            <div id="favorites-panel" role="tabpanel" aria-labelledby="favorites-tab" hidden={railTab !== "favorites"}>
+              <FavoritesPanel favoriteIds={favoriteIds} onToggleFavorite={toggleFavorite} store={store} />
+            </div>
           </div>
         </aside>
         <section
@@ -316,31 +416,12 @@ export function App({
         >
           <div className="workspace-room-header">
             <div className="workspace-room-heading">
-              <p className="room-kicker">Current room</p>
+              <p className="room-kicker">Room surface</p>
               <h2 id="current-room-heading">{room.name}</h2>
               <p className="room-revision">Revision {revision}</p>
               <p className="room-item-count">{room.items.length} placed item{room.items.length === 1 ? "" : "s"}</p>
             </div>
-            <div
-              aria-label="Room view"
-              className="room-view-controls"
-              role="group"
-            >
-              <button
-                aria-pressed={viewMode === "2d"}
-                onClick={() => setViewMode("2d")}
-                type="button"
-              >
-                Edit in 2D
-              </button>
-              <button
-                aria-pressed={viewMode === "3d"}
-                onClick={() => setViewMode("3d")}
-                type="button"
-              >
-                Preview in 3D
-              </button>
-            </div>
+              <span className="room-surface-hint">Room remains visible while tools scroll independently.</span>
           </div>
           {viewMode === "2d" ? (
             <RoomEditor2D store={store} />
@@ -359,12 +440,15 @@ export function App({
             </PreviewLoadBoundary>
           )}
         </section>
-        <aside className="workspace-activity" aria-labelledby="activity-receipts-heading">
-          <details open>
-            <summary>Warnings and activity</summary>
-            <RoomWarnings store={store} />
-            <ReceiptPanel receipts={receipts} />
-          </details>
+        <aside id="activity-drawer" className={`app-drawer activity-drawer${activeSurface === "activity" ? " is-open" : ""}`} role="complementary" aria-label="Activity receipts" inert={activeSurface !== "activity" ? true : undefined}>
+          <div className="drawer-heading">
+            <h2 id="activity-drawer-heading">Warnings & activity</h2>
+            {activeSurface === "activity" ? (
+              <button type="button" aria-label="Close warnings and activity" onClick={() => closeSurface("activity")} autoFocus>Close</button>
+            ) : null}
+          </div>
+          <RoomWarnings store={store} />
+          <ReceiptPanel receipts={receipts} />
         </aside>
       </div>
     </main>

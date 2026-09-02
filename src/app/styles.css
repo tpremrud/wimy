@@ -1173,3 +1173,473 @@ summary:focus-visible,
     animation-duration: 0.01ms !important;
   }
 }
+
+/* REL-106: the room owns the desktop viewport; tools own their own overflow. */
+html,
+body,
+#root {
+  min-width: 0;
+  min-height: 100%;
+}
+
+body {
+  overflow: hidden;
+}
+
+.app-shell {
+  width: 100%;
+  height: 100dvh;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  gap: 0;
+  overflow: hidden;
+}
+
+.app-header {
+  min-height: 3.75rem;
+  padding: 0.55rem 1.25rem;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.brand-lockup p {
+  font-size: 0.72rem;
+}
+
+.room-context {
+  display: grid;
+  max-width: min(16rem, 20vw);
+  min-width: 0;
+  margin-right: auto;
+  padding-left: 1.25rem;
+  gap: 0.1rem;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.room-context strong {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 0.9rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.header-actions {
+  gap: 0.45rem;
+}
+
+.header-actions > p {
+  max-width: 16rem;
+  font-size: 0.7rem;
+}
+
+.header-action-button,
+.rail-collapse-control {
+  min-height: 2.15rem;
+  border: 1px solid var(--line);
+  border-radius: 0.3rem;
+  padding: 0.35rem 0.55rem;
+  color: var(--accent-strong);
+  background: var(--surface);
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.header-action-button:hover,
+.rail-collapse-control:hover {
+  border-color: var(--accent);
+  background: #eef5f2;
+}
+
+.share-region {
+  position: static;
+  display: block;
+}
+
+.share-trigger {
+  min-height: 2.15rem;
+  padding: 0.35rem 0.55rem;
+  font-size: 0.75rem;
+}
+
+.share-panel,
+.app-drawer {
+  position: fixed;
+  z-index: 30;
+  top: 4.65rem;
+  right: 1rem;
+  width: min(32rem, calc(100vw - 2rem));
+  max-height: calc(100dvh - 5.5rem);
+  margin: 0;
+  overflow: auto;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  box-shadow: 0 4px 12px rgb(24 33 38 / 10%);
+}
+
+.share-panel.is-open {
+  padding: 1rem;
+}
+
+.drawer-heading {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.drawer-heading button {
+  min-height: 2.15rem;
+  border: 1px solid var(--line);
+  border-radius: 0.3rem;
+  padding: 0.35rem 0.55rem;
+  color: var(--accent-strong);
+  background: var(--surface);
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.drawer-kicker {
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.app-drawer h2,
+.share-panel h2 {
+  margin-top: 0.2rem;
+  color: var(--ink);
+  font-size: 1.05rem;
+}
+
+.app-drawer > p,
+.app-drawer > ol,
+.share-panel-heading p {
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+.app-drawer > p {
+  margin-top: 0.85rem;
+}
+
+.app-drawer > ol {
+  margin: 0.75rem 0 0;
+  padding-left: 1.2rem;
+}
+
+.activity-drawer {
+  transform: translateX(calc(100% + 2rem));
+  padding: 1rem;
+  pointer-events: none;
+}
+
+.activity-drawer.is-open {
+  top: auto;
+  bottom: 1rem;
+  max-height: min(28rem, calc(100dvh - 2rem));
+  transform: translateX(0);
+  pointer-events: auto;
+}
+
+.activity-drawer:not(.is-open) {
+  position: static;
+  grid-column: 2;
+  grid-row: 2;
+  width: auto;
+  height: 1px;
+  max-height: none;
+  transform: none;
+  overflow: hidden;
+  border: 0;
+  padding: 0;
+}
+
+.activity-drawer.is-open {
+  position: fixed;
+}
+
+.share-panel-heading {
+  margin-bottom: 0.75rem;
+}
+
+.share-panel-heading p {
+  margin-top: 0.4rem;
+}
+
+.share-panel .portable-controls {
+  padding: 0;
+  border: 0;
+}
+
+.workspace-grid {
+  grid-template-columns: minmax(20rem, 23rem) minmax(0, 1fr);
+  min-height: 0;
+  align-items: stretch;
+  gap: 0.75rem;
+  padding: 0.75rem 1.25rem;
+  overflow: hidden;
+}
+
+.workspace-grid.is-rail-collapsed {
+  grid-template-columns: 3rem minmax(0, 1fr);
+}
+
+.workspace-catalog {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  padding: 0.65rem;
+  overflow: hidden;
+}
+
+.workspace-catalog.is-collapsed {
+  align-items: center;
+  padding: 0.45rem;
+}
+
+.workspace-catalog.is-collapsed .rail-navigation,
+.workspace-catalog.is-collapsed .rail-panel-host {
+  display: none;
+}
+
+.rail-collapse-control {
+  align-self: end;
+  flex: 0 0 auto;
+}
+
+.workspace-catalog.is-collapsed .rail-collapse-control {
+  align-self: center;
+  min-height: 7rem;
+  writing-mode: vertical-rl;
+}
+
+.rail-navigation {
+  flex: 0 0 auto;
+  margin-top: 0.45rem;
+}
+
+.rail-panel-host {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.workspace-room {
+  display: grid;
+  min-height: 0;
+  grid-template-rows: auto minmax(0, 1fr);
+  padding: 0.85rem;
+  overflow: hidden;
+}
+
+.workspace-room-header {
+  align-items: center;
+  padding-bottom: 0.55rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.workspace-room-heading h2 {
+  font-size: 1rem;
+  letter-spacing: -0.02em;
+}
+
+.room-kicker,
+.room-item-count,
+.room-surface-hint {
+  display: none;
+}
+
+.room-revision {
+  margin-top: 0.2rem;
+  font-size: 0.72rem;
+}
+
+.room-view-controls {
+  flex-wrap: nowrap;
+}
+
+.room-view-controls button {
+  min-height: 2.15rem;
+  padding: 0.35rem 0.55rem;
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.room-editor,
+.room-preview {
+  min-height: 0;
+  margin-top: 0.65rem;
+  overflow: hidden;
+}
+
+.room-editor {
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+.room-editor-heading-row {
+  margin-bottom: 0.35rem;
+}
+
+.room-editor-heading-row h3,
+.room-editor-heading-row p {
+  font-size: 0.72rem;
+}
+
+.room-plan,
+.room-preview-canvas {
+  width: 100%;
+  height: 100%;
+  max-height: none;
+  min-height: 0;
+}
+
+.room-item-actions {
+  margin-top: 0.45rem;
+  padding: 0.45rem;
+  gap: 0.45rem;
+}
+
+.room-item-actions button {
+  min-height: 2rem;
+  padding: 0.35rem 0.5rem;
+  font-size: 0.75rem;
+}
+
+.workspace-activity {
+  display: block;
+}
+
+.activity-drawer section {
+  display: grid;
+  gap: 0.55rem;
+  border-top: 1px solid var(--line);
+  padding: 0.85rem 0;
+}
+
+@media (min-width: 42.01rem) {
+  .workspace-grid {
+    grid-template-columns: minmax(20rem, 23rem) minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 70rem) and (min-width: 42.01rem) {
+  .workspace-grid {
+    grid-template-columns: minmax(17rem, 21rem) minmax(0, 1fr);
+  }
+
+  .header-actions > p {
+    max-width: 11rem;
+  }
+}
+
+@media (max-width: 42rem) {
+  body {
+    overflow: auto;
+  }
+
+  .app-shell {
+    height: auto;
+    min-height: 100dvh;
+    overflow: visible;
+  }
+
+  .app-header {
+    align-items: start;
+    flex-wrap: wrap;
+    padding: 0.65rem 0.75rem;
+  }
+
+  .room-context {
+    order: 3;
+    max-width: none;
+    width: 100%;
+    padding: 0.45rem 0 0;
+    border-top: 1px solid var(--line);
+  }
+
+  .room-context strong {
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
+
+  .header-actions {
+    flex-wrap: wrap;
+    justify-content: end;
+    margin-left: auto;
+  }
+
+  .header-actions > p {
+    width: 100%;
+    max-width: none;
+    text-align: right;
+  }
+
+  .workspace-grid {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
+    min-height: auto;
+    padding: 0.5rem 0.75rem 1rem;
+    overflow: visible;
+  }
+
+  .workspace-grid.is-rail-collapsed {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .workspace-room {
+    grid-column: 1;
+    grid-row: 1;
+    min-height: 30rem;
+  }
+
+  .workspace-catalog {
+    grid-column: 1;
+    grid-row: 2;
+    min-height: 22rem;
+  }
+
+  .activity-drawer:not(.is-open) {
+    grid-column: 1;
+    grid-row: 3;
+  }
+
+  .workspace-catalog.is-collapsed {
+    min-height: 0;
+  }
+
+  .workspace-catalog.is-collapsed .rail-collapse-control {
+    min-height: 2.15rem;
+    writing-mode: initial;
+  }
+
+  .rail-panel-host {
+    max-height: none;
+    overflow: visible;
+    overscroll-behavior: auto;
+    scrollbar-gutter: auto;
+  }
+
+  .share-panel,
+  .app-drawer {
+    top: 0.75rem;
+    right: 0.5rem;
+    width: calc(100vw - 1rem);
+    max-height: calc(100dvh - 1.5rem);
+  }
+
+  .activity-drawer.is-open {
+    top: auto;
+    right: 0.5rem;
+    bottom: 0.75rem;
+  }
+}

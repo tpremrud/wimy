@@ -123,6 +123,147 @@ afterEach(() => {
 });
 
 describe("App", () => {
+  it("keeps agent help closed until explicitly opened", () => {
+    render(<App />);
+
+    expect(screen.getByRole("button", { name: "Help and agent guidance" })).toBeVisible();
+    expect(screen.queryByRole("dialog", { name: "Browser agent guidance" })).not.toBeInTheDocument();
+  });
+
+  it("keeps closed activity inert until explicitly opened", () => {
+    render(<App />);
+
+    expect(screen.getByRole("complementary", { name: "Activity receipts" })).toHaveAttribute("inert");
+  });
+
+  it("collapses the rail without losing the selected tab and restores focus", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(screen.getByRole("tab", { name: "Favorites" }));
+    const collapse = screen.getByRole("button", { name: "Collapse room tools" });
+    await user.click(collapse);
+
+    expect(screen.getByRole("button", { name: "Expand room tools" })).toBeVisible();
+    expect(screen.getByRole("tab", { name: "Favorites" })).toHaveAttribute("aria-selected", "true");
+
+    await user.click(screen.getByRole("button", { name: "Expand room tools" }));
+    expect(screen.getByRole("button", { name: "Collapse room tools" })).toHaveFocus();
+    expect(screen.getByRole("tabpanel", { name: "Favorites" })).toBeVisible();
+  });
+
+  it("opens Help as a non-layout surface and returns focus on Escape", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    const opener = screen.getByRole("button", { name: "Help and agent guidance" });
+    await user.click(opener);
+    expect(screen.getByRole("dialog", { name: "Browser agent guidance" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Close browser agent guidance" })).toHaveFocus();
+
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog", { name: "Browser agent guidance" })).not.toBeInTheDocument();
+    expect(opener).toHaveFocus();
+  });
+
+  it("keeps only one overlay active and puts real file controls in Share", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: "Share room" }));
+    const share = screen.getByRole("dialog", { name: "Share room" });
+    expect(within(share).getByRole("combobox", { name: "Load room template" })).toBeVisible();
+    expect(within(share).getByLabelText("Import .wimy file")).toBeVisible();
+    expect(within(share).getByRole("button", { name: "Export .wimy" })).toBeVisible();
+    expect(within(share).getByRole("button", { name: "Undo last room change" })).toBeVisible();
+
+    await user.click(screen.getByRole("button", { name: "Help and agent guidance" }));
+    expect(screen.queryByRole("dialog", { name: "Share room" })).not.toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Browser agent guidance" })).toBeVisible();
+
+    await user.click(screen.getByRole("button", { name: "Share room" }));
+    expect(screen.queryByRole("dialog", { name: "Browser agent guidance" })).not.toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Share room" })).toBeVisible();
+  });
+
+  it("opens activity feedback after an accepted catalog transaction", async () => {
+    const user = userEvent.setup();
+    const store = createRoomStore(
+      getTemplate("living-room"),
+      {
+        resolveProduct: resolveCatalogProduct,
+        createItemId: () => "item_generated_1",
+      },
+    );
+    render(<App store={store} />);
+
+    await user.selectOptions(screen.getByRole("combobox", { name: "Category" }), "chair");
+    await user.type(screen.getByRole("textbox", { name: "Style tags" }), "warm-modern");
+    await user.type(screen.getByRole("spinbutton", { name: "Maximum price (USD)" }), "600");
+    await user.click(screen.getByRole("button", { name: "Search catalog" }));
+    await user.click(screen.getByRole("button", { name: "Add best fit" }));
+
+    expect(screen.getByRole("complementary", { name: "Activity receipts" })).not.toHaveAttribute("inert");
+    expect(screen.getByRole("complementary", { name: "Activity receipts" })).toHaveTextContent("Added Ember Nest Chair");
+  });
+
+  it("keeps Share open for its own file transaction feedback", async () => {
+    const user = userEvent.setup();
+    const store = createRoomStore(
+      getTemplate("living-room"),
+      TEST_TRANSACTION_DEPENDENCIES,
+    );
+    render(<App store={store} />);
+
+    await user.click(screen.getByRole("button", { name: "Share room" }));
+    const share = screen.getByRole("dialog", { name: "Share room" });
+    await user.selectOptions(
+      within(share).getByRole("combobox", { name: "Load room template" }),
+      "compact-bedroom",
+    );
+
+    expect(screen.getByRole("dialog", { name: "Share room" })).toBeVisible();
+    expect(within(share).getByRole("status", { name: "Portable room action status" })).toHaveTextContent("accepted");
+    await user.click(screen.getByRole("button", { name: "Close share room" }));
+    expect(screen.queryByRole("dialog", { name: "Share room" })).not.toBeInTheDocument();
+    expect(screen.getByRole("complementary", { name: "Activity receipts" })).toHaveAttribute("inert");
+  });
+
+  it("opens Activity when a new receipt replaces the capped newest receipt", async () => {
+    const user = userEvent.setup();
+    const store = createRoomStore(
+      getTemplate("living-room"),
+      TEST_TRANSACTION_DEPENDENCIES,
+    );
+
+    for (let index = 0; index < 20; index += 1) {
+      const result = store.getState().transact({
+        expectedRevision: index + 1,
+        origin: "human",
+        change: { type: "replace", room: getTemplate("living-room") },
+      });
+      expect(result.ok).toBe(true);
+    }
+    expect(store.getState().receipts).toHaveLength(20);
+
+    render(<App store={store} />);
+    await user.click(screen.getByRole("button", { name: "Warnings & activity" }));
+    await user.click(screen.getByRole("button", { name: "Close warnings and activity" }));
+    expect(screen.getByRole("complementary", { name: "Activity receipts" })).toHaveAttribute("inert");
+
+    const result = store.getState().transact({
+      expectedRevision: 21,
+      origin: "human",
+      change: { type: "replace", room: getTemplate("compact-bedroom") },
+    });
+    expect(result.ok).toBe(true);
+    expect(store.getState().receipts).toHaveLength(20);
+    await waitFor(() =>
+      expect(screen.getByRole("complementary", { name: "Activity receipts" })).not.toHaveAttribute("inert"),
+    );
+    expect(screen.getByRole("complementary", { name: "Activity receipts" })).toHaveTextContent("Replaced the room with Compact Bedroom");
+  });
+
   it("presents the room in a two-pane shell with accessible secondary tabs", () => {
     render(<App />);
 
@@ -218,8 +359,9 @@ describe("App", () => {
     await user.click(shareButton);
     expect(screen.getByRole("dialog", { name: "Share room" })).toBeVisible();
     expect(screen.getByText(/No account or network is required/i)).toBeVisible();
-    expect(screen.getByText("Import Wimy File")).toBeVisible();
-    expect(screen.getByText("Download Wimy File")).toBeVisible();
+    const shareDialog = screen.getByRole("dialog", { name: "Share room" });
+    expect(within(shareDialog).getByText("Import Wimy File")).toBeVisible();
+    expect(within(shareDialog).getByText("Download Wimy File")).toBeVisible();
 
     await user.click(screen.getByRole("button", { name: "Close share room" }));
     expect(shareButton).toHaveFocus();
@@ -231,27 +373,14 @@ describe("App", () => {
     expect(screen.getByText(/fit, find, and place/i)).toBeVisible();
   });
 
-  it("explains the inspect-find-apply agent workflow on first load", () => {
+  it("keeps inspect-find-apply guidance behind the Help entry point", async () => {
+    const user = userEvent.setup();
     render(<App />);
 
-    const workflow = screen.getByRole("region", {
-      name: "Work with a browser agent",
-    });
-    expect(workflow).toBeVisible();
-    expect(
-      within(workflow).getByRole("heading", {
-        name: "Work with a browser agent",
-      }),
-    ).toBeVisible();
-    expect(
-      within(workflow)
-        .getAllByRole("listitem")
-        .map((item) => item.textContent),
-    ).toEqual([
-      "Inspect the room dimensions and placed items.",
-      "Find a catalog item that fits the room.",
-      "Apply one exact placement at the current revision.",
-    ]);
+    expect(screen.queryByText("Inspect the room dimensions and placed items.")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Help and agent guidance" }));
+    expect(screen.getByRole("dialog", { name: "Browser agent guidance" })).toBeVisible();
+    expect(screen.getByText("Inspect the room dimensions and placed items.")).toBeVisible();
   });
 
   it("provides keyboard users a skip link to the room workspace", () => {
@@ -352,7 +481,8 @@ describe("App", () => {
     ).toBeVisible();
   });
 
-  it("renders portable room controls without creating an initial transaction", () => {
+  it("renders portable room controls inside Share without creating an initial transaction", async () => {
+    const user = userEvent.setup();
     const store = createRoomStore(
       getTemplate("living-room"),
       TEST_TRANSACTION_DEPENDENCIES,
@@ -360,15 +490,14 @@ describe("App", () => {
 
     render(<App store={store} />);
 
-    const portableControls = screen.getByRole("region", {
+    expect(screen.queryByRole("region", { name: "Room files and templates" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Share room" }));
+    const share = screen.getByRole("dialog", { name: "Share room" });
+    const portableControls = within(share).getByRole("region", {
       name: "Room files and templates",
     });
     expect(portableControls).toBeVisible();
-    expect(
-      within(screen.getByRole("banner")).getByRole("region", {
-        name: "Room files and templates",
-      }),
-    ).toBe(portableControls);
+    expect(portableControls.closest(".share-panel")).not.toBeNull();
     expect(
       within(screen.getByRole("banner")).queryByRole("region", {
         name: "Room warnings",
@@ -385,10 +514,10 @@ describe("App", () => {
       ).getByRole("region", { name: "Room warnings" }),
     ).toBeVisible();
     expect(
-      screen.getByRole("combobox", { name: "Load room template" }),
+      within(share).getByRole("combobox", { name: "Load room template" }),
     ).toHaveValue("");
     expect(
-      screen.getByRole("button", { name: "Undo last room change" }),
+      within(share).getByRole("button", { name: "Undo last room change" }),
     ).toBeDisabled();
     expect(store.getState()).toMatchObject({ revision: 1, receipts: [] });
   });
@@ -419,8 +548,10 @@ describe("App", () => {
     );
     render(<App store={store} />);
 
+    await user.click(screen.getByRole("button", { name: "Share room" }));
+
     await user.upload(
-      screen.getByLabelText("Import .wimy file"),
+      within(screen.getByRole("dialog", { name: "Share room" })).getByLabelText("Import .wimy file"),
       new File([serializeWimyRoom(imported)], "portable.wimy"),
     );
 

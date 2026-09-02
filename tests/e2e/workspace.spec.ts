@@ -6,16 +6,41 @@ const revisionText = (page: Page, roomName: string) =>
     .getByRole("region", { name: roomName })
     .getByText(/^Revision \d+$/u);
 
+const openShare = async (page: Page) => {
+  const dialog = page.getByRole("dialog", { name: "Share room" });
+  if (await dialog.count()) return dialog;
+  await page.getByRole("button", { name: "Share room", exact: true }).click();
+  return dialog;
+};
+
+const closeShare = async (page: Page) => {
+  const closeButton = page.getByRole("button", { name: "Close share room" });
+  if (await closeButton.count()) await closeButton.click();
+};
+
 const exportRoom = async (page: Page) => {
+  const share = await openShare(page);
   const downloadPromise = page.waitForEvent("download");
-  await page.getByRole("button", { name: "Export .wimy" }).click();
+  await share.getByRole("button", { name: "Export .wimy" }).click();
   const download = await downloadPromise;
+  await closeShare(page);
   const path = await download.path();
   if (!path) throw new Error("expected a local Wimy download path");
   return {
     filename: download.suggestedFilename(),
     text: await readFile(path, "utf8"),
   };
+};
+
+const importFile = async (page: Page, file: { name: string; mimeType: string; buffer: Buffer }) => {
+  const share = await openShare(page);
+  await share.getByLabel("Import .wimy file").setInputFiles(file);
+  return share;
+};
+
+const selectTemplate = async (page: Page, template: string) => {
+  const share = await openShare(page);
+  await share.getByRole("combobox", { name: "Load room template" }).selectOption(template);
 };
 
 type PortableRoomFile = Record<string, unknown> & {
@@ -99,33 +124,18 @@ for (const viewport of [
     page.on("popup", (popup) => popups.push(popup));
     await page.goto("/");
 
-    const portableBox = await page
-    .getByRole("region", { name: "Room files and templates" })
-    .boundingBox();
-  const workspaceBox = await page
-    .getByRole("complementary", { name: "Furniture catalog" })
-    .boundingBox();
-  expect(portableBox).not.toBeNull();
-  expect(workspaceBox).not.toBeNull();
-    expect(
-      (portableBox?.y ?? Infinity) + (portableBox?.height ?? 0),
-    ).toBeLessThanOrEqual(workspaceBox?.y ?? 0);
-
-  await page.locator("body").focus();
-  await page.keyboard.press("Tab");
-  await expect(
-    page.getByRole("link", { name: "Skip to room workspace" }),
-  ).toBeFocused();
-  await page.keyboard.press("Tab");
-  await expect(
-    page.getByRole("combobox", { name: "Load room template" }),
-  ).toBeFocused();
-  await page.keyboard.press("Tab");
-  await expect(page.getByLabel("Import .wimy file")).toBeFocused();
-  await page.keyboard.press("Tab");
-    await expect(
-      page.getByRole("button", { name: "Export .wimy" }),
-    ).toBeFocused();
+    const workspaceBefore = await page
+      .getByRole("region", { name: "Living Room" })
+      .boundingBox();
+    const share = await openShare(page);
+    await expect(share.getByRole("combobox", { name: "Load room template" })).toBeVisible();
+    await expect(share.getByLabel("Import .wimy file")).toBeVisible();
+    await expect(share.getByRole("button", { name: "Export .wimy" })).toBeVisible();
+    const workspaceAfter = await page
+      .getByRole("region", { name: "Living Room" })
+      .boundingBox();
+    expect(workspaceAfter).toEqual(workspaceBefore);
+    await closeShare(page);
 
   await page
     .getByRole("button", { name: "Select Linen Apartment Sofa" })
@@ -149,7 +159,7 @@ for (const viewport of [
   expect(exported.text).not.toContain('"revision"');
   expect(exported.text).not.toContain('"receipts"');
 
-  await page.getByLabel("Import .wimy file").setInputFiles({
+  await importFile(page, {
     name: maximumRoom.filename,
     mimeType: "application/json",
     buffer: Buffer.from(maximumRoom.text),
@@ -182,9 +192,7 @@ for (const viewport of [
   const exportedMaximumRoom = await exportRoom(page);
   expect(exportedMaximumRoom.text).toBe(maximumRoom.text);
 
-  await page
-    .getByRole("combobox", { name: "Load room template" })
-    .selectOption("blank-room");
+  await selectTemplate(page, "blank-room");
 
   await expect(revisionText(page, "Blank Room")).toHaveText("Revision 3");
   await expect(page.getByLabel("Selected item actions")).toHaveCount(0);
@@ -194,10 +202,11 @@ for (const viewport of [
   await expect(page.getByRole("combobox", { name: "Category" })).toHaveValue(
     "chair",
   );
-  await expect(page.getByRole("combobox", { name: "Load room template" }))
-    .toHaveValue("");
+  const blankShare = await openShare(page);
+  await expect(blankShare.getByRole("combobox", { name: "Load room template" })).toHaveValue("");
+  await closeShare(page);
 
-  await page.getByLabel("Import .wimy file").setInputFiles({
+  await importFile(page, {
     name: exportedMaximumRoom.filename,
     mimeType: "application/json",
     buffer: Buffer.from(exportedMaximumRoom.text),
@@ -246,7 +255,8 @@ for (const viewport of [
     documentWidth.clientWidth,
   );
 
-  await page.getByRole("button", { name: "Undo last room change" }).click();
+  const undoShare = await openShare(page);
+  await undoShare.getByRole("button", { name: "Undo last room change" }).click();
 
   await expect(revisionText(page, "Blank Room")).toHaveText("Revision 5");
   await expect(
@@ -257,16 +267,18 @@ for (const viewport of [
     ).toContainText(
       "Undo: Accepted. Replaced the room with Blank RoomRevision 5",
     );
+  const finalShare = await openShare(page);
   await expect(
-    page.getByRole("button", { name: "Undo last room change" }),
+    finalShare.getByRole("button", { name: "Undo last room change" }),
   ).toBeDisabled();
   expect(await page.evaluate(() => document.documentElement.scrollWidth))
     .toBeLessThanOrEqual(viewport.width);
   expect(
-    await page
+    await finalShare
       .getByLabel("Import .wimy file")
       .evaluate((element) => getComputedStyle(element).maxWidth),
   ).toBe("100%");
+  await closeShare(page);
   expect(externalRequests).toEqual([]);
   expect(popups).toEqual([]);
   });
@@ -366,13 +378,11 @@ test("round-trips a searched placement through export, blank, and import", async
   expect(expectedItems).toHaveLength(6);
   expect(expectedItems.some(({ id }) => id.startsWith("item_"))).toBe(true);
 
-  await page
-    .getByRole("combobox", { name: "Load room template" })
-    .selectOption("blank-room");
+  await selectTemplate(page, "blank-room");
   await expect(revisionText(page, "Blank Room")).toHaveText("Revision 3");
   await expect(page.locator(".room-item")).toHaveCount(0);
 
-  await page.getByLabel("Import .wimy file").setInputFiles({
+  await importFile(page, {
     name: exported.filename,
     mimeType: "application/json",
     buffer: Buffer.from(exported.text),
@@ -417,9 +427,7 @@ test("fails closed on malformed and stale imports and never opens snapshot URLs"
   });
   page.on("popup", (popup) => popups.push(popup));
   await page.goto("/");
-  const input = page.getByLabel("Import .wimy file");
-
-  await input.setInputFiles({
+  await importFile(page, {
     name: "malformed.wimy",
     mimeType: "application/json",
     buffer: Buffer.from("{not-json"),
@@ -428,13 +436,16 @@ test("fails closed on malformed and stale imports and never opens snapshot URLs"
   await expect(page.getByRole("alert")).toContainText(
     "The Wimy file is not valid JSON",
   );
+  await closeShare(page);
   await expect(revisionText(page, "Living Room")).toHaveText("Revision 1");
   await expect(
     page
       .getByRole("region", { name: "Activity receipts" })
       .getByRole("listitem"),
   ).toHaveCount(0);
-  await expect(input).toHaveValue("");
+  const malformedCheck = await openShare(page);
+  await expect(malformedCheck.getByLabel("Import .wimy file")).toHaveValue("");
+  await closeShare(page);
 
   const exported = await exportRoom(page);
   const portable = JSON.parse(exported.text) as {
@@ -467,7 +478,7 @@ test("fails closed on malformed and stale imports and never opens snapshot URLs"
   };
   const portableText = `${JSON.stringify(portable, null, 2)}\n`;
 
-  await input.setInputFiles({
+  await importFile(page, {
     name: "networkless.wimy",
     mimeType: "text/plain",
     buffer: Buffer.from(portableText),
@@ -477,6 +488,7 @@ test("fails closed on malformed and stale imports and never opens snapshot URLs"
   await expect(
     page.getByText("Catalog unavailable; using embedded snapshot."),
   ).toBeVisible();
+  await closeShare(page);
   const portableItem = page.getByRole("button", {
     name: "Select Networkless Portable Sofa",
   });
@@ -486,6 +498,7 @@ test("fails closed on malformed and stale imports and never opens snapshot URLs"
   await expect(
     page.getByText("Catalog unavailable; using embedded snapshot."),
   ).toBeVisible();
+  await page.getByRole("button", { name: "Close warnings and activity" }).click();
 
   await page.evaluate(() => {
     const originalArrayBuffer = File.prototype.arrayBuffer;
@@ -505,7 +518,7 @@ test("fails closed on malformed and stale imports and never opens snapshot URLs"
       return originalArrayBuffer.call(this);
     };
   });
-  await input.setInputFiles({
+  await importFile(page, {
     name: "stale.wimy",
     mimeType: "application/json",
     buffer: Buffer.from(exported.text),
@@ -534,6 +547,7 @@ test("fails closed on malformed and stale imports and never opens snapshot URLs"
       .getByRole("listitem")
       .first(),
   ).toContainText("Import: Rejected. Expected revision 3");
+  await closeShare(page);
   expect(externalRequests).toEqual([]);
   expect(popups).toEqual([]);
 });
@@ -557,15 +571,13 @@ test("keeps the read-only 3D preview synchronized through template and import ch
     page.getByRole("region", { name: "3D preview of Living Room" }),
   ).toContainText("Soft Lounge Chair — x 1.1 m, y 2.3 m, rotation 180°");
 
-  await page
-    .getByRole("combobox", { name: "Load room template" })
-    .selectOption("compact-bedroom");
+  await selectTemplate(page, "compact-bedroom");
   await expect(canvas).toBeVisible();
   await expect(
     page.getByRole("region", { name: "3D preview of Compact Bedroom" }),
   ).toContainText("Platform Bed");
 
-  await page.getByLabel("Import .wimy file").setInputFiles({
+  await importFile(page, {
     name: livingRoomExport.filename,
     mimeType: "application/json",
     buffer: Buffer.from(livingRoomExport.text),
@@ -591,7 +603,7 @@ test("reframes the actual 3D camera after importing materially larger room dimen
   const canvas = page.locator(".room-preview-canvas canvas");
   await expect(canvas).toBeVisible();
 
-  await page.getByLabel("Import .wimy file").setInputFiles({
+  await importFile(page, {
     name: "huge-room.wimy",
     mimeType: "application/json",
     buffer: Buffer.from(
