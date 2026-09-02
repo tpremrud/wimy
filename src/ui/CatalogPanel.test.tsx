@@ -47,7 +47,7 @@ const searchForWarmModernChair = async () => {
 };
 
 describe("CatalogPanel", () => {
-  it("keeps quick browse compact and category-driven without hiding catalog choices", async () => {
+  it("shows one continuous category-driven catalog without pagination", async () => {
     const store = createCatalogStore();
     render(<CatalogPanel store={store} />);
     const user = userEvent.setup();
@@ -55,17 +55,12 @@ describe("CatalogPanel", () => {
     const available = screen.getByRole("list", {
       name: "Available catalog items",
     });
-    expect(within(available).getAllByRole("listitem")).toHaveLength(4);
-    expect(screen.getByText("1–4 of 17")).toBeVisible();
-
-    await user.click(
-      screen.getByRole("button", { name: "Next catalog page" }),
-    );
-    expect(
-      screen.getByRole("status", { name: "Catalog page status" }),
-    ).toHaveTextContent("Page 2 of 5");
+    expect(within(available).getAllByRole("listitem")).toHaveLength(17);
+    expect(screen.getByText("17 items")).toBeVisible();
     expect(within(available).getByText("Pebble Drum Table")).toBeVisible();
-    expect(screen.getByText("5–8 of 17")).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: "Next catalog page" }),
+    ).not.toBeInTheDocument();
 
     await user.selectOptions(
       screen.getByRole("combobox", { name: "Category" }),
@@ -76,7 +71,7 @@ describe("CatalogPanel", () => {
     expect(within(available).getByText("Tidal Modular Sofa")).toBeVisible();
     expect(within(available).getByText("Tideline Corner Sofa")).toBeVisible();
     expect(within(available).queryByText("Ember Nest Chair")).not.toBeInTheDocument();
-    expect(screen.getByText("1–3 of 3")).toBeVisible();
+    expect(screen.getByText("3 items")).toBeVisible();
 
     expect(
       screen.getByRole("textbox", { name: "Style tags" }),
@@ -87,7 +82,7 @@ describe("CatalogPanel", () => {
     ).toBeVisible();
   });
 
-  it("keeps broad search results compact and paginated", async () => {
+  it("shows all broad search results in one continuous list", async () => {
     const store = createCatalogStore(
       makeRoom({ dimensions: { width: 30, depth: 30, height: 3 } }),
     );
@@ -97,15 +92,10 @@ describe("CatalogPanel", () => {
     await user.click(screen.getByRole("button", { name: "Search catalog" }));
 
     const results = screen.getByRole("list", { name: "Catalog results" });
-    expect(within(results).getAllByRole("listitem")).toHaveLength(2);
-    expect(screen.getByText("1–2 of 5 results")).toBeVisible();
-    await user.click(
-      screen.getByRole("button", { name: "Next search results page" }),
-    );
+    expect(within(results).getAllByRole("listitem")).toHaveLength(5);
     expect(
-      screen.getByRole("status", { name: "Search page status" }),
-    ).toHaveTextContent("3–4 of 5 results");
-    expect(screen.getByText("3–4 of 5 results")).toBeVisible();
+      screen.queryByRole("button", { name: "Next search results page" }),
+    ).not.toBeInTheDocument();
   });
 
   it("exposes accessible filters, read-only results, and an explicit no-match state", async () => {

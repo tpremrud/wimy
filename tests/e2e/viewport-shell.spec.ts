@@ -143,6 +143,17 @@ test("keeps browsing and search inside the desktop room-tools rail", async ({ pa
   const railPanel = page
     .getByRole("complementary", { name: "Furniture catalog" })
     .locator(".rail-panel-host");
+  const header = page.locator(".app-header");
+  const workspace = page.locator(".workspace-grid");
+  const [headerBox, workspaceBox] = await Promise.all([
+    header.boundingBox(),
+    workspace.boundingBox(),
+  ]);
+  if (!headerBox || !workspaceBox) {
+    throw new Error("expected compact header and room workspace");
+  }
+  expect(headerBox.height).toBeLessThanOrEqual(80);
+  expect(workspaceBox.y - (headerBox.y + headerBox.height)).toBeLessThanOrEqual(1);
   await expect.poll(() => railPanel.evaluate((element) => ({
     clientHeight: element.clientHeight,
     scrollHeight: element.scrollHeight,
@@ -157,6 +168,26 @@ test("keeps browsing and search inside the desktop room-tools rail", async ({ pa
   expect(initialGeometry.scrollHeight).toBeLessThanOrEqual(
     initialGeometry.clientHeight,
   );
+  const catalogContent = railPanel.locator(".catalog-content");
+  const filters = page.locator(".catalog-filters");
+  const [contentBox, filtersBox] = await Promise.all([
+    catalogContent.boundingBox(),
+    filters.boundingBox(),
+  ]);
+  if (!contentBox || !filtersBox) {
+    throw new Error("expected catalog content and bottom filters");
+  }
+  expect(filtersBox.y).toBeGreaterThan(contentBox.y + contentBox.height - 1);
+  const contentGeometry = await catalogContent.evaluate((element) => ({
+    clientHeight: element.clientHeight,
+    overflowY: getComputedStyle(element).overflowY,
+    scrollHeight: element.scrollHeight,
+  }));
+  expect(contentGeometry.overflowY).toBe("auto");
+  expect(contentGeometry.scrollHeight).toBeGreaterThan(contentGeometry.clientHeight);
+  await expect(
+    page.getByRole("button", { name: "Next catalog page" }),
+  ).toHaveCount(0);
 
   await page.getByRole("combobox", { name: "Category" }).selectOption("sofa");
   await expect(page.getByRole("list", { name: "Available catalog items" }))
@@ -173,6 +204,9 @@ test("keeps browsing and search inside the desktop room-tools rail", async ({ pa
   await page.getByRole("button", { name: "Search catalog" }).click();
   await expect(page.getByRole("list", { name: "Catalog results" }))
     .toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Next search results page" }),
+  ).toHaveCount(0);
   const searchGeometry = await railPanel.evaluate((element) => ({
     clientHeight: element.clientHeight,
     scrollHeight: element.scrollHeight,
