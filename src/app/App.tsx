@@ -427,6 +427,7 @@ export function App({
           />
           <CartReviewPanel
             key={`checkout-${customerSessionKey}`}
+            catalog={store.readCatalog()}
             checkout={customerSession.checkout}
             client={customerSession.cart}
             onClose={() => closeSurface("cart")}
@@ -434,6 +435,7 @@ export function App({
             openerRef={cartButtonRef}
             open={activeSurface === "cart"}
             room={room}
+            roomRevision={revision}
             session={customerSessionView}
           />
           <button

@@ -79,8 +79,31 @@ const checkoutReview: CheckoutReview = {
 };
 
 describe("CartReviewPanel", () => {
+  it("distinguishes the current room revision from the independent cart revision", async () => {
+    const client: CustomerCartClient = {
+      getCart: vi.fn(async () => emptyCartResult),
+    };
+    render(
+      <CartReviewPanel
+        client={client}
+        open
+        onClose={vi.fn()}
+        onOpen={vi.fn()}
+        openerRef={createRef<HTMLButtonElement>()}
+        room={room}
+        roomRevision={4}
+        session={signedIn}
+      />,
+    );
+
+    await waitFor(() =>
+      expect(screen.getByLabelText("Room revision 4")).toBeInTheDocument(),
+    );
+    expect(screen.getByLabelText("Cart revision 1")).toBeInTheDocument();
+  });
+
   it("keeps cart review available as a separate anonymous-safe surface", () => {
-    render(<CartReviewPanel open onClose={vi.fn()} onOpen={vi.fn()} openerRef={createRef<HTMLButtonElement>()} room={room} session={{ authenticated: false }} />);
+    render(<CartReviewPanel open onClose={vi.fn()} onOpen={vi.fn()} openerRef={createRef<HTMLButtonElement>()} room={room} roomRevision={1} session={{ authenticated: false }} />);
 
     expect(screen.getByRole("heading", { name: "Cart review" })).toBeInTheDocument();
     expect(screen.getByText(/Sign in locally/iu)).toBeInTheDocument();
@@ -88,15 +111,26 @@ describe("CartReviewPanel", () => {
 
   it("reads an authenticated retailer cart while mirroring room planning items", async () => {
     const client: CustomerCartClient = { getCart: vi.fn(async () => emptyCartResult) };
-    render(<CartReviewPanel client={client} open onClose={vi.fn()} onOpen={vi.fn()} openerRef={createRef<HTMLButtonElement>()} room={room} session={signedIn} />);
+    render(<CartReviewPanel client={client} open onClose={vi.fn()} onOpen={vi.fn()} openerRef={createRef<HTMLButtonElement>()} room={room} roomRevision={1} session={signedIn} />);
 
     await waitFor(() => expect(screen.getByText("No retailer cart lines yet.")).toBeInTheDocument());
-    expect(screen.getByRole("region", { name: "Items in this room" })).toHaveTextContent("Test Chair");
+    const roomItems = screen.getByRole("region", { name: "Items in this room" });
+    expect(roomItems).toHaveTextContent("Test Chair");
+    expect(
+      within(roomItems).getByRole("img", { name: "Test Chair preview" }),
+    ).toBeVisible();
     expect(client.getCart).toHaveBeenCalledTimes(1);
     expect(screen.getByText(/Checkout, payment, and purchase are not available/iu)).toBeInTheDocument();
   });
 
   it("renders bounded line and total facts returned by the cart seam", async () => {
+    const roomWithStalePlacedSnapshot = makeRoom({
+      items: [
+        makePlacedItem({
+          catalogRef: { catalogId: "catalog-1", productId: "product-1" },
+        }),
+      ],
+    });
     const client: CustomerCartClient = {
       getCart: vi.fn(async (): Promise<CartReadResult> => ({
         ...emptyCartResult,
@@ -148,14 +182,17 @@ describe("CartReviewPanel", () => {
         },
       })),
     };
-    render(<CartReviewPanel client={client} open onClose={vi.fn()} onOpen={vi.fn()} openerRef={createRef<HTMLButtonElement>()} room={room} session={signedIn} />);
+    render(<CartReviewPanel client={client} open onClose={vi.fn()} onOpen={vi.fn()} openerRef={createRef<HTMLButtonElement>()} room={roomWithStalePlacedSnapshot} roomRevision={1} session={signedIn} />);
 
     await waitFor(() => expect(screen.getByText("Aurora Chair")).toBeInTheDocument());
-    expect(screen.getByText("2 × 12000 USD = 24000 USD")).toBeInTheDocument();
-    expect(screen.getByText("Total").parentElement).toHaveTextContent("Total 24000 USD");
+    expect(screen.getByRole("img", { name: "Aurora Chair preview" })).toBeVisible();
+    expect(screen.getByText("Catalog preview unavailable")).toBeVisible();
+    expect(screen.getByText("2 × $120.00")).toBeInTheDocument();
+    expect(screen.getByText("$240.00", { selector: ".cart-line-subtotal" })).toBeInTheDocument();
+    expect(screen.getByText("Total").parentElement).toHaveTextContent("Total$240.00");
     expect(screen.getByLabelText("Cart revision 2")).toBeInTheDocument();
     expect(screen.getByRole("status", { name: "Latest cart mutation" })).toHaveTextContent(
-      "webmcp · add · accepted · Revision 2 · Aurora Chair · Synthetic retailer · offer-1",
+      "webmcp · add · accepted · Cart rev 2 · Aurora Chair · Synthetic retailer · offer-1",
     );
   });
 
@@ -169,7 +206,7 @@ describe("CartReviewPanel", () => {
         return () => undefined;
       },
     };
-    render(<CartReviewPanel client={client} open onClose={vi.fn()} onOpen={vi.fn()} openerRef={createRef<HTMLButtonElement>()} room={room} session={signedIn} />);
+    render(<CartReviewPanel client={client} open onClose={vi.fn()} onOpen={vi.fn()} openerRef={createRef<HTMLButtonElement>()} room={room} roomRevision={1} session={signedIn} />);
 
     await waitFor(() => expect(screen.getByText("No retailer cart lines yet.")).toBeInTheDocument());
     result = {
@@ -292,7 +329,7 @@ describe("CartReviewPanel", () => {
         },
       })),
     };
-    render(<CartReviewPanel checkout={checkout} client={client} open onClose={vi.fn()} onOpen={vi.fn()} openerRef={createRef<HTMLButtonElement>()} room={room} session={signedIn} />);
+    render(<CartReviewPanel checkout={checkout} client={client} open onClose={vi.fn()} onOpen={vi.fn()} openerRef={createRef<HTMLButtonElement>()} room={room} roomRevision={1} session={signedIn} />);
 
     await waitFor(() => expect(screen.getByRole("button", { name: "Review sandbox checkout" })).toBeInTheDocument());
     await screen.getByRole("button", { name: "Review sandbox checkout" }).click();

@@ -444,7 +444,7 @@ test("the room remains functional without modelContext", async ({ page }) => {
 
 test("exposes authenticated cart tools, keeps room state separate, and unregisters them on sign-out", async ({
   page,
-}) => {
+}, testInfo) => {
   await page.setViewportSize({ width: 1_280, height: 900 });
   await installModelContextHarness(page);
   await page.clock.install({ time: new Date("2026-09-02T12:05:00.000Z") });
@@ -521,11 +521,15 @@ test("exposes authenticated cart tools, keeps room state separate, and unregiste
     },
   });
   await expect(cartDialog).toContainText("Aurora Browser Chair");
-  await expect(cartDialog).toContainText("Revision 2");
+  await expect(
+    cartDialog.getByRole("img", { name: "Aurora Browser Chair preview" }),
+  ).toBeVisible();
+  await expect(cartDialog.getByLabel("Cart revision 2")).toBeVisible();
   await expect(cartDialog).toContainText(
-    "Latest mutation: webmcp · add · accepted · Revision 2 · Aurora Browser Chair · Northstar Furnishings",
+    "Latest mutation: webmcp · add · accepted · Cart rev 2 · Aurora Browser Chair · Northstar Furnishings",
   );
   await expect(cartDialog.getByRole("button", { name: "Review sandbox checkout" })).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath("retailer-cart-review.png") });
   expect(await page.evaluate(() => Object.keys((window as typeof window & { __wimyModelContextHarness: ModelContextHarness }).__wimyModelContextHarness.tools))).not.toContain("confirm_checkout");
   await cartDialog.getByRole("button", { name: "Review sandbox checkout" }).click();
   await expect(cartDialog).toContainText("Retailer: Northstar Furnishings");
@@ -565,9 +569,9 @@ test("exposes authenticated cart tools, keeps room state separate, and unregiste
       },
     },
   });
-  await expect(cartDialog).toContainText("Revision 3");
+  await expect(cartDialog.getByLabel("Cart revision 3")).toBeVisible();
   await expect(cartDialog).toContainText(
-    "Latest mutation: webmcp · change_quantity · accepted · Revision 3 · Aurora Browser Chair · Northstar Furnishings",
+    "Latest mutation: webmcp · change_quantity · accepted · Cart rev 3 · Aurora Browser Chair · Northstar Furnishings",
   );
 
   await expect(
@@ -592,7 +596,7 @@ test("exposes authenticated cart tools, keeps room state separate, and unregiste
   });
   await expect(cartDialog).toContainText("No retailer cart lines yet.");
   await expect(cartDialog).toContainText(
-    "Latest mutation: webmcp · remove · accepted · Revision 4 · Aurora Browser Chair · Northstar Furnishings",
+    "Latest mutation: webmcp · remove · accepted · Cart rev 4 · Aurora Browser Chair · Northstar Furnishings",
   );
 
   await page.getByRole("button", { name: "Sign out" }).click();

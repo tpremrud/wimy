@@ -42,3 +42,45 @@ test("keeps anonymous room and file access while local session UX is optional", 
   await expect(share.getByLabel("Import .wimy file")).toBeVisible();
   await expect(share.getByRole("button", { name: "Export .wimy" })).toBeVisible();
 });
+
+test("shows the live room revision and product previews in cart review", async ({
+  page,
+}, testInfo) => {
+  await page.setViewportSize({ width: 1_280, height: 800 });
+  await page.goto("/");
+
+  await page
+    .getByRole("button", { name: "Select Linen Apartment Sofa" })
+    .click();
+  for (let index = 0; index < 3; index += 1) {
+    await page.getByRole("button", { name: "Rotate 90 degrees" }).click();
+  }
+  await expect(page.getByLabel("Current room context")).toContainText(
+    "Revision 4",
+  );
+
+  await page.getByRole("button", { name: "Sign in (optional)" }).click();
+  await page.getByRole("button", { name: "Continue locally" }).click();
+  await page.getByRole("button", { name: "Review cart" }).click();
+
+  const cart = page.getByRole("dialog", { name: "Cart review" });
+  await expect(cart.getByLabel("Room revision 4")).toBeVisible();
+  await expect(cart.getByLabel("Cart revision 1")).toBeVisible();
+  await expect(
+    cart.getByRole("img", { name: "Linen Apartment Sofa preview" }),
+  ).toBeVisible();
+  const geometry = await cart.evaluate((element) => {
+    const item = element.querySelector(".cart-room-items li");
+    const preview = item?.querySelector('[role="img"]');
+    return {
+      clientWidth: element.clientWidth,
+      scrollWidth: element.scrollWidth,
+      itemHeight: item?.getBoundingClientRect().height ?? 0,
+      previewWidth: preview?.getBoundingClientRect().width ?? 0,
+    };
+  });
+  expect(geometry.scrollWidth).toBeLessThanOrEqual(geometry.clientWidth);
+  expect(geometry.itemHeight).toBeGreaterThanOrEqual(72);
+  expect(geometry.previewWidth).toBeGreaterThanOrEqual(64);
+  await page.screenshot({ path: testInfo.outputPath("cart-review.png") });
+});

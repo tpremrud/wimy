@@ -6,25 +6,45 @@ import type {
   CustomerCheckoutClient,
 } from "../commerce/customer-session-demo";
 import type { CheckoutReceipt, CheckoutReview, CheckoutSession } from "../commerce/checkout";
+import { formatMinorMoney } from "../commerce/money";
+import type { CatalogItem } from "../room/catalog";
 import type { RoomStoreState } from "../room/store";
+import { CatalogItemPreview } from "./CatalogItemPreview";
+
+const availabilityLabel = (
+  availability: "in_stock" | "out_of_stock" | "unknown",
+) => {
+  switch (availability) {
+    case "in_stock":
+      return "In stock";
+    case "out_of_stock":
+      return "Out of stock";
+    case "unknown":
+      return "Availability unknown";
+  }
+};
 
 type CartReviewPanelProps = Readonly<{
+  catalog?: readonly CatalogItem[];
   open: boolean;
   onClose: () => void;
   onOpen: () => void;
   openerRef: RefObject<HTMLButtonElement | null>;
   room: RoomStoreState["room"];
+  roomRevision: number;
   session: CustomerSessionView;
   client?: CustomerCartClient;
   checkout?: CustomerCheckoutClient;
 }>;
 
 export function CartReviewPanel({
+  catalog = [],
   open,
   onClose,
   onOpen,
   openerRef,
   room,
+  roomRevision,
   session,
   client,
   checkout,
@@ -145,61 +165,91 @@ export function CartReviewPanel({
       >
         {!session.authenticated ? (
           <>
-            <CartReviewHeading onClose={onClose} />
+            <CartReviewHeading onClose={onClose} roomRevision={roomRevision} />
             <RoomItemsInCart room={room} />
             <p>Sign in locally to review a customer-owned cart. Room editing and file sharing remain available anonymously.</p>
           </>
         ) : !client ? (
           <>
-            <CartReviewHeading onClose={onClose} />
+            <CartReviewHeading onClose={onClose} roomRevision={roomRevision} />
             <RoomItemsInCart room={room} />
             <p role="status">Cart review is not configured for this session client.</p>
           </>
         ) : !state || state.key !== sessionKey ? (
           <>
-            <CartReviewHeading onClose={onClose} />
+            <CartReviewHeading onClose={onClose} roomRevision={roomRevision} />
             <RoomItemsInCart room={room} />
             <p role="status">Loading cart…</p>
           </>
         ) : !state.result.ok ? (
           <>
-            <CartReviewHeading onClose={onClose} />
+            <CartReviewHeading onClose={onClose} roomRevision={roomRevision} />
             <RoomItemsInCart room={room} />
             <p role="alert">Cart review is unavailable: {state.result.error.message}.</p>
           </>
         ) : (
           <>
-            <div className="cart-review-heading">
-              <div>
-                <p className="drawer-kicker">Commerce review</p>
-                <h2 id="cart-review-heading">Cart review</h2>
-              </div>
-              <div className="cart-review-heading-actions">
-                <span aria-label={`Cart revision ${state.result.cart.revision}`}>Revision {state.result.cart.revision}</span>
-                <button type="button" aria-label="Close cart review" onClick={onClose} autoFocus>Close</button>
-              </div>
-            </div>
-            <RoomItemsInCart room={room} />
-            {state.receipt.operation !== "read" && state.receipt.target ? (
-              <p role="status" aria-label="Latest cart mutation">
-                Latest mutation: {state.receipt.origin} · {state.receipt.operation} · {state.receipt.status} · Revision {state.receipt.revision} · {state.receipt.target.displayName} · {state.receipt.target.retailer} · {state.receipt.target.offerId}
-              </p>
-            ) : null}
+            <CartReviewHeading
+              cartRevision={state.result.cart.revision}
+              onClose={onClose}
+              roomRevision={roomRevision}
+            />
             {state.result.cart.lines.length === 0 ? (
-              <p>No retailer cart lines yet.</p>
+              <>
+                <RoomItemsInCart room={room} />
+                <p>No retailer cart lines yet.</p>
+              </>
             ) : (
               <>
-                <ul className="cart-review-lines">
-                  {state.result.cart.lines.map((line) => (
-                    <li key={line.lineId}>
-                      <span>{line.offer.displayName}</span>
-                      <span>{line.quantity} × {line.offer.price.amountMinor} {line.offer.price.currency} = {line.lineTotalMinor} {line.offer.price.currency}</span>
-                    </li>
-                  ))}
-                </ul>
-                <p className="cart-review-total"><strong>Total</strong> {state.result.cart.totals.totalMinor} {state.result.cart.totals.currency}</p>
+                <section className="retailer-cart" aria-label="Retailer cart lines">
+                  <div className="cart-room-items-heading">
+                    <h3>Retailer cart</h3>
+                    <span>{state.result.cart.lines.length} line{state.result.cart.lines.length === 1 ? "" : "s"}</span>
+                  </div>
+                  <ul className="cart-review-lines">
+                    {state.result.cart.lines.map((line) => {
+                      const catalogItem = catalog.find(
+                        ({ catalogRef }) =>
+                          catalogRef.catalogId === line.offer.catalogRef.catalogId &&
+                          catalogRef.productId === line.offer.catalogRef.productId,
+                      );
+                      const previewSnapshot = catalogItem?.snapshot ?? {
+                        name: line.offer.displayName,
+                        category: "generic" as const,
+                        appearance: { color: "#78928A" },
+                      };
+                      return (
+                        <li key={line.lineId}>
+                          <CatalogItemPreview snapshot={previewSnapshot} />
+                          <div className="cart-line-copy">
+                            <strong>{line.offer.displayName}</strong>
+                            <span>{line.offer.provenance.sourceName}</span>
+                            <span>{availabilityLabel(line.offer.availability)}</span>
+                            {catalogItem ? null : <span>Catalog preview unavailable</span>}
+                          </div>
+                          <div className="cart-line-price">
+                            <span>{line.quantity} × {formatMinorMoney(line.offer.price.amountMinor, line.offer.price.currency)}</span>
+                            <strong className="cart-line-subtotal">
+                              {formatMinorMoney(line.lineTotalMinor, line.offer.price.currency)}
+                            </strong>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                  <p className="cart-review-total">
+                    <strong>Total</strong>
+                    <span>{formatMinorMoney(state.result.cart.totals.totalMinor, state.result.cart.totals.currency)}</span>
+                  </p>
+                </section>
+                <RoomItemsInCart room={room} />
               </>
             )}
+            {state.receipt.operation !== "read" && state.receipt.target ? (
+              <p role="status" aria-label="Latest cart mutation">
+                Latest mutation: {state.receipt.origin} · {state.receipt.operation} · {state.receipt.status} · Cart rev {state.receipt.revision} · {state.receipt.target.displayName} · {state.receipt.target.retailer} · {state.receipt.target.offerId}
+              </p>
+            ) : null}
             {checkout && state.result.cart.lines.length > 0 ? (
               <SandboxCheckoutReview
                 busy={checkoutBusy}
@@ -240,12 +290,18 @@ function RoomItemsInCart({ room }: Readonly<{ room: RoomStoreState["room"] }>) {
         <ul>
           {room.items.map((item) => (
             <li key={item.id}>
-              <strong>{item.snapshot.name}</strong>
-              <span>
-                {item.catalogRef
-                  ? "Catalog identity available; exact retailer offer still required."
-                  : "Planning item only; canonical catalog identity is unavailable."}
-              </span>
+              <CatalogItemPreview snapshot={item.snapshot} />
+              <div className="cart-room-item-copy">
+                <strong>{item.snapshot.name}</strong>
+                <span>
+                  {item.snapshot.category} · {item.snapshot.dimensions.width} × {item.snapshot.dimensions.depth} m
+                </span>
+                <span className="cart-item-state">
+                  {item.catalogRef
+                    ? "Placed item · offer lookup ready"
+                    : "Placed item · no catalog reference"}
+                </span>
+              </div>
             </li>
           ))}
         </ul>
@@ -339,17 +395,31 @@ function SandboxCheckoutReview({
 
 function CheckoutReceiptView({ receipt }: Readonly<{ receipt?: CheckoutReceipt }>) {
   if (!receipt) return null;
-  return <p aria-label="Latest checkout receipt">Latest checkout receipt: {receipt.operation} · {receipt.status} · Revision {receipt.cartRevision} · {receipt.lineCount} lines · {receipt.totalMinor} {receipt.currency}</p>;
+  return <p aria-label="Latest checkout receipt">Latest checkout receipt: {receipt.operation} · {receipt.status} · Cart rev {receipt.cartRevision} · {receipt.lineCount} lines · {receipt.totalMinor} {receipt.currency}</p>;
 }
 
-function CartReviewHeading({ onClose }: Readonly<{ onClose: () => void }>) {
+function CartReviewHeading({
+  cartRevision,
+  onClose,
+  roomRevision,
+}: Readonly<{
+  cartRevision?: number;
+  onClose: () => void;
+  roomRevision: number;
+}>) {
   return (
     <div className="cart-review-heading">
       <div>
         <p className="drawer-kicker">Commerce review</p>
         <h2 id="cart-review-heading">Cart review</h2>
       </div>
-      <button type="button" aria-label="Close cart review" onClick={onClose} autoFocus>Close</button>
+      <div className="cart-review-heading-actions">
+        <span aria-label={`Room revision ${roomRevision}`}>Room rev {roomRevision}</span>
+        {cartRevision === undefined ? null : (
+          <span aria-label={`Cart revision ${cartRevision}`}>Cart rev {cartRevision}</span>
+        )}
+        <button type="button" aria-label="Close cart review" onClick={onClose} autoFocus>Close</button>
+      </div>
     </div>
   );
 }

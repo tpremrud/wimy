@@ -3505,3 +3505,157 @@ body {
   font-size: 0.75rem;
   font-weight: 800;
 }
+
+/* Cart review reads as a compact shop list while keeping room and cart state distinct. */
+.cart-review-panel {
+  width: min(38rem, calc(100vw - 2.5rem));
+  gap: 0.8rem;
+}
+
+.cart-review-heading {
+  align-items: center;
+}
+
+.cart-review-heading-actions {
+  flex-wrap: wrap;
+  justify-content: end;
+  gap: 0.4rem;
+}
+
+.cart-review-heading-actions > span {
+  border-radius: 999px;
+  padding: 0.25rem 0.5rem;
+  color: var(--accent-strong);
+  background: var(--canvas);
+  font-size: 0.7rem;
+  font-weight: 750;
+}
+
+.cart-room-items {
+  gap: 0.6rem;
+}
+
+.cart-room-items > p {
+  margin: 0;
+}
+
+.cart-room-items ul {
+  max-height: 14rem;
+  gap: 0;
+}
+
+.cart-room-items li {
+  display: grid;
+  grid-template-columns: 4.5rem minmax(0, 1fr);
+  align-items: center;
+  min-height: 5.2rem;
+  border-top: 1px solid var(--line);
+  padding-block: 0.5rem;
+  gap: 0.65rem;
+}
+
+.cart-review-panel .catalog-item-preview {
+  width: 4.5rem;
+  height: 3.65rem;
+}
+
+.cart-room-item-copy,
+.cart-line-copy,
+.cart-line-price {
+  display: grid;
+  min-width: 0;
+  gap: 0.15rem;
+}
+
+.cart-room-item-copy strong,
+.cart-line-copy strong {
+  overflow-wrap: anywhere;
+  color: var(--ink);
+  font-size: 0.82rem;
+}
+
+.cart-room-item-copy span,
+.cart-line-copy span,
+.cart-line-price span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+
+.cart-room-item-copy .cart-item-state {
+  width: max-content;
+  border-radius: 999px;
+  padding: 0.18rem 0.4rem;
+  color: var(--accent-strong);
+  background: var(--canvas);
+  font-size: 0.65rem;
+  font-weight: 800;
+}
+
+.retailer-cart {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.retailer-cart h3 {
+  font-size: 0.9rem;
+}
+
+.retailer-cart .cart-room-items-heading > span {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.cart-review-lines li {
+  display: grid;
+  grid-template-columns: 4.5rem minmax(0, 1fr) auto;
+  align-items: center;
+  min-height: 5.5rem;
+  padding-block: 0.55rem;
+  gap: 0.65rem;
+}
+
+.cart-line-price {
+  justify-items: end;
+  text-align: right;
+}
+
+.cart-line-subtotal {
+  color: var(--ink);
+  font-size: 0.85rem;
+}
+
+.cart-review-total {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  border-top: 1px solid var(--line);
+  padding-top: 0.7rem;
+  color: var(--ink);
+}
+
+.cart-review-total span {
+  font-size: 1.05rem;
+  font-weight: 850;
+}
+
+@media (max-width: 42rem) {
+  .cart-review-panel {
+    width: calc(100vw - 1.5rem);
+  }
+
+  .cart-review-heading {
+    align-items: start;
+  }
+
+  .cart-review-lines li {
+    grid-template-columns: 4.5rem minmax(0, 1fr);
+  }
+
+  .cart-line-price {
+    grid-column: 1 / -1;
+    grid-template-columns: 1fr auto;
+    justify-items: initial;
+    text-align: left;
+  }
+}
