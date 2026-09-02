@@ -240,6 +240,49 @@ describe("projectRoomToPlan", () => {
 });
 
 describe("projectRoomToScene", () => {
+  it("cuts a modeled window aperture out of the corresponding solid wall", () => {
+    const scene = projectRoomToScene(
+      makeRoom({
+        dimensions: { width: 4, depth: 3, height: 2.7 },
+        openings: [
+          makeOpening({
+            id: "window_north",
+            kind: "window",
+            wall: "north",
+            centerOffset: 2,
+            width: 1.4,
+            bottom: 1,
+            height: 1.2,
+          }),
+        ],
+      }),
+    );
+    const northWalls = scene.walls.filter(({ wall }) => wall === "north");
+    const aperture = { left: 1.3, right: 2.7, bottom: 1, top: 2.2 };
+
+    expect(northWalls.length).toBeGreaterThan(1);
+    expect(
+      northWalls.every(({ position, size }) => {
+        const left = position[0] - size[0] / 2;
+        const right = position[0] + size[0] / 2;
+        const bottom = position[1] - size[1] / 2;
+        const top = position[1] + size[1] / 2;
+        return (
+          right <= aperture.left ||
+          left >= aperture.right ||
+          top <= aperture.bottom ||
+          bottom >= aperture.top
+        );
+      }),
+    ).toBe(true);
+    expect(scene.openings[0]).toMatchObject({
+      id: "window_north",
+      kind: "window",
+      position: [2, 1.6, 0.055],
+      size: [1.4, 1.2, 0.02],
+    });
+  });
+
   it("carries a catalog product ID only as presentation metadata", () => {
     const scene = projectRoomToScene(
       makeRoom({
@@ -378,12 +421,12 @@ describe("projectRoomToScene", () => {
     );
 
     expect(scene.floor).toEqual({ position: [3, 0, 2.5], size: [6, 5] });
-    expect(scene.walls).toEqual([
+    expect(scene.walls.filter(({ wall }) => wall !== "east")).toEqual([
       { wall: "north", position: [3, 1.5, 0], size: [6, 3, 0.08] },
-      { wall: "east", position: [6, 1.5, 2.5], size: [0.08, 3, 5] },
       { wall: "south", position: [3, 1.5, 5], size: [6, 3, 0.08] },
       { wall: "west", position: [0, 1.5, 2.5], size: [0.08, 3, 5] },
     ]);
+    expect(scene.walls.filter(({ wall }) => wall === "east")).toHaveLength(8);
     expect(scene.openings).toEqual([
       {
         id: "window_east",

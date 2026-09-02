@@ -47,6 +47,7 @@ const createTrackingStore = () => {
     subscribe: source.subscribe,
     readCatalog: source.readCatalog,
     resolveProduct: source.resolveProduct,
+    importCatalogPackages: source.importCatalogPackages,
   };
 
   return { store, transact };
@@ -149,7 +150,7 @@ class FakeModelContext extends EventTarget implements WebMCP.ModelContext {
 }
 
 describe("createRoomToolDefinitions", () => {
-  it("publishes the exact three-tool identity contract", () => {
+  it("publishes the room and retailer evidence tool identity contract", () => {
     const definitions = createRoomToolDefinitions(
       createRoomStore(
         getTemplate("living-room"),
@@ -181,6 +182,24 @@ describe("createRoomToolDefinitions", () => {
         title: "Apply room edit",
         description:
           "Atomically add, transform, or remove placed items at an exact room revision.",
+      },
+      {
+        name: "inspect_retailer_offers",
+        title: "Inspect retailer offer evidence",
+        description:
+          "Read synthetic retailer offer evidence for one project-authored catalog variant by canonical UUID; this never changes the room.",
+      },
+      {
+        name: "inspect_room_shopping_plan",
+        title: "Inspect room shopping plan",
+        description:
+          "Read a bounded retailer-grouped comparison of current exact synthetic offers for the placed room variants; this never changes the room.",
+      },
+      {
+        name: "find_substitutes",
+        title: "Find furniture substitutes",
+        description:
+          "Rank deterministic same-category catalog substitutes for one placed item without changing the room; every actionable suggestion includes fit, identity differences, rationale, tradeoffs, and provenance, and replacement requires explicit human confirmation.",
       },
     ]);
   });
@@ -839,6 +858,186 @@ describe("createRoomToolDefinitions", () => {
     );
   });
 
+  it("exposes volatile offer evidence through a read-only canonical-identity tool", async () => {
+    const store = createRoomStore(
+      getTemplate("living-room"),
+      CATALOG_TRANSACTION_DEPENDENCIES,
+    );
+    const catalogPackage = {
+      format: "wimy-catalog" as const,
+      schemaVersion: 1 as const,
+      publisher: {
+        publisherId: "00000000-0000-4000-8000-000000000401",
+        name: "Wimy Project Studio",
+      },
+      catalog: {
+        catalogId: "00000000-0000-4000-8000-000000000402",
+        name: "Project Authored Tool Fixture",
+        version: "2026.09.02",
+        license: { name: "Wimy Project Authored License", spdxId: "MIT" },
+        provenance: {
+          sourceName: "Wimy Project Studio",
+          sourceUrl: "https://wimy.example.invalid/catalog",
+          observedAt: "2026-09-02T01:00:00-04:00",
+        },
+      },
+      items: [
+        {
+          itemId: "00000000-0000-4000-8000-000000000403",
+          name: "Aurora Tool Chair",
+          variants: [
+            {
+              variantId: "00000000-0000-4000-8000-000000000404",
+              snapshot: {
+                name: "Aurora Tool Chair",
+                category: "chair" as const,
+                dimensions: { width: 0.55, depth: 0.55, height: 0.8 },
+                appearance: { color: "#76543A" },
+                styleTags: ["project-authored"],
+              },
+              externalIdentifiers: [],
+              classifications: [],
+            },
+          ],
+        },
+      ],
+    };
+    expect(store.importCatalogPackages([catalogPackage])).toMatchObject({
+      ok: true,
+      addedItems: 1,
+    });
+    const tool = createRoomToolDefinitions(store).find(
+      ({ name }) => name === "inspect_retailer_offers",
+    );
+    if (!tool) throw new Error("inspect_retailer_offers was not defined");
+
+    expect(tool.annotations).toEqual({
+      readOnlyHint: true,
+      untrustedContentHint: true,
+    });
+    const before = store.getState();
+    const output = await tool.execute(
+      {
+        catalogId: "00000000-0000-4000-8000-000000000402",
+        productId: "00000000-0000-4000-8000-000000000404",
+      },
+      { signal: new AbortController().signal },
+    );
+
+    expect(output).toMatchObject({
+      catalogId: "00000000-0000-4000-8000-000000000402",
+      productId: "00000000-0000-4000-8000-000000000404",
+      status: "ok",
+      offers: expect.arrayContaining([
+        expect.objectContaining({
+          retailer: "Northstar Furnishings",
+          state: "exact",
+          observedAt: "2026-09-02T12:00:00.000Z",
+        }),
+        expect.objectContaining({ state: "ambiguous" }),
+        expect.objectContaining({ state: "substitute" }),
+      ]),
+    });
+    expect(JSON.stringify(output)).not.toMatch(/purchase|checkout|cart/iu);
+    expect(store.getState().room).toBe(before.room);
+    expect(store.getState().revision).toBe(before.revision);
+    expect(store.getState().receipts).toBe(before.receipts);
+  });
+
+  it("exposes a bounded retailer-grouped room shopping plan without a room mutation", async () => {
+    const store = createRoomStore(
+      getTemplate("blank-room"),
+      CATALOG_TRANSACTION_DEPENDENCIES,
+    );
+    const catalogPackage = {
+      format: "wimy-catalog" as const,
+      schemaVersion: 1 as const,
+      publisher: {
+        publisherId: "00000000-0000-4000-8000-000000000501",
+        name: "Wimy Project Studio",
+      },
+      catalog: {
+        catalogId: "00000000-0000-4000-8000-000000000502",
+        name: "Project Authored Shopping Fixture",
+        version: "2026.09.02",
+        license: { name: "Wimy Project Authored License", spdxId: "MIT" },
+        provenance: {
+          sourceName: "Wimy Project Studio",
+          sourceUrl: "https://wimy.example.invalid/catalog",
+          observedAt: "2026-09-02T01:00:00-04:00",
+        },
+      },
+      items: [
+        {
+          itemId: "00000000-0000-4000-8000-000000000503",
+          name: "Aurora Shopping Chair",
+          variants: [
+            {
+              variantId: "00000000-0000-4000-8000-000000000504",
+              snapshot: {
+                name: "Aurora Shopping Chair",
+                category: "chair" as const,
+                dimensions: { width: 0.55, depth: 0.55, height: 0.8 },
+                appearance: { color: "#76543A" },
+                styleTags: ["project-authored"],
+              },
+              externalIdentifiers: [],
+              classifications: [],
+            },
+          ],
+        },
+      ],
+    };
+    expect(store.importCatalogPackages([catalogPackage])).toMatchObject({ ok: true });
+    const current = store.getState();
+    current.transact({
+      expectedRevision: current.revision,
+      origin: "human",
+      change: {
+        type: "edit",
+        operations: [
+          {
+            type: "add",
+            productId: "00000000-0000-4000-8000-000000000504",
+            pose: { x: 1, y: 1, rotationDeg: 0 },
+          },
+        ],
+      },
+    });
+    const before = store.getState();
+    const tool = createRoomToolDefinitions(store).find(
+      ({ name }) => name === "inspect_room_shopping_plan",
+    );
+    if (!tool) throw new Error("inspect_room_shopping_plan was not defined");
+
+    expect(tool.annotations).toEqual({
+      readOnlyHint: true,
+      untrustedContentHint: true,
+    });
+    const output = await tool.execute({}, { signal: new AbortController().signal });
+
+    expect(output).toMatchObject({
+      revision: before.revision,
+      status: "ready",
+      requirements: [
+        expect.objectContaining({ name: "Aurora Shopping Chair", quantity: 1 }),
+      ],
+      retailers: expect.arrayContaining([
+        expect.objectContaining({
+          retailer: "Northstar Furnishings",
+          offers: expect.arrayContaining([
+            expect.objectContaining({ isCheapest: true, productUrl: expect.stringContaining("example.invalid") }),
+          ]),
+        }),
+      ]),
+      costDisclosure: expect.stringContaining("delivery"),
+    });
+    expect(JSON.stringify(output)).not.toMatch(/purchase|checkout|cart/iu);
+    expect(store.getState().room).toBe(before.room);
+    expect(store.getState().revision).toBe(before.revision);
+    expect(store.getState().receipts).toBe(before.receipts);
+  });
+
   it.each([
     ["null", null],
     ["an array", []],
@@ -1080,6 +1279,7 @@ describe("createRoomToolDefinitions", () => {
       subscribe: source.subscribe,
       readCatalog: source.readCatalog,
       resolveProduct: source.resolveProduct,
+      importCatalogPackages: source.importCatalogPackages,
     };
 
     const output = await execute("apply_room_edit", store, {
@@ -1721,6 +1921,7 @@ describe("createRoomToolDefinitions", () => {
       subscribe: source.subscribe,
       readCatalog: source.readCatalog,
       resolveProduct: source.resolveProduct,
+      importCatalogPackages: source.importCatalogPackages,
     };
 
     await expect(
@@ -1819,6 +2020,7 @@ describe("createRoomToolDefinitions", () => {
       subscribe: source.subscribe,
       readCatalog: source.readCatalog,
       resolveProduct: source.resolveProduct,
+      importCatalogPackages: source.importCatalogPackages,
     };
     const apply = createRoomToolDefinitions(store).find(
       ({ name }) => name === "apply_room_edit",
@@ -1936,6 +2138,9 @@ describe("registerRoomTools", () => {
       "inspect_room",
       "find_furniture",
       "apply_room_edit",
+      "inspect_retailer_offers",
+      "inspect_room_shopping_plan",
+      "find_substitutes",
     ]);
     expect(settled).toBe(false);
 
@@ -1950,7 +2155,7 @@ describe("registerRoomTools", () => {
     third.resolve();
     await expect(registration).resolves.toEqual({
       available: true,
-      registered: ["inspect_room", "find_furniture", "apply_room_edit"],
+      registered: ["inspect_room", "find_furniture", "apply_room_edit", "inspect_retailer_offers", "inspect_room_shopping_plan", "find_substitutes"],
       errors: [],
     });
   });
@@ -1972,7 +2177,7 @@ describe("registerRoomTools", () => {
     const registration = registerRoomTools(modelContext, store, controller);
 
     await Promise.resolve();
-    expect(modelContext.definitions).toHaveLength(3);
+    expect(modelContext.definitions).toHaveLength(6);
 
     controller.abort();
     first.resolve();
@@ -2030,7 +2235,7 @@ describe("registerRoomTools", () => {
       fulfilled: true,
       value: {
         available: true,
-        registered: ["find_furniture", "apply_room_edit"],
+        registered: ["find_furniture", "apply_room_edit", "inspect_retailer_offers", "inspect_room_shopping_plan", "find_substitutes"],
         errors: ["inspect_room: client denied by policy"],
       },
     });
@@ -2051,13 +2256,16 @@ describe("registerRoomTools", () => {
       registerRoomTools(modelContext, store, new AbortController()),
     ).resolves.toEqual({
       available: true,
-      registered: ["inspect_room", "find_furniture"],
+      registered: ["inspect_room", "find_furniture", "inspect_retailer_offers", "inspect_room_shopping_plan", "find_substitutes"],
       errors: ["apply_room_edit: mutating tool denied"],
     });
     expect(modelContext.definitions.map(({ name }) => name)).toEqual([
       "inspect_room",
       "find_furniture",
       "apply_room_edit",
+      "inspect_retailer_offers",
+      "inspect_room_shopping_plan",
+      "find_substitutes",
     ]);
   });
 
@@ -2098,6 +2306,9 @@ describe("registerRoomTools", () => {
       "inspect_room",
       "find_furniture",
       "apply_room_edit",
+      "inspect_retailer_offers",
+      "inspect_room_shopping_plan",
+      "find_substitutes",
     ]);
     expect(settled).toBe(false);
 
@@ -2110,7 +2321,7 @@ describe("registerRoomTools", () => {
       fulfilled: true,
       value: {
         available: true,
-        registered: ["find_furniture", "apply_room_edit"],
+        registered: ["find_furniture", "apply_room_edit", "inspect_retailer_offers", "inspect_room_shopping_plan", "find_substitutes"],
         errors: ["inspect_room: synchronous client refusal"],
       },
     });
@@ -2137,9 +2348,16 @@ describe("registerRoomTools", () => {
     await registerRoomTools(modelContext, store, controller);
 
     expect(activeTools).toEqual(
-      new Set(["inspect_room", "find_furniture", "apply_room_edit"]),
+      new Set([
+        "inspect_room",
+        "find_furniture",
+        "apply_room_edit",
+      ]),
     );
     expect(modelContext.options.map((options) => options?.signal)).toEqual([
+      controller.signal,
+      controller.signal,
+      controller.signal,
       controller.signal,
       controller.signal,
       controller.signal,
@@ -2169,6 +2387,7 @@ describe("registerRoomTools", () => {
       subscribe: source.subscribe,
       readCatalog: source.readCatalog,
       resolveProduct: source.resolveProduct,
+      importCatalogPackages: source.importCatalogPackages,
     };
     const modelContext = new FakeModelContext([]);
     await registerRoomTools(modelContext, store, controller);

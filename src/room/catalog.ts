@@ -13,15 +13,9 @@ import {
 } from "./placement";
 import type { ResolvedProduct } from "./transaction";
 import { DEMO_CATALOG } from "./catalog-data";
+import type { CatalogLicense, CatalogProvenance } from "../catalog/package";
 
-type CatalogSnapshot = FurnitureSnapshot & {
-  commerce: {
-    price: {
-      amount: number;
-      currency: "USD";
-    };
-  };
-};
+type CatalogSnapshot = FurnitureSnapshot;
 
 export type CatalogItem = {
   catalogRef: {
@@ -29,6 +23,18 @@ export type CatalogItem = {
     productId: string;
   };
   snapshot: CatalogSnapshot;
+  metadata?: CatalogItemMetadata;
+};
+
+export type CatalogItemMetadata = {
+  origin: "fictional" | "project-authored";
+  publisherId: string;
+  catalogId: string;
+  catalogVersion: string;
+  itemId: string;
+  variantId: string;
+  provenance: CatalogProvenance;
+  license: CatalogLicense;
 };
 
 export type CatalogQuery = {
@@ -72,7 +78,8 @@ const matchingCatalogItems = (
         snapshot.styleTags.includes(styleTag),
       ) &&
       (query.maxPrice === undefined ||
-        snapshot.commerce.price.amount <= query.maxPrice) &&
+        (snapshot.commerce?.price.amount ?? Number.POSITIVE_INFINITY) <=
+          query.maxPrice) &&
       (query.maxWidth === undefined ||
         snapshot.dimensions.width <= query.maxWidth) &&
       (query.maxDepth === undefined ||

@@ -1,5 +1,6 @@
 import type {
   EntityId,
+  CatalogRef,
   FurnitureSnapshot,
   PlacedItem,
   Pose,
@@ -29,7 +30,14 @@ export type TransactionOrigin =
 export type RoomOperation =
   | { type: "add"; productId: string; pose: Pose }
   | { type: "transform"; itemId: EntityId; pose: Partial<Pose> }
-  | { type: "remove"; itemId: EntityId };
+  | { type: "remove"; itemId: EntityId }
+  | {
+      type: "replace";
+      itemId: EntityId;
+      productId: string;
+      sourceCatalogRef: CatalogRef;
+      confirmedByHuman: true;
+    };
 
 export type RoomChange =
   | { type: "edit"; operations: RoomOperation[] }
@@ -200,6 +208,36 @@ export function applyRoomTransaction(
     );
   }
 
+  if (request.origin === "webmcp" && request.change.type === "edit") {
+    const removedItems = request.change.operations
+      .filter((operation) => operation.type === "remove")
+      .map((operation) =>
+        state.room.items.find(({ id }) => id === operation.itemId),
+      )
+      .filter((item): item is PlacedItem => item !== undefined);
+    const addedProducts = request.change.operations
+      .filter((operation) => operation.type === "add")
+      .map((operation) => dependencies.resolveProduct(operation.productId))
+      .filter((product): product is ResolvedProduct => product !== undefined);
+    if (
+      removedItems.some((removedItem) =>
+        addedProducts.some(
+          (addedProduct) =>
+            removedItem.catalogRef &&
+            removedItem.snapshot.category === addedProduct.snapshot.category,
+        ),
+      )
+    ) {
+      return rejectTransaction(
+        state,
+        request,
+        dependencies,
+        "INVALID_DOCUMENT",
+        "Substitute replacement requires explicit human confirmation",
+      );
+    }
+  }
+
   if (request.change.type === "replace") {
     const parsedRoom = WimyRoomV1Schema.safeParse(request.change.room);
     if (!parsedRoom.success) {
@@ -248,6 +286,7 @@ export function applyRoomTransaction(
   const nextRoom = structuredClone(state.room);
   const affectedItemIds: EntityId[] = [];
   let singleAddedProductName: string | undefined;
+  let singleReplacedProductSummary: string | undefined;
 
   for (const operation of request.change.operations) {
     if (operation.type === "add") {
@@ -313,6 +352,71 @@ export function applyRoomTransaction(
       );
     }
 
+    if (operation.type === "replace") {
+      if (request.origin !== "human" || operation.confirmedByHuman !== true) {
+        return rejectTransaction(
+          state,
+          request,
+          dependencies,
+          "INVALID_DOCUMENT",
+          "Substitute replacement requires explicit human confirmation",
+        );
+      }
+
+      const item = nextRoom.items[itemIndex];
+      if (!item) {
+        throw new Error(`Unknown placed item ${operation.itemId}`);
+      }
+      if (
+        !item.catalogRef ||
+        item.catalogRef.catalogId !== operation.sourceCatalogRef.catalogId ||
+        item.catalogRef.productId !== operation.sourceCatalogRef.productId
+      ) {
+        return rejectTransaction(
+          state,
+          request,
+          dependencies,
+          "INVALID_DOCUMENT",
+          "Substitute confirmation does not match the placed catalog identity",
+        );
+      }
+
+      const resolved = dependencies.resolveProduct(operation.productId);
+      if (!resolved) {
+        return rejectTransaction(
+          state,
+          request,
+          dependencies,
+          "UNKNOWN_PRODUCT",
+          `Unknown catalog product ${operation.productId}`,
+        );
+      }
+
+      const replacement: PlacedItem = {
+        id: item.id,
+        catalogRef: structuredClone(resolved.catalogRef),
+        snapshot: structuredClone(resolved.snapshot),
+        pose: structuredClone(item.pose),
+      };
+      const placement = validatePlacement(nextRoom, replacement, replacement.pose);
+      if (!placement.ok) {
+        return rejectTransaction(
+          state,
+          request,
+          dependencies,
+          placement.code,
+          placement.message,
+        );
+      }
+      nextRoom.items[itemIndex] = replacement;
+      affectedItemIds.push(operation.itemId);
+      if (request.change.operations.length === 1) {
+        singleReplacedProductSummary =
+          `Replaced ${item.snapshot.name} with ${resolved.snapshot.name} after human confirmation`;
+      }
+      continue;
+    }
+
     if (operation.type === "remove") {
       nextRoom.items.splice(itemIndex, 1);
     } else {
@@ -355,9 +459,10 @@ export function applyRoomTransaction(
     revision,
     changeType: request.change.type,
     summary:
-      singleAddedProductName === undefined
+      singleReplacedProductSummary ??
+      (singleAddedProductName === undefined
         ? `Applied ${request.change.operations.length} room operations`
-        : `Added ${singleAddedProductName}`,
+        : `Added ${singleAddedProductName}`),
     affectedItemIds,
     removedItemIds: request.change.operations.flatMap((operation) =>
       operation.type === "remove" ? [operation.itemId] : [],

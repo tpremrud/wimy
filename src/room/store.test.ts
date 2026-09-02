@@ -1,4 +1,7 @@
 import { describe, expect, it } from "vitest";
+import type { WimyCatalogV1 } from "../catalog/package";
+import { DEMO_CATALOG } from "./catalog-data";
+import { resolveCatalogProduct } from "./catalog";
 import { makePlacedItem, makeRoom } from "../test/room-fixtures";
 import { getTemplate } from "./templates";
 import { createRoomStore, roomStore, type RoomStore } from "./store";
@@ -7,7 +10,130 @@ import {
   type RoomTransactionResult,
 } from "./transaction";
 
+const uuid = (value: number) =>
+  `00000000-0000-4000-8000-${String(value).padStart(12, "0")}`;
+
+const makeProjectPackage = (): WimyCatalogV1 => ({
+  format: "wimy-catalog",
+  schemaVersion: 1,
+  publisher: {
+    publisherId: uuid(101),
+    name: "Wimy Project Studio",
+  },
+  catalog: {
+    catalogId: uuid(102),
+    name: "Project Authored Store Fixture",
+    version: "2026.09.02",
+    license: { name: "Wimy Project Authored License", spdxId: "MIT" },
+    provenance: {
+      sourceName: "Wimy Project Studio",
+      observedAt: "2026-09-02T01:00:00-04:00",
+    },
+  },
+  items: [
+    {
+      itemId: uuid(103),
+      name: "Aurora Compact Chair",
+      variants: [
+        {
+          variantId: uuid(104),
+          snapshot: {
+            name: "Aurora Compact Chair",
+            category: "chair",
+            dimensions: { width: 0.55, depth: 0.55, height: 0.8 },
+            appearance: { color: "#76543A" },
+            styleTags: ["project-authored"],
+          },
+          externalIdentifiers: [],
+          classifications: [],
+        },
+      ],
+    },
+  ],
+});
+
 describe("createRoomStore", () => {
+  it("imports a validated package through the session registry", () => {
+    const store = createRoomStore(
+      getTemplate("blank-room"),
+      TEST_TRANSACTION_DEPENDENCIES,
+    );
+    const before = store.getState();
+    const catalogPackage = makeProjectPackage();
+
+    const result = store.importCatalogPackages([catalogPackage]);
+
+    expect(result).toMatchObject({
+      ok: true,
+      addedPackages: 1,
+      addedItems: 1,
+    });
+    expect(store.getState()).toMatchObject({
+      catalogRevision: 2,
+      revision: 1,
+      room: before.room,
+      receipts: before.receipts,
+    });
+    expect(store.readCatalog()).toContainEqual(
+      expect.objectContaining({
+        catalogRef: {
+          catalogId: catalogPackage.catalog.catalogId,
+          productId: catalogPackage.items[0]!.variants[0]!.variantId,
+        },
+        metadata: expect.objectContaining({
+          publisherId: catalogPackage.publisher.publisherId,
+          itemId: catalogPackage.items[0]!.itemId,
+          variantId: catalogPackage.items[0]!.variants[0]!.variantId,
+        }),
+      }),
+    );
+
+    const addResult = store.getState().transact({
+      expectedRevision: 1,
+      origin: "human",
+      change: {
+        type: "edit",
+        operations: [
+          {
+            type: "add",
+            productId: catalogPackage.items[0]!.variants[0]!.variantId,
+            pose: { x: 0.5, y: 0.5, rotationDeg: 0 },
+          },
+        ],
+      },
+    });
+    expect(addResult).toMatchObject({ ok: true, revision: 2 });
+    expect(store.getState().room.items).toContainEqual(
+      expect.objectContaining({
+        catalogRef: {
+          catalogId: catalogPackage.catalog.catalogId,
+          productId: catalogPackage.items[0]!.variants[0]!.variantId,
+        },
+        snapshot: expect.objectContaining({ name: "Aurora Compact Chair" }),
+      }),
+    );
+  });
+
+  it("keeps room and catalog state unchanged when a package import is rejected", () => {
+    const store = createRoomStore(
+      getTemplate("blank-room"),
+      { ...TEST_TRANSACTION_DEPENDENCIES, resolveProduct: resolveCatalogProduct },
+    );
+    const before = store.getState();
+
+    const result = store.importCatalogPackages([
+      { ...makeProjectPackage(), format: "not-wimy" },
+    ]);
+
+    expect(result).toMatchObject({ ok: false, code: "INVALID_PACKAGE" });
+    expect(store.getState()).toMatchObject({
+      catalogRevision: 1,
+      revision: 1,
+      room: before.room,
+      receipts: before.receipts,
+    });
+    expect(store.readCatalog()).toHaveLength(DEMO_CATALOG.length);
+  });
   it("offers transact as the only room writer from revision one", () => {
     const initialRoom = getTemplate("living-room");
     const store = createRoomStore(

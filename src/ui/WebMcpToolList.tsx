@@ -129,7 +129,11 @@ export function WebMcpToolList({
                     {registered ? "Registered" : "Unavailable"}
                   </span>
                   {writes ? (
-                    <span className="webmcp-tool-write">Can change room</span>
+                    <span className="webmcp-tool-write">
+                      {definition.name.endsWith("_cart") || definition.name === "set_cart_quantity"
+                        ? "Can change cart"
+                        : "Can change room"}
+                    </span>
                   ) : null}
                 </li>
               );

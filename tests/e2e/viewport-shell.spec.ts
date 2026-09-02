@@ -101,6 +101,80 @@ test("keeps floating header surfaces inset and dismisses them outside", async ({
   }
 });
 
+test("keeps the cart review closed and out of the room layout until requested", async ({ page }) => {
+  const viewport = { width: 1280, height: 720 };
+  await page.setViewportSize(viewport);
+  await page.goto("/");
+
+  const header = page.locator(".app-header");
+  const workspace = page.locator(".workspace-grid");
+  const cartTrigger = page.getByRole("button", { name: "Review cart" });
+  const cartSurface = page.locator(".cart-review-panel");
+  const [headerBox, closedWorkspaceBox] = await Promise.all([
+    header.boundingBox(),
+    workspace.boundingBox(),
+  ]);
+  if (!headerBox || !closedWorkspaceBox) {
+    throw new Error("expected the header and room workspace");
+  }
+
+  await expect(cartTrigger).toBeVisible();
+  await expect(cartSurface).toBeHidden();
+  expect(closedWorkspaceBox.y).toBeGreaterThanOrEqual(headerBox.y + headerBox.height - 1);
+  expect(closedWorkspaceBox.y - (headerBox.y + headerBox.height)).toBeLessThanOrEqual(16);
+
+  await cartTrigger.click();
+  await expect(cartSurface).toBeVisible();
+  await expect(cartTrigger).toHaveAttribute("aria-expanded", "true");
+  const [openCartBox, openWorkspaceBox] = await Promise.all([
+    cartSurface.boundingBox(),
+    workspace.boundingBox(),
+  ]);
+  if (!openCartBox || !openWorkspaceBox) {
+    throw new Error("expected the open cart surface and room workspace");
+  }
+  expect(openWorkspaceBox.y).toBe(closedWorkspaceBox.y);
+  expect(viewport.width - (openCartBox.x + openCartBox.width)).toBeGreaterThanOrEqual(16);
+  expect(openCartBox.x).toBeGreaterThanOrEqual(0);
+  expect(openCartBox.y).toBeGreaterThanOrEqual(0);
+  expect(openCartBox.x + openCartBox.width).toBeLessThanOrEqual(viewport.width);
+  expect(openCartBox.y + openCartBox.height).toBeLessThanOrEqual(viewport.height);
+
+  await page.mouse.click(8, 8);
+  await expect(cartSurface).toBeHidden();
+  await expect(cartTrigger).toHaveAttribute("aria-expanded", "false");
+
+  await cartTrigger.click();
+  await page.keyboard.press("Escape");
+  await expect(cartSurface).toBeHidden();
+  await expect(cartTrigger).toHaveAttribute("aria-expanded", "false");
+});
+
+test("keeps the cart review popover inside a mobile viewport", async ({ page }) => {
+  const viewport = { width: 390, height: 844 };
+  await page.setViewportSize(viewport);
+  await page.goto("/");
+
+  const cartTrigger = page.getByRole("button", { name: "Review cart" });
+  const cartSurface = page.locator(".cart-review-panel");
+  await expect(cartTrigger).toBeVisible();
+  await expect.poll(() => page.evaluate(() => ({
+    clientWidth: document.documentElement.clientWidth,
+    scrollWidth: document.documentElement.scrollWidth,
+  }))).toEqual({ clientWidth: viewport.width, scrollWidth: viewport.width });
+
+  await cartTrigger.click();
+  await expect(cartSurface).toBeVisible();
+  const cartBox = await cartSurface.boundingBox();
+  if (!cartBox) throw new Error("expected the mobile cart surface");
+  expect(cartBox.x).toBeGreaterThanOrEqual(0);
+  expect(cartBox.y).toBeGreaterThanOrEqual(0);
+  expect(cartBox.x + cartBox.width).toBeLessThanOrEqual(viewport.width);
+  expect(cartBox.y + cartBox.height).toBeLessThanOrEqual(viewport.height);
+  await page.keyboard.press("Escape");
+  await expect(cartSurface).toBeHidden();
+});
+
 test("keeps selected-item controls on the canvas without opening Placed", async ({ page }) => {
   const viewport = { width: 1440, height: 900 };
   await page.setViewportSize(viewport);

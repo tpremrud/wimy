@@ -14,12 +14,20 @@ import {
 import { useStore } from "zustand";
 import { roomStore, type RoomStore } from "../room/store";
 import { CatalogPanel } from "../ui/CatalogPanel";
+import { createSyntheticRetailerOfferResolver } from "../commerce/synthetic-retailer-offers";
 import { RoomWarnings } from "../ui/FileAndTemplateControls";
 import { ReceiptPanel } from "../ui/ReceiptPanel";
 import { RoomEditor2D } from "../ui/RoomEditor2D";
 import { FavoritesPanel, PlacedPanel } from "../ui/RoomRailPanels";
 import { ShareRoomPanel } from "../ui/ShareRoomPanel";
 import { WebMcpToolList } from "../ui/WebMcpToolList";
+import { CustomerSessionPanel } from "../ui/CustomerSessionPanel";
+import { CartReviewPanel } from "../ui/CartReviewPanel";
+import {
+  createCustomerSessionDemo,
+  type CustomerSessionClient,
+} from "../commerce/customer-session-demo";
+import type { CustomerSessionView } from "../commerce/customer-session";
 import {
   createRoomToolDefinitions,
   registerRoomTools,
@@ -28,7 +36,7 @@ import {
 
 type ViewMode = "2d" | "3d";
 type RailTab = "add" | "placed" | "favorites";
-type ActiveSurface = "share" | "help" | "activity" | null;
+type ActiveSurface = "share" | "help" | "activity" | "cart" | null;
 
 type PreviewProps = {
   room: ReturnType<RoomStore["getState"]>["room"];
@@ -49,6 +57,7 @@ const RejectedRoomPreview3D = lazy(async () =>
 type AppProps = {
   previewLoadFailure?: boolean;
   store?: RoomStore;
+  customerSession?: CustomerSessionClient;
 };
 
 type PreviewLoadBoundaryProps = {
@@ -140,25 +149,45 @@ const registrationStatusText = (state: RegistrationViewState) => {
 export function App({
   previewLoadFailure = false,
   store = roomStore,
+  customerSession: providedCustomerSession,
 }: AppProps) {
   const { room, revision, receipts } = useStore(store);
   const [viewMode, setViewMode] = useState<ViewMode>("2d");
   const [railTab, setRailTab] = useState<RailTab>("add");
   const [railCollapsed, setRailCollapsed] = useState(false);
   const [activeSurface, setActiveSurface] = useState<ActiveSurface>(null);
+  const [customerSessionView, setCustomerSessionView] = useState<CustomerSessionView>({ authenticated: false });
+  const customerSessionKey = customerSessionView.authenticated
+    ? `${customerSessionView.customerId}:${customerSessionView.scopes.join(",")}`
+    : "anonymous";
   const previousReceiptRef = useRef(receipts[0]);
   const shareButtonRef = useRef<HTMLButtonElement>(null);
   const helpButtonRef = useRef<HTMLButtonElement>(null);
   const activityButtonRef = useRef<HTMLButtonElement>(null);
+  const cartButtonRef = useRef<HTMLButtonElement>(null);
   const [favoriteIds, setFavoriteIds] = useState<Set<string>>(
     () => new Set(),
   );
   const Preview3D = previewLoadFailure
     ? RejectedRoomPreview3D
     : RoomPreview3D;
-  const webMcpToolDefinitions = useMemo(
-    () => createRoomToolDefinitions(store),
+  const offerResolver = useMemo(
+    () => createSyntheticRetailerOfferResolver(store.readCatalog),
     [store],
+  );
+  const customerSession = useMemo(
+    () => providedCustomerSession ?? createCustomerSessionDemo({ offerResolver }),
+    [offerResolver, providedCustomerSession],
+  );
+  const webMcpToolDefinitions = useMemo(
+    () => createRoomToolDefinitions(store, offerResolver, {
+      customerSession,
+      session: customerSessionView,
+    }),
+    // customerSessionKey is the semantic auth snapshot; expiresAt changes must
+    // not churn the native registration generation.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [customerSession, customerSessionKey, offerResolver, store],
   );
   const registrationGenerationRef = useRef<{
     controller: AbortController;
@@ -194,7 +223,7 @@ export function App({
         registrationGenerationRef.current = null;
       }
     };
-  }, [store]);
+  }, [customerSessionKey, store]);
 
   useEffect(() => {
     const generation = registrationGenerationRef.current;
@@ -207,7 +236,12 @@ export function App({
     }
     const { controller } = generation;
 
-    void registerRoomTools(document.modelContext, store, controller).then(
+    void registerRoomTools(
+      document.modelContext,
+      store,
+      controller,
+      webMcpToolDefinitions,
+    ).then(
       (status) => {
         if (!controller.signal.aborted) {
           setRegistration({
@@ -219,7 +253,27 @@ export function App({
         }
       },
     );
-  }, [store]);
+  }, [store, webMcpToolDefinitions]);
+
+  useEffect(() => {
+    if (!customerSessionView.authenticated) return;
+    let current = true;
+    const delay = Math.max(0, customerSessionView.expiresAt - Date.now());
+    const timer = window.setTimeout(() => {
+      void customerSession.getSession()
+        .then((nextSession) => {
+          if (current) setCustomerSessionView(nextSession);
+        })
+        .catch(() => {
+          if (current) setCustomerSessionView({ authenticated: false });
+        });
+    }, delay);
+
+    return () => {
+      current = false;
+      window.clearTimeout(timer);
+    };
+  }, [customerSession, customerSessionView]);
 
   useEffect(() => {
     const newestReceiptChanged = receipts[0] !== previousReceiptRef.current;
@@ -276,7 +330,9 @@ export function App({
       ? shareButtonRef
       : surface === "help"
         ? helpButtonRef
-        : activityButtonRef;
+        : surface === "activity"
+          ? activityButtonRef
+          : cartButtonRef;
     opener.current?.focus();
   };
 
@@ -286,7 +342,9 @@ export function App({
       ? shareButtonRef
       : activeSurface === "help"
         ? helpButtonRef
-        : activityButtonRef;
+        : activeSurface === "activity"
+          ? activityButtonRef
+          : cartButtonRef;
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       setActiveSurface(null);
@@ -328,12 +386,28 @@ export function App({
             <button aria-pressed={viewMode === "2d"} onClick={() => setViewMode("2d")} type="button">Edit in 2D</button>
             <button aria-pressed={viewMode === "3d"} onClick={() => setViewMode("3d")} type="button">Preview in 3D</button>
           </div>
+          <CustomerSessionPanel
+            key={customerSessionKey}
+            client={customerSession}
+            onSessionChange={setCustomerSessionView}
+            session={customerSessionView}
+          />
           <ShareRoomPanel
             open={activeSurface === "share"}
             onClose={() => closeSurface("share")}
             onOpen={() => openSurface("share")}
             openerRef={shareButtonRef}
             store={store}
+          />
+          <CartReviewPanel
+            key={`checkout-${customerSessionKey}`}
+            checkout={customerSession.checkout}
+            client={customerSession.cart}
+            onClose={() => closeSurface("cart")}
+            onOpen={() => openSurface("cart")}
+            openerRef={cartButtonRef}
+            open={activeSurface === "cart"}
+            session={customerSessionView}
           />
           <button
             ref={helpButtonRef}
@@ -417,7 +491,7 @@ export function App({
           </nav>
           <div className="rail-panel-host">
             <div id="add-panel" role="tabpanel" aria-labelledby="add-tab" hidden={railTab !== "add"}>
-              <CatalogPanel favoriteIds={favoriteIds} onToggleFavorite={toggleFavorite} store={store} />
+              <CatalogPanel favoriteIds={favoriteIds} onToggleFavorite={toggleFavorite} offerResolver={offerResolver} store={store} />
             </div>
             <div id="placed-panel" role="tabpanel" aria-labelledby="placed-tab" hidden={railTab !== "placed"}>
               <PlacedPanel store={store} />
