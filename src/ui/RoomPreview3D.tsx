@@ -5,8 +5,12 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
+  useState,
+  useLayoutEffect,
   type ReactNode,
 } from "react";
+import { Object3D, type DirectionalLight } from "three";
 import {
   projectRoomToScene,
   type SceneItem,
@@ -28,11 +32,161 @@ import {
   deriveRoomPreviewCamera,
   ROOM_PREVIEW_CAMERA_FOV,
 } from "./room-preview-camera";
+import {
+  calculateSolarPositionAtUtc,
+  deriveSunDirection,
+  validateSunStudyScenario,
+  type SolarPosition,
+  type SunDirection,
+  type SunStudyScenario,
+} from "../room/sunlight";
 
 type RoomPreview3DProps = {
   room: Parameters<typeof projectRoomToScene>[0];
   webglSupportOverride?: boolean;
+  shadowSupportOverride?: boolean;
 };
+
+type SunStudyInputState = {
+  latitude: string;
+  longitude: string;
+  date: string;
+  localTime: string;
+  timeZone: string;
+  planNorthAzimuthDeg: string;
+};
+
+type SunStudyRenderState = {
+  position: SolarPosition;
+  direction: SunDirection;
+  shadowsEnabled: boolean;
+};
+
+const DEFAULT_SUN_STUDY_INPUT: SunStudyInputState = {
+  latitude: "40.71",
+  longitude: "-74.01",
+  date: "2026-09-01",
+  localTime: "12:00",
+  timeZone: "America/New_York",
+  planNorthAzimuthDeg: "0",
+};
+
+const parseNumberInput = (value: string) =>
+  value.trim() === "" ? Number.NaN : Number(value);
+
+const toSunStudyScenario = (
+  input: SunStudyInputState,
+): SunStudyScenario => ({
+  latitude: parseNumberInput(input.latitude),
+  longitude: parseNumberInput(input.longitude),
+  date: input.date,
+  localTime: input.localTime,
+  timeZone: input.timeZone,
+  planNorthAzimuthDeg: parseNumberInput(input.planNorthAzimuthDeg),
+});
+
+const fixed = (value: number, digits = 1) => value.toFixed(digits);
+
+const SunStudyControls = ({
+  input,
+  onChange,
+  shadowsEnabled,
+  shadowsSupported,
+  onShadowsChange,
+}: {
+  input: SunStudyInputState;
+  onChange: (field: keyof SunStudyInputState, value: string) => void;
+  shadowsEnabled: boolean;
+  shadowsSupported: boolean;
+  onShadowsChange: (enabled: boolean) => void;
+}) => (
+  <fieldset className="sun-study-controls" aria-label="Sun study controls">
+    <legend>Sun study (experimental)</legend>
+    <p className="sun-study-intro">
+      Manual coarse inputs stay in this session and are never added to the room
+      file.
+    </p>
+    <div className="sun-study-input-grid">
+      <label>
+        Latitude
+        <input
+          inputMode="decimal"
+          max={90}
+          min={-90}
+          onChange={(event) => onChange("latitude", event.target.value)}
+          step={0.01}
+          type="number"
+          value={input.latitude}
+        />
+      </label>
+      <label>
+        Longitude
+        <input
+          inputMode="decimal"
+          max={180}
+          min={-180}
+          onChange={(event) => onChange("longitude", event.target.value)}
+          step={0.01}
+          type="number"
+          value={input.longitude}
+        />
+      </label>
+      <label>
+        Local date
+        <input
+          onChange={(event) => onChange("date", event.target.value)}
+          type="date"
+          value={input.date}
+        />
+      </label>
+      <label>
+        Local time
+        <input
+          onChange={(event) => onChange("localTime", event.target.value)}
+          type="time"
+          value={input.localTime}
+        />
+      </label>
+      <label>
+        IANA timezone
+        <input
+          list="sun-study-timezones"
+          onChange={(event) => onChange("timeZone", event.target.value)}
+          type="text"
+          value={input.timeZone}
+        />
+        <datalist id="sun-study-timezones">
+          <option value="America/New_York" />
+          <option value="UTC" />
+          <option value="Europe/London" />
+        </datalist>
+      </label>
+      <label>
+        Plan North true bearing
+        <input
+          inputMode="decimal"
+          max={359.999}
+          min={0}
+          onChange={(event) =>
+            onChange("planNorthAzimuthDeg", event.target.value)
+          }
+          step={0.001}
+          type="number"
+          value={input.planNorthAzimuthDeg}
+        />
+      </label>
+    </div>
+    <label className="sun-study-shadow-toggle">
+      <input
+        checked={shadowsEnabled}
+        disabled={!shadowsSupported}
+        onChange={(event) => onShadowsChange(event.target.checked)}
+        type="checkbox"
+      />
+      Enable bounded shadows
+    </label>
+  </fieldset>
+);
 
 let cachedWebGLPreviewSupport: boolean | undefined;
 
@@ -104,7 +258,7 @@ type BoxPartProps = {
 };
 
 const BoxPart = ({ color, position, size }: BoxPartProps) => (
-  <mesh position={position}>
+  <mesh castShadow receiveShadow position={position}>
     <boxGeometry args={size} />
     <meshStandardMaterial color={color} />
   </mesh>
@@ -431,10 +585,12 @@ const FurniturePrimitive = ({ item }: { item: SceneItem }) => {
 const CameraFramer = ({
   depth,
   height,
+  renderKey,
   width,
 }: {
   depth: number;
   height: number;
+  renderKey: string;
   width: number;
 }) => {
   const { camera, gl, invalidate, size } = useThree();
@@ -459,7 +615,7 @@ const CameraFramer = ({
     camera.updateProjectionMatrix();
     writeCameraDiagnostics();
     invalidate();
-  }, [aspect, camera, depth, height, invalidate, width, writeCameraDiagnostics]);
+  }, [aspect, camera, depth, height, invalidate, renderKey, width, writeCameraDiagnostics]);
 
   return (
     <OrbitControls
@@ -470,13 +626,30 @@ const CameraFramer = ({
   );
 };
 
-const PreviewScene = ({ scene }: { scene: SceneProjection }) => {
+const PreviewScene = ({
+  scene,
+  sunStudy,
+}: {
+  scene: SceneProjection;
+  sunStudy: SunStudyRenderState | null;
+}) => {
   const [width, height, depth] = scene.dimensions;
   const span = Math.max(width, depth);
+  const sunTarget = useMemo(() => new Object3D(), []);
+  const sunLight = useRef<DirectionalLight>(null);
+  const renderKey = sunStudy
+    ? `${sunStudy.position.utcDate}:${sunStudy.position.azimuthDeg}:${sunStudy.position.apparentAltitudeDeg}:${sunStudy.shadowsEnabled}`
+    : "no-sun-study";
   const initialFrame = useMemo(
     () => deriveRoomPreviewCamera([width, height, depth], 1),
     [depth, height, width],
   );
+  useLayoutEffect(() => {
+    sunTarget.position.set(width / 2, 0, depth / 2);
+    sunTarget.updateMatrixWorld();
+    if (sunLight.current) sunLight.current.target = sunTarget;
+  }, [depth, sunTarget, width]);
+  const showSun = sunStudy?.direction.isAboveHorizon === true;
   return (
     <Canvas
       key={scene.dimensions.join(":")}
@@ -488,10 +661,38 @@ const PreviewScene = ({ scene }: { scene: SceneProjection }) => {
       }}
       dpr={[1, 1.5]}
       frameloop="demand"
+      shadows={sunStudy?.shadowsEnabled ?? false}
     >
-      <CameraFramer depth={depth} height={height} width={width} />
+      <CameraFramer
+        depth={depth}
+        height={height}
+        renderKey={renderKey}
+        width={width}
+      />
       <ambientLight intensity={0.7} />
-      <directionalLight intensity={1.1} position={[span, span * 1.6, span]} />
+      {showSun ? (
+        <>
+          <primitive object={sunTarget} />
+          <directionalLight
+            castShadow={sunStudy.shadowsEnabled}
+            intensity={1.1}
+            position={[
+              width / 2 + sunStudy.direction.lightPosition[0],
+              height + sunStudy.direction.lightPosition[1],
+              depth / 2 + sunStudy.direction.lightPosition[2],
+            ]}
+            ref={sunLight}
+            shadow-bias={-0.0005}
+            shadow-camera-bottom={-span}
+            shadow-camera-far={span * 4}
+            shadow-camera-left={-span}
+            shadow-camera-right={span}
+            shadow-camera-top={span}
+            shadow-mapSize={[1024, 1024]}
+            target={sunTarget}
+          />
+        </>
+      ) : null}
       <Grid
         args={[width, depth]}
         cellColor="#c6cfd6"
@@ -501,12 +702,16 @@ const PreviewScene = ({ scene }: { scene: SceneProjection }) => {
         sectionColor="#8fa0ad"
         sectionSize={1}
       />
-      <mesh position={scene.floor.position} rotation={[-Math.PI / 2, 0, 0]}>
+      <mesh
+        receiveShadow
+        position={scene.floor.position}
+        rotation={[-Math.PI / 2, 0, 0]}
+      >
         <planeGeometry args={scene.floor.size} />
         <meshStandardMaterial color="#edf0f2" />
       </mesh>
       {scene.walls.map((wall) => (
-        <mesh key={wall.wall} position={wall.position}>
+        <mesh castShadow key={`${wall.wall}-${wall.position.join("-")}`} position={wall.position} receiveShadow>
           <boxGeometry args={wall.size} />
           <meshStandardMaterial color="#d9e0e3" opacity={0.38} transparent />
         </mesh>
@@ -525,9 +730,11 @@ const PreviewScene = ({ scene }: { scene: SceneProjection }) => {
       ))}
       {scene.items.map((item) => (
         <group
+          castShadow
           key={item.id}
           name={item.name}
           position={item.position}
+          receiveShadow
           rotation={[0, item.rotationY, 0]}
         >
           <FurniturePrimitive item={item} />
@@ -539,6 +746,7 @@ const PreviewScene = ({ scene }: { scene: SceneProjection }) => {
 
 export function RoomPreview3D({
   room,
+  shadowSupportOverride,
   webglSupportOverride,
 }: RoomPreview3DProps) {
   const scene = useMemo(() => projectRoomToScene(room), [room]);
@@ -546,7 +754,51 @@ export function RoomPreview3D({
     () => webglSupportOverride ?? supportsWebGLPreview(),
     [webglSupportOverride],
   );
+  const shadowSupport = shadowSupportOverride ?? webglSupported;
+  const [sunStudyInput, setSunStudyInput] = useState(DEFAULT_SUN_STUDY_INPUT);
+  const [shadowsEnabled, setShadowsEnabled] = useState(false);
+  const sunStudyValidation = useMemo(
+    () => validateSunStudyScenario(toSunStudyScenario(sunStudyInput)),
+    [sunStudyInput],
+  );
+  const sunStudy = useMemo<SunStudyRenderState | null>(() => {
+    if (!sunStudyValidation.valid) return null;
+    const position = calculateSolarPositionAtUtc(
+      new Date(sunStudyValidation.value.utcDate),
+      sunStudyValidation.value.latitude,
+      sunStudyValidation.value.longitude,
+    );
+    return {
+      direction: deriveSunDirection(
+        position,
+        sunStudyValidation.value.planNorthAzimuthDeg,
+      ),
+      position,
+      shadowsEnabled: shadowsEnabled && shadowSupport,
+    };
+  }, [shadowSupport, shadowsEnabled, sunStudyValidation]);
   const summary = `${room.name}: ${room.dimensions.width} m by ${room.dimensions.depth} m room with ${room.items.length} placed item${room.items.length === 1 ? "" : "s"}.`;
+  const updateSunStudyInput = (
+    field: keyof SunStudyInputState,
+    value: string,
+  ) => {
+    setSunStudyInput((current) => ({ ...current, [field]: value }));
+  };
+  const statusText = !sunStudyValidation.valid || !sunStudy
+    ? "Sun study unavailable. No fixed fallback sun is shown."
+    : [
+        `Apparent solar azimuth ${fixed(sunStudy.position.azimuthDeg)}°`,
+        `apparent solar altitude ${fixed(sunStudy.position.apparentAltitudeDeg)}°`,
+        `Plan North ${fixed(sunStudyValidation.value.planNorthAzimuthDeg, 0)}°`,
+        sunStudy.direction.isAboveHorizon
+          ? "Direct sun is above the modeled horizon"
+          : "Direct sun is at or below the modeled horizon",
+        shadowsEnabled && shadowSupport && sunStudy.direction.isAboveHorizon
+          ? "Shadows are on"
+          : shadowSupport
+            ? "Shadows are off"
+            : "Shadows are unavailable",
+      ].join(" — ");
 
   return (
     <section className="room-preview" aria-label={`3D preview of ${room.name}`}>
@@ -555,6 +807,39 @@ export function RoomPreview3D({
         <p>Read-only procedural preview</p>
       </div>
       <p className="room-preview-summary">{summary}</p>
+      <SunStudyControls
+        input={sunStudyInput}
+        onChange={updateSunStudyInput}
+        onShadowsChange={setShadowsEnabled}
+        shadowsEnabled={shadowsEnabled}
+        shadowsSupported={shadowSupport && webglSupported && sunStudyValidation.valid}
+      />
+      <p
+        aria-label="Sun study status"
+        className="sun-study-status"
+        role="status"
+      >
+        {statusText}
+      </p>
+      {sunStudyValidation.valid && sunStudy ? (
+        <p className="sun-study-time">
+          Local {sunStudyValidation.value.date} {sunStudyValidation.value.localTime}{" "}
+          ({sunStudyValidation.value.timeZone}); UTC {sunStudy.position.utcDate}.
+        </p>
+      ) : null}
+      <aside className="sun-study-assumptions" aria-label="Sun study assumptions">
+        <strong>Approximate directional direct-sun geometry</strong>
+        <p>
+          Plan North is the room-local top edge; the true bearing is used only
+          to orient the sun. This does not estimate daylight intensity, lux, or
+          energy performance.
+        </p>
+        <p>
+          Clear sky, no weather, glazing, blinds, terrain, or exterior
+          obstructions are modeled. Window openings are geometric apertures;
+          furniture and walls use a bounded shadow map when enabled.
+        </p>
+      </aside>
       {!webglSupported ? (
         <p className="room-preview-fallback" role="status">
           The interactive 3D canvas is unavailable. The room summary and placed
@@ -569,8 +854,12 @@ export function RoomPreview3D({
             </p>
           }
         >
-          <div className="room-preview-canvas">
-            <PreviewScene scene={scene} />
+          <div
+            className="room-preview-canvas"
+            data-wimy-shadows={sunStudy?.shadowsEnabled ? "on" : "off"}
+            data-wimy-sun-study={sunStudy ? "available" : "unavailable"}
+          >
+          <PreviewScene scene={scene} sunStudy={sunStudy} />
           </div>
         </PreviewErrorBoundary>
       )}

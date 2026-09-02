@@ -7,7 +7,7 @@ import { getCatalogPresentation } from "../room/catalog-presentation";
 import { projectFurnitureOrientation } from "../room/orientation";
 import { createRoomStore, type RoomStore } from "../room/store";
 import { TEST_TRANSACTION_DEPENDENCIES } from "../room/transaction";
-import { makePlacedItem, makeRoom } from "../test/room-fixtures";
+import { makeOpening, makePlacedItem, makeRoom } from "../test/room-fixtures";
 import { MAX_FURNITURE_PRIMITIVE_PARTS } from "./catalog-procedural-layout";
 import {
   projectFurniturePrimitiveLayout,
@@ -767,6 +767,69 @@ describe("projectFurniturePrimitiveLayout", () => {
 });
 
 describe("RoomPreview3D", () => {
+  it("shows bounded sunlight controls and honest assumptions", () => {
+    render(
+      <RoomPreview3D
+        room={makeRoom({ openings: [makeOpening({ kind: "window" })] })}
+        webglSupportOverride={false}
+      />,
+    );
+
+    expect(screen.getByRole("group", { name: "Sun study controls" })).toBeVisible();
+    expect(screen.getByLabelText("Latitude" )).toHaveValue(40.71);
+    expect(screen.getByLabelText("Longitude" )).toHaveValue(-74.01);
+    expect(screen.getByLabelText("Plan North true bearing" )).toHaveValue(0);
+    expect(screen.getByText("Approximate directional direct-sun geometry")).toBeVisible();
+    expect(screen.getByText(/does not estimate daylight intensity, lux, or energy performance/i)).toBeVisible();
+    expect(screen.getByRole("status", { name: "Sun study status" })).toHaveTextContent(
+      "Shadows are unavailable",
+    );
+  });
+
+  it("recomputes from local controls without changing canonical room state", () => {
+    const room = makeRoom({ openings: [makeOpening({ kind: "window" })] });
+    const before = structuredClone(room);
+    render(<RoomPreview3D room={room} webglSupportOverride={false} />);
+
+    const status = screen.getByRole("status", { name: "Sun study status" });
+    expect(status).toHaveTextContent("Apparent solar azimuth");
+    const initialStatus = status.textContent;
+    fireEvent.change(screen.getByLabelText("Plan North true bearing"), {
+      target: { value: "90" },
+    });
+    expect(status.textContent).not.toBe(initialStatus);
+    expect(status).toHaveTextContent("Plan North 90°");
+    expect(room).toEqual(before);
+  });
+
+  it("fails closed for invalid location input and does not invent a sun", () => {
+    render(<RoomPreview3D room={makeRoom()} webglSupportOverride={false} />);
+
+    fireEvent.change(screen.getByLabelText("Latitude"), {
+      target: { value: "91" },
+    });
+
+    expect(screen.getByRole("status", { name: "Sun study status" })).toHaveTextContent(
+      "Sun study unavailable",
+    );
+    expect(screen.getByText(/No fixed fallback sun is shown/i)).toBeVisible();
+  });
+
+  it("keeps the shadows control disabled when shadow support is unavailable", () => {
+    render(
+      <RoomPreview3D
+        room={makeRoom()}
+        shadowSupportOverride={false}
+        webglSupportOverride={true}
+      />,
+    );
+
+    expect(screen.getByLabelText("Enable bounded shadows")).toBeDisabled();
+    expect(screen.getByRole("status", { name: "Sun study status" })).toHaveTextContent(
+      "Shadows are unavailable",
+    );
+  });
+
   it("uses the same semantic heading and clockwise turn as the 2D projection", () => {
     const room = makeRoom({
       items: [
@@ -826,7 +889,7 @@ describe("RoomPreview3D", () => {
 
     for (let retry = 0; retry < 3; retry += 1) {
       fireEvent.click(screen.getByRole("button", { name: "Preview in 3D" }));
-      expect(screen.getByRole("status")).toHaveTextContent(
+      expect(screen.getByText(/The interactive 3D canvas is unavailable/)).toHaveTextContent(
         "The interactive 3D canvas is unavailable",
       );
       expect(
@@ -854,7 +917,7 @@ describe("RoomPreview3D", () => {
       />,
     );
 
-    expect(screen.getByRole("status")).toHaveTextContent(
+    expect(screen.getByText(/The interactive 3D canvas is unavailable/)).toHaveTextContent(
       "The interactive 3D canvas is unavailable",
     );
     expect(

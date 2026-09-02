@@ -150,6 +150,105 @@ const openingScenePosition = (
   }
 };
 
+const wallLength = (
+  wall: Opening["wall"],
+  room: DeepReadonly<WimyRoomV1>,
+) => (wall === "north" || wall === "south"
+  ? room.dimensions.width
+  : room.dimensions.depth);
+
+const projectWallSegments = (
+  wall: Opening["wall"],
+  room: DeepReadonly<WimyRoomV1>,
+): SceneWall => {
+  const length = wallLength(wall, room);
+  return {
+    wall,
+    position:
+      wall === "north"
+        ? [length / 2, room.dimensions.height / 2, 0]
+        : wall === "east"
+          ? [room.dimensions.width, room.dimensions.height / 2, length / 2]
+          : wall === "south"
+            ? [length / 2, room.dimensions.height / 2, room.dimensions.depth]
+            : [0, room.dimensions.height / 2, length / 2],
+    size:
+      wall === "north" || wall === "south"
+        ? [length, room.dimensions.height, WALL_THICKNESS]
+        : [WALL_THICKNESS, room.dimensions.height, length],
+  };
+};
+
+const projectWallWithWindowApertures = (
+  wall: Opening["wall"],
+  room: DeepReadonly<WimyRoomV1>,
+): SceneWall[] => {
+  const windows = room.openings.filter(
+    (opening) => opening.kind === "window" && opening.wall === wall,
+  );
+  if (windows.length === 0) return [projectWallSegments(wall, room)];
+
+  const length = wallLength(wall, room);
+  const height = room.dimensions.height;
+  const lengthBoundaries = [
+    0,
+    length,
+    ...windows.flatMap(({ centerOffset, width }) => [
+      centerOffset - width / 2,
+      centerOffset + width / 2,
+    ]),
+  ].sort((left, right) => left - right);
+  const heightBoundaries = [
+    0,
+    height,
+    ...windows.flatMap(({ bottom, height: openingHeight }) => [
+      bottom,
+      bottom + openingHeight,
+    ]),
+  ].sort((bottom, top) => bottom - top);
+  const segments: SceneWall[] = [];
+
+  for (let yIndex = 0; yIndex < heightBoundaries.length - 1; yIndex += 1) {
+    const bottom = heightBoundaries[yIndex];
+    const top = heightBoundaries[yIndex + 1];
+    if (top <= bottom) continue;
+    for (let xIndex = 0; xIndex < lengthBoundaries.length - 1; xIndex += 1) {
+      const start = lengthBoundaries[xIndex];
+      const end = lengthBoundaries[xIndex + 1];
+      if (end <= start) continue;
+      const middle = (start + end) / 2;
+      const verticalMiddle = (bottom + top) / 2;
+      const insideWindow = windows.some(
+        (opening) =>
+          middle > opening.centerOffset - opening.width / 2 &&
+          middle < opening.centerOffset + opening.width / 2 &&
+          verticalMiddle > opening.bottom &&
+          verticalMiddle < opening.bottom + opening.height,
+      );
+      if (insideWindow) continue;
+
+      const segmentLength = end - start;
+      const segmentHeight = top - bottom;
+      segments.push({
+        wall,
+        position:
+          wall === "north"
+            ? [(start + end) / 2, verticalMiddle, 0]
+            : wall === "east"
+              ? [room.dimensions.width, verticalMiddle, (start + end) / 2]
+              : wall === "south"
+                ? [(start + end) / 2, verticalMiddle, room.dimensions.depth]
+                : [0, verticalMiddle, (start + end) / 2],
+        size:
+          wall === "north" || wall === "south"
+            ? [segmentLength, segmentHeight, WALL_THICKNESS]
+            : [WALL_THICKNESS, segmentHeight, segmentLength],
+      });
+    }
+  }
+  return segments;
+};
+
 export const projectRoomToScene = (
   room: DeepReadonly<WimyRoomV1>,
 ): SceneProjection => {
@@ -161,28 +260,9 @@ export const projectRoomToScene = (
       position: [width / 2, 0, depth / 2],
       size: [width, depth],
     },
-    walls: [
-      {
-        wall: "north",
-        position: [width / 2, height / 2, 0],
-        size: [width, height, WALL_THICKNESS],
-      },
-      {
-        wall: "east",
-        position: [width, height / 2, depth / 2],
-        size: [WALL_THICKNESS, height, depth],
-      },
-      {
-        wall: "south",
-        position: [width / 2, height / 2, depth],
-        size: [width, height, WALL_THICKNESS],
-      },
-      {
-        wall: "west",
-        position: [0, height / 2, depth / 2],
-        size: [WALL_THICKNESS, height, depth],
-      },
-    ],
+    walls: (["north", "east", "south", "west"] as const).flatMap((wall) =>
+      projectWallWithWindowApertures(wall, room),
+    ),
     openings: room.openings.map((opening) => ({
       id: opening.id,
       ...projectOpeningSemantics(opening),

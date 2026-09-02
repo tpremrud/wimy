@@ -267,8 +267,92 @@ section > p {
 
 .room-preview-heading-row p,
 .room-preview-summary,
-.room-preview-fallback {
+.room-preview-fallback,
+.sun-study-intro,
+.sun-study-time,
+.sun-study-assumptions {
   color: #555555;
+}
+
+.sun-study-controls {
+  display: grid;
+  margin: 0;
+  border: 1px solid #c8c2b6;
+  padding: 0.8rem;
+  gap: 0.7rem;
+  background: #fbfaf7;
+}
+
+.sun-study-controls legend {
+  padding: 0 0.3rem;
+  color: #2e393d;
+  font-weight: 700;
+}
+
+.sun-study-intro,
+.sun-study-time,
+.sun-study-assumptions p {
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.sun-study-input-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.55rem;
+}
+
+.sun-study-input-grid label {
+  display: grid;
+  min-width: 0;
+  gap: 0.25rem;
+  color: #2e393d;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.sun-study-input-grid input {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid #b9b9b9;
+  border-radius: 0.2rem;
+  padding: 0.42rem 0.5rem;
+  color: #243035;
+  background: #ffffff;
+  font: inherit;
+  font-weight: 400;
+}
+
+.sun-study-shadow-toggle {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  gap: 0.45rem;
+  color: #2e393d;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.sun-study-status {
+  margin: 0;
+  color: #76501c;
+  font-size: 0.84rem;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.sun-study-assumptions {
+  display: grid;
+  border-left: 3px solid #c58a32;
+  padding: 0.1rem 0 0.1rem 0.75rem;
+  gap: 0.35rem;
+}
+
+@media (max-width: 640px) {
+  .sun-study-input-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .room-preview-canvas {
@@ -1902,6 +1986,26 @@ body {
 
   .header-actions > p {
     max-width: 11rem;
+  }
+}
+
+@media (max-width: 70rem) and (min-width: 42.01rem) {
+  .room-preview {
+    overflow-y: auto;
+  }
+
+  .room-preview-canvas {
+    height: clamp(20rem, 48vh, 32rem);
+  }
+}
+
+@media (min-width: 42.01rem) {
+  .room-preview {
+    overflow-y: auto;
+  }
+
+  .room-preview-canvas {
+    height: clamp(20rem, 48vh, 42rem);
   }
 }
 
