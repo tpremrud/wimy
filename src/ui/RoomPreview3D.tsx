@@ -994,6 +994,7 @@ export function RoomPreview3D({
   const [settingsOpen, setSettingsOpen] = useState(false);
   const prefersReducedMotion = usePrefersReducedMotion();
   const settingsButtonRef = useRef<HTMLButtonElement>(null);
+  const settingsDrawerRef = useRef<HTMLElement>(null);
   useEffect(() => {
     if (!dayAnimating || prefersReducedMotion) return undefined;
     const timer = window.setInterval(() => {
@@ -1011,8 +1012,18 @@ export function RoomPreview3D({
       setSettingsOpen(false);
       settingsButtonRef.current?.focus();
     };
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (settingsDrawerRef.current?.contains(target)) return;
+      if (settingsButtonRef.current?.contains(target)) return;
+      setSettingsOpen(false);
+    };
     document.addEventListener("keydown", closeOnEscape);
-    return () => document.removeEventListener("keydown", closeOnEscape);
+    document.addEventListener("pointerdown", closeOnOutsidePointer);
+    return () => {
+      document.removeEventListener("keydown", closeOnEscape);
+      document.removeEventListener("pointerdown", closeOnOutsidePointer);
+    };
   }, [settingsOpen]);
   const sunStudyValidation = useMemo(
     () => validateSunStudyScenario(toSunStudyScenario(sunStudyInput)),
@@ -1177,6 +1188,7 @@ export function RoomPreview3D({
           aria-label="Lighting settings"
           className="lighting-settings-drawer"
           id="lighting-settings-drawer"
+          ref={settingsDrawerRef}
         >
           <div className="lighting-settings-heading">
             <div>

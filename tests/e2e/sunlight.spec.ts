@@ -98,6 +98,9 @@ test("keeps the directional sun study local and deterministic", async ({
   expect(await page.evaluate(() => Object.keys(localStorage))).toEqual([]);
   expect(externalRequests).toEqual([]);
 
+  // Opening Share intentionally dismisses the separate Lighting settings surface.
+  await preview.getByRole("button", { name: "Open lighting settings" }).click();
+
   const shadowToggle = preview.getByLabel("Enable bounded shadows");
   if (await shadowToggle.isEnabled()) {
     const shadowsOnFrameMs = await measureTwoAnimationFrames(page);

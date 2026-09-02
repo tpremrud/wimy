@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import type { CustomerSessionView } from "../commerce/customer-session";
 import type { CustomerSessionClient } from "../commerce/customer-session-demo";
 
@@ -18,6 +18,8 @@ export function CustomerSessionPanel({ client, onSessionChange, session: provide
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const panelRef = useRef<HTMLElement>(null);
+  const signInButtonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     let current = true;
@@ -31,6 +33,25 @@ export function CustomerSessionPanel({ client, onSessionChange, session: provide
       current = false;
     };
   }, [client, onSessionChange]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const dismissOnOutsidePointer = (event: PointerEvent) => {
+      if (panelRef.current?.contains(event.target as Node)) return;
+      setOpen(false);
+    };
+    const dismissOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setOpen(false);
+      signInButtonRef.current?.focus();
+    };
+    document.addEventListener("pointerdown", dismissOnOutsidePointer);
+    document.addEventListener("keydown", dismissOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", dismissOnOutsidePointer);
+      document.removeEventListener("keydown", dismissOnEscape);
+    };
+  }, [open]);
 
   const signIn = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -68,7 +89,11 @@ export function CustomerSessionPanel({ client, onSessionChange, session: provide
   };
 
   return (
-    <section className="customer-session" aria-labelledby="customer-session-heading">
+    <section
+      className="customer-session"
+      aria-labelledby="customer-session-heading"
+      ref={panelRef}
+    >
       <div className="customer-session-summary">
         <p className="drawer-kicker">Optional account</p>
         <h2 id="customer-session-heading">Customer session</h2>
@@ -85,6 +110,7 @@ export function CustomerSessionPanel({ client, onSessionChange, session: provide
       ) : (
         <>
           <button
+            ref={signInButtonRef}
             type="button"
             aria-label="Sign in (optional)"
             aria-expanded={open}

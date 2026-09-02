@@ -793,6 +793,16 @@ describe("RoomPreview3D", () => {
     expect(screen.queryByRole("group", { name: "Sun study controls" })).not.toBeInTheDocument();
   });
 
+  it("dismisses lighting settings when the user points outside the drawer", () => {
+    render(<RoomPreview3D room={makeRoom()} webglSupportOverride={false} />);
+    openLightingSettings();
+
+    fireEvent.pointerDown(screen.getByRole("heading", { name: "3D room preview" }));
+
+    expect(screen.queryByRole("complementary", { name: "Lighting settings" }))
+      .not.toBeInTheDocument();
+  });
+
   it("shows bounded sunlight controls and honest assumptions", () => {
     render(
       <RoomPreview3D

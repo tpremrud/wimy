@@ -1,9 +1,11 @@
-import { render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import type { CustomerSessionClient } from "../commerce/customer-session-demo";
 import type { CustomerSessionView } from "../commerce/customer-session";
 import { CustomerSessionPanel } from "./CustomerSessionPanel";
+
+afterEach(cleanup);
 
 const createClient = (): CustomerSessionClient => {
   let view: CustomerSessionView = { authenticated: false };
@@ -39,5 +41,21 @@ describe("CustomerSessionPanel", () => {
     expect(screen.getByText("Signed in locally as Demo customer")).toBeVisible();
     await user.click(screen.getByRole("button", { name: "Sign out" }));
     expect(screen.getByText("Anonymous mode")).toBeVisible();
+  });
+
+  it("dismisses the optional sign-in popover when the user clicks outside", async () => {
+    const user = userEvent.setup();
+    render(
+      <div>
+        <CustomerSessionPanel client={createClient()} />
+        <button type="button">Room surface</button>
+      </div>,
+    );
+    await user.click(screen.getByRole("button", { name: "Sign in (optional)" }));
+
+    await user.click(screen.getByRole("button", { name: "Room surface" }));
+
+    expect(screen.queryByRole("textbox", { name: "Demo customer identity" }))
+      .not.toBeInTheDocument();
   });
 });
