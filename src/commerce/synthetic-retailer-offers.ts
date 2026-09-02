@@ -40,6 +40,16 @@ const RETAILER_FIXTURES: readonly RetailerFixture[] = [
     priceDeltaMinor: 1_500,
   },
   {
+    retailerId: "synthetic-elm-commons",
+    retailerName: "Elm Commons",
+    sellerId: "synthetic-elm-direct",
+    kind: "exact",
+    availability: "in_stock",
+    observedAt: "2026-09-02T12:00:00.000Z",
+    expiresAt: "2026-09-02T12:30:00.000Z",
+    priceDeltaMinor: 500,
+  },
+  {
     retailerId: "synthetic-harbor-home",
     retailerName: "Harbor Home",
     sellerId: "synthetic-harbor-direct",

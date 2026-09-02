@@ -4,10 +4,13 @@ import {
   render,
   screen,
   within,
+  waitFor,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WimyCatalogV1 } from "../catalog/package";
+import { createSyntheticRetailerOfferResolver } from "../commerce/synthetic-retailer-offers";
+import type { RetailerOfferResolver } from "../commerce/retailer-offer-adapter";
 import { resolveCatalogProduct } from "../room/catalog";
 import { createRoomStore, type RoomStore } from "../room/store";
 import { getTemplate } from "../room/templates";
@@ -149,6 +152,128 @@ describe("CatalogPanel", () => {
     expect(evidence).not.toHaveTextContent(/purchase|checkout|cart/iu);
     expect(store.getState().room).toEqual(getTemplate("blank-room"));
     expect(store.getState().receipts).toEqual([]);
+  });
+
+  it("builds a retailer-grouped room shopping plan without changing room state", async () => {
+    const store = createCatalogStore(getTemplate("blank-room"));
+    render(<CatalogPanel store={store} />);
+    const user = userEvent.setup();
+    const catalogPackage = makeProjectCatalogPackage();
+
+    await user.upload(
+      screen.getByLabelText("Import project-authored catalog package"),
+      new File([JSON.stringify(catalogPackage)], "project.wimy-catalog", {
+        type: "application/json",
+      }),
+    );
+    await screen.findByRole("status", { name: "Catalog import result" });
+
+    act(() => {
+      const current = store.getState();
+      current.transact({
+        expectedRevision: current.revision,
+        origin: "human",
+        change: {
+          type: "edit",
+          operations: [
+            {
+              type: "add",
+              productId: "00000000-0000-4000-8000-000000000204",
+              pose: { x: 1, y: 1, rotationDeg: 0 },
+            },
+          ],
+        },
+      });
+    });
+    const roomBeforePlan = store.getState().room;
+    const revisionBeforePlan = store.getState().revision;
+
+    await user.click(
+      screen.getByRole("button", { name: "Build room shopping plan" }),
+    );
+
+    const plan = await screen.findByRole("region", {
+      name: "Room shopping plan",
+    });
+    expect(plan).toHaveTextContent("Aurora Project Chair");
+    expect(plan).toHaveTextContent("Northstar Furnishings");
+    expect(plan).toHaveTextContent("Elm Commons");
+    expect(plan).toHaveTextContent("Cheapest current comparable exact offer");
+    expect(plan).toHaveTextContent("delivery");
+    expect(plan).toHaveTextContent("Excluded from exact price ranking");
+    expect(plan.querySelectorAll('a[href^="https://offers.example.invalid/"]')).not.toHaveLength(0);
+    expect(plan).not.toHaveTextContent(/purchase|checkout|cart/iu);
+    expect(store.getState().room).toBe(roomBeforePlan);
+    expect(store.getState().revision).toBe(revisionBeforePlan);
+    expect(store.getState().receipts).toHaveLength(1);
+  });
+
+  it("discards an in-flight room shopping plan after the room revision changes", async () => {
+    const store = createCatalogStore(getTemplate("blank-room"));
+    let releaseResolution: (() => void) | undefined;
+    const resolutionGate = new Promise<void>((resolve) => {
+      releaseResolution = resolve;
+    });
+    const fallbackResolver = createSyntheticRetailerOfferResolver(store.readCatalog);
+    const offerResolver: RetailerOfferResolver = {
+      resolve: async (lookup, context) => {
+        await resolutionGate;
+        return fallbackResolver.resolve(lookup, context);
+      },
+      clearCache: () => fallbackResolver.clearCache(),
+    };
+    render(<CatalogPanel store={store} offerResolver={offerResolver} />);
+    const user = userEvent.setup();
+
+    await user.upload(
+      screen.getByLabelText("Import project-authored catalog package"),
+      new File([JSON.stringify(makeProjectCatalogPackage())], "project.wimy-catalog", {
+        type: "application/json",
+      }),
+    );
+    await screen.findByRole("status", { name: "Catalog import result" });
+    act(() => {
+      const current = store.getState();
+      current.transact({
+        expectedRevision: current.revision,
+        origin: "human",
+        change: {
+          type: "edit",
+          operations: [
+            {
+              type: "add",
+              productId: "00000000-0000-4000-8000-000000000204",
+              pose: { x: 1, y: 1, rotationDeg: 0 },
+            },
+          ],
+        },
+      });
+    });
+
+    await user.click(screen.getByRole("button", { name: "Build room shopping plan" }));
+    expect(await screen.findByText(/Building a synthetic room shopping plan/iu)).toBeVisible();
+    act(() => {
+      const current = store.getState();
+      current.transact({
+        expectedRevision: current.revision,
+        origin: "human",
+        change: {
+          type: "edit",
+          operations: [
+            {
+              type: "transform",
+              itemId: "item_catalog_added",
+              pose: { x: 1.1 },
+            },
+          ],
+        },
+      });
+    });
+    releaseResolution?.();
+
+    await waitFor(() => {
+      expect(screen.queryByRole("region", { name: "Room shopping plan" })).not.toBeInTheDocument();
+    });
   });
 
   it("shows one continuous category-driven catalog without pagination", async () => {

@@ -315,6 +315,105 @@ section > p {
   overflow-wrap: anywhere;
 }
 
+.shopping-plan-toggle {
+  justify-self: start;
+  min-height: 2.25rem;
+  border: 1px solid #166534;
+  border-radius: 0.25rem;
+  padding: 0.4rem 0.6rem;
+  color: #166534;
+  background: #ffffff;
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.shopping-plan-toggle:focus-visible {
+  outline: 3px solid #b45309;
+  outline-offset: 2px;
+}
+
+.shopping-plan {
+  display: grid;
+  margin-bottom: 1rem;
+  border: 1px solid #166534;
+  border-radius: 0.35rem;
+  padding: 0.75rem;
+  gap: 0.65rem;
+  background: #f6fbf7;
+}
+
+.shopping-plan-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.shopping-plan-heading h3,
+.shopping-plan-heading p {
+  margin: 0;
+}
+
+.shopping-plan-heading p,
+.shopping-plan-disclosure,
+.shopping-plan-requirements span,
+.shopping-plan-retailers span {
+  color: #555555;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+
+.shopping-plan-disclosure {
+  margin: 0;
+}
+
+.shopping-plan-requirements,
+.shopping-plan-retailers,
+.shopping-plan-retailers ul {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  gap: 0.65rem;
+  list-style: none;
+}
+
+.shopping-plan-requirements li,
+.shopping-plan-retailers li {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.shopping-plan-requirements li {
+  border-top: 1px solid #c8d9cb;
+  padding-top: 0.5rem;
+}
+
+.shopping-plan-retailers {
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+}
+
+.shopping-plan-retailers > section {
+  display: grid;
+  align-content: start;
+  gap: 0.45rem;
+  border-top: 2px solid #166534;
+  padding-top: 0.5rem;
+}
+
+.shopping-plan-retailers h4 {
+  margin: 0;
+}
+
+.shopping-plan-retailers a {
+  justify-self: start;
+  color: #075985;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
 .room-editor {
   margin-top: 1.25rem;
 }

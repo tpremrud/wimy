@@ -81,19 +81,20 @@ test("inspect, find, and apply visibly collaborate while stale edits recover", a
   await expect(
     page.getByRole("status", { name: "WebMCP status" }),
   ).toContainText(
-    "WebMCP ready — 4 tools registered",
+    "WebMCP ready — 5 tools registered",
   );
   const toolsTrigger = page.getByRole("button", {
-    name: "WebMCP tools, 4 registered",
+    name: "WebMCP tools, 5 registered",
   });
-  await expect(toolsTrigger).toHaveText("WebMCP · 4 tools");
+  await expect(toolsTrigger).toHaveText("WebMCP · 5 tools");
   await toolsTrigger.click();
   const toolsPanel = page.getByRole("dialog", { name: "WebMCP tools" });
-  await expect(toolsPanel).toContainText("4 of 4 registered");
-  await expect(toolsPanel.getByText("inspect_room")).toBeVisible();
+  await expect(toolsPanel).toContainText("5 of 5 registered");
+  await expect(toolsPanel.getByText("inspect_room", { exact: true })).toBeVisible();
   await expect(toolsPanel.getByText("find_furniture")).toBeVisible();
   await expect(toolsPanel.getByText("apply_room_edit")).toBeVisible();
   await expect(toolsPanel.getByText("inspect_retailer_offers")).toBeVisible();
+  await expect(toolsPanel.getByText("inspect_room_shopping_plan")).toBeVisible();
   await expect(toolsPanel.getByText("Can change room")).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(toolsPanel).toBeHidden();
@@ -114,8 +115,9 @@ test("inspect, find, and apply visibly collaborate while stale edits recover", a
     "find_furniture",
     "inspect_retailer_offers",
     "inspect_room",
+    "inspect_room_shopping_plan",
   ]);
-  expect(discovered.registrationCount).toBe(4);
+  expect(discovered.registrationCount).toBe(5);
   const pageUrlBeforeReadOnlyTools = page.url();
   const pageCountBeforeReadOnlyTools = page.context().pages().length;
 
@@ -323,7 +325,7 @@ test("inspect, find, and apply visibly collaborate while stale edits recover", a
     ).__wimyModelContextHarness;
     return harness.registrationCalls.length;
   });
-  expect(registrationCountAfterEdits).toBe(4);
+  expect(registrationCountAfterEdits).toBe(5);
 });
 
 test("the room remains functional without modelContext", async ({ page }) => {

@@ -20,6 +20,11 @@ import {
   type RetailerOfferResolver,
 } from "../commerce/retailer-offer-adapter";
 import { createSyntheticRetailerOfferResolver } from "../commerce/synthetic-retailer-offers";
+import {
+  createRoomShoppingPlan,
+  type RoomShoppingPlan,
+  type ShoppingPlanExclusionReason,
+} from "../commerce/shopping-plan";
 
 const CATEGORIES: readonly FurnitureSnapshot["category"][] = [
   "bed",
@@ -64,6 +69,13 @@ type OfferState = {
   itemName: string;
   phase: "loading" | RetailerOfferResolution["status"];
   offers: readonly RetailerOffer[];
+};
+
+type ShoppingPlanState = {
+  owner: RoomStore;
+  revision: number;
+  phase: "loading" | "ready" | "error";
+  plan?: RoomShoppingPlan;
 };
 
 const optionalNumber = (value: string) =>
@@ -125,6 +137,30 @@ const availabilityLabel = (availability: RetailerOffer["availability"]) => {
 const offerPrice = (offer: RetailerOffer) =>
   `${offer.price.currency} ${(offer.price.amountMinor / 100).toFixed(2)}`;
 
+const normalizedOfferPrice = (offer: RetailerOffer & { normalizedAmountMinor?: number; normalizedUnitCount?: number }) =>
+  `${offer.price.currency} ${((offer.normalizedAmountMinor ?? offer.price.amountMinor) / 100).toFixed(2)}${(offer.normalizedUnitCount ?? 1) > 1 ? " / unit" : ""}`;
+
+const exclusionLabel = (reason: ShoppingPlanExclusionReason) => {
+  switch (reason) {
+    case "ambiguous_identity":
+      return "ambiguous identity";
+    case "substitute_identity":
+      return "substitute identity";
+    case "stale":
+      return "stale evidence";
+    case "unavailable":
+      return "unavailable offer";
+    case "unverified":
+      return "unverified offer";
+    case "different_catalog_ref":
+      return "different catalog variant";
+    case "invalid_price_basis":
+      return "invalid price basis";
+    case "non_inert_handoff":
+      return "non-inert handoff URL";
+  }
+};
+
 function OfferEvidencePanel({ state }: { state: OfferState }) {
   if (state.phase === "loading") {
     return (
@@ -172,6 +208,89 @@ function OfferEvidencePanel({ state }: { state: OfferState }) {
   );
 }
 
+function RoomShoppingPlanPanel({ state }: { state: ShoppingPlanState }) {
+  if (state.phase === "loading") {
+    return (
+      <section className="shopping-plan" aria-label="Room shopping plan">
+        <p role="status" aria-label="Room shopping plan status">Building a synthetic room shopping plan…</p>
+      </section>
+    );
+  }
+
+  if (state.phase === "error" || !state.plan) {
+    return (
+      <section className="shopping-plan" aria-label="Room shopping plan">
+        <p role="status" aria-label="Room shopping plan status">
+          The room shopping plan could not be built from the available synthetic evidence.
+        </p>
+      </section>
+    );
+  }
+
+  const { plan } = state;
+  return (
+    <section className="shopping-plan" aria-label="Room shopping plan">
+      <div className="shopping-plan-heading">
+        <div>
+          <h3>Room shopping plan</h3>
+          <p>Read-only synthetic evidence for room revision {state.revision}.</p>
+        </div>
+        <span>{plan.requirements.length} required variant{plan.requirements.length === 1 ? "" : "s"}</span>
+      </div>
+      <p className="shopping-plan-disclosure">{plan.costDisclosure}</p>
+      {plan.truncatedRequirementCount > 0 ? (
+        <p role="status">
+          {plan.truncatedRequirementCount} additional variant{plan.truncatedRequirementCount === 1 ? "" : "s"} omitted to keep this plan bounded.
+        </p>
+      ) : null}
+      {plan.untrackedItemCount > 0 ? (
+        <p role="status">
+          {plan.untrackedItemCount} placed item{plan.untrackedItemCount === 1 ? "" : "s"} without a canonical catalog variant is not included.
+        </p>
+      ) : null}
+      <ul className="shopping-plan-requirements" aria-label="Required room variants">
+        {plan.requirements.map((requirement) => (
+          <li key={requirement.requirementId}>
+            <strong>{requirement.name} · quantity {requirement.quantity}</strong>
+            <span>{requirement.catalogRef.catalogId} / {requirement.catalogRef.productId}</span>
+            {requirement.comparison.excluded.length > 0 ? (
+              <span>
+                Excluded from exact price ranking: {requirement.comparison.excluded.map(({ offerId, reason }) => `${offerId} (${exclusionLabel(reason)})`).join(", ")}
+              </span>
+            ) : null}
+            {requirement.resolutionStatus !== "ok" ? (
+              <span>Offer evidence status: {requirement.resolutionStatus.replaceAll("_", " ")}.</span>
+            ) : null}
+          </li>
+        ))}
+      </ul>
+      {plan.retailers.length === 0 ? (
+        <p role="status">No current, comparable exact offers are eligible for a retailer handoff.</p>
+      ) : (
+        <div className="shopping-plan-retailers" aria-label="Retailer shopping groups">
+          {plan.retailers.map((retailer) => (
+            <section key={retailer.retailerId} aria-label={`Shopping plan for ${retailer.retailer}`}>
+              <h4>{retailer.retailer}</h4>
+              <ul>
+                {retailer.offers.map((offer) => (
+                  <li key={offer.offerId}>
+                    <strong>{offer.requirementName} · quantity {offer.quantity}</strong>
+                    <span>{normalizedOfferPrice(offer)} · observed {offer.observedAt}</span>
+                    {offer.isCheapest ? <span>Cheapest current comparable exact offer</span> : null}
+                    <span>Same variant evidence: {offer.identityEvidence.evidence?.join("; ") || offer.identityEvidence.method}</span>
+                    <span>Source: {offer.provenance.sourceName} · {offer.provenance.sourceUrl}</span>
+                    <a href={offer.productUrl} rel="noreferrer" target="_blank">Open inert retailer handoff</a>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
 const searchSummary = (
   attempt: number,
   matches: CatalogMatch[],
@@ -202,13 +321,16 @@ export function CatalogPanel({
   const [actionState, setActionState] = useState<ActionState | null>(null);
   const [importState, setImportState] = useState<ImportState | null>(null);
   const [offerState, setOfferState] = useState<OfferState | null>(null);
+  const [shoppingPlanState, setShoppingPlanState] = useState<ShoppingPlanState | null>(null);
   const searchButtonRef = useRef<HTMLButtonElement>(null);
   const moreFiltersRef = useRef<HTMLDetailsElement>(null);
   const offerRequestRef = useRef(0);
+  const shoppingPlanRequestRef = useRef(0);
   const visibleSearch = searchState?.owner === store ? searchState : null;
   const visibleAction = actionState?.owner === store ? actionState : null;
   const visibleImport = importState?.owner === store ? importState : null;
   const visibleOffer = offerState?.owner === store ? offerState : null;
+  const visibleShoppingPlan = shoppingPlanState?.owner === store ? shoppingPlanState : null;
   const resolvedOfferResolver = useMemo(
     () => offerResolver ?? createSyntheticRetailerOfferResolver(store.readCatalog),
     [offerResolver, store],
@@ -236,11 +358,21 @@ export function CatalogPanel({
     () =>
       store.subscribe((current, previous) => {
         const receipt = current.receipts[0];
-        if (
-          receipt === previous.receipts[0] ||
-          receipt?.status !== "accepted" ||
-          receipt.changeType !== "replace"
-        ) {
+        const roomChanged = current.revision !== previous.revision;
+        const acceptedReplace =
+          receipt !== previous.receipts[0] &&
+          receipt?.status === "accepted" &&
+          receipt.changeType === "replace";
+        if (!roomChanged && !acceptedReplace) {
+          return;
+        }
+
+        if (roomChanged) {
+          shoppingPlanRequestRef.current += 1;
+          setShoppingPlanState(null);
+        }
+
+        if (!acceptedReplace) {
           return;
         }
 
@@ -392,6 +524,21 @@ export function CatalogPanel({
     });
   };
 
+  const showShoppingPlan = async () => {
+    const requestId = shoppingPlanRequestRef.current + 1;
+    shoppingPlanRequestRef.current = requestId;
+    const current = store.getState();
+    setShoppingPlanState({ owner: store, revision: current.revision, phase: "loading" });
+    try {
+      const plan = await createRoomShoppingPlan(current.room as WimyRoomV1, resolvedOfferResolver);
+      if (shoppingPlanRequestRef.current !== requestId) return;
+      setShoppingPlanState({ owner: store, revision: current.revision, phase: "ready", plan });
+    } catch {
+      if (shoppingPlanRequestRef.current !== requestId) return;
+      setShoppingPlanState({ owner: store, revision: current.revision, phase: "error" });
+    }
+  };
+
   const importCatalogPackage = async (
     event: ChangeEvent<HTMLInputElement>,
   ) => {
@@ -446,6 +593,9 @@ export function CatalogPanel({
         <h2 id="catalog-heading">Furniture catalog</h2>
         <p>Find a local catalog item that fits the current room.</p>
         <p>Fictional/project-authored records only; imports stay local to this session.</p>
+        <button type="button" className="shopping-plan-toggle" onClick={() => void showShoppingPlan()}>
+          Build room shopping plan
+        </button>
       </div>
       <div className="catalog-import">
         <label>
@@ -465,6 +615,7 @@ export function CatalogPanel({
         ) : null}
       </div>
       <div className="catalog-content">
+        {visibleShoppingPlan ? <RoomShoppingPlanPanel state={visibleShoppingPlan} /> : null}
         {!visibleSearch ? (
           <section className="catalog-browse" aria-labelledby="catalog-browse-heading">
             <div className="catalog-subheading">

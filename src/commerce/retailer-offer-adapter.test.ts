@@ -334,6 +334,31 @@ describe("createRetailerOfferResolver", () => {
       ],
     });
   });
+
+  it("preserves explicit pack pricing evidence for unit normalization", async () => {
+    const resolver = resolverFor(
+      adapterReturning([
+        {
+          ...freshOffer,
+          price: {
+            amountMinor: 24000,
+            currency: "USD",
+            unit: "pack",
+            quantity: 2,
+          },
+        },
+      ]),
+    );
+
+    await expect(resolver.resolve(lookup)).resolves.toMatchObject({
+      status: "ok",
+      offers: [
+        {
+          price: { amountMinor: 24000, currency: "USD", unit: "pack", quantity: 2 },
+        },
+      ],
+    });
+  });
 });
 
 describe("SANDBOX_RETAILER_ADAPTER", () => {

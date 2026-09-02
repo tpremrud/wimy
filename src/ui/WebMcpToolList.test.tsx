@@ -37,6 +37,14 @@ const definitions = [
     annotations: { readOnlyHint: true },
     execute: async () => ({}),
   },
+  {
+    name: "inspect_room_shopping_plan",
+    title: "Inspect room shopping plan",
+    description: "Read a room shopping plan.",
+    inputSchema: { type: "object" },
+    annotations: { readOnlyHint: true },
+    execute: async () => ({}),
+  },
 ] satisfies WebMcpToolDefinition[];
 
 afterEach(cleanup);
@@ -51,20 +59,20 @@ describe("WebMcpToolList", () => {
           phase: "resolved",
           status: {
             available: true,
-            registered: ["inspect_room", "find_furniture", "apply_room_edit", "inspect_retailer_offers"],
+            registered: ["inspect_room", "find_furniture", "apply_room_edit", "inspect_retailer_offers", "inspect_room_shopping_plan"],
             errors: [],
           },
         }}
       />,
     );
 
-    const trigger = screen.getByRole("button", { name: "WebMCP tools, 4 registered" });
-    expect(trigger).toHaveTextContent("WebMCP · 4 tools");
+    const trigger = screen.getByRole("button", { name: "WebMCP tools, 5 registered" });
+    expect(trigger).toHaveTextContent("WebMCP · 5 tools");
 
     await user.click(trigger);
     const panel = screen.getByRole("dialog", { name: "WebMCP tools" });
-    expect(panel).toHaveTextContent("4 of 4 registered");
-    expect(screen.getAllByText("Registered")).toHaveLength(4);
+    expect(panel).toHaveTextContent("5 of 5 registered");
+    expect(screen.getAllByText("Registered")).toHaveLength(5);
     expect(screen.getByText("Can change room")).toBeVisible();
   });
 
@@ -87,7 +95,7 @@ describe("WebMcpToolList", () => {
       </div>,
     );
 
-    const trigger = screen.getByRole("button", { name: "WebMCP tools, 4 registered" });
+    const trigger = screen.getByRole("button", { name: "WebMCP tools, 5 registered" });
     await user.click(trigger);
     await user.click(screen.getByRole("button", { name: "Room canvas" }));
     expect(screen.queryByRole("dialog", { name: "WebMCP tools" })).not.toBeInTheDocument();

@@ -13,7 +13,7 @@ Built for [The WebMCP Challenge](https://webmcp.devpost.com/). The repository is
 - A read-only procedural 3D preview derived from the same committed room. It uses room geometry and item snapshots to draw floors, walls, openings, and category-shaped primitives; it never edits the room. If WebGL or the preview chunk is unavailable, the room summary and placed-item list remain usable.
 - Three independent room templates: Blank Room, Compact Bedroom, and Living Room.
 - A twelve-item local fictional catalog. Category, style tags, fictional USD price snapshots, and maximum footprint filters are deterministic. A fit search tries quarter-turns in `0`, `90`, `180`, `270` degree order and scans a fixed 0.1 m grid, returning the first legal pose for each result.
-- Four WebMCP tools that share the human editor's committed state: `inspect_room`, `find_furniture`, `apply_room_edit`, and the read-only `inspect_retailer_offers` evidence lookup.
+- Five WebMCP tools that share the human editor's committed state: `inspect_room`, `find_furniture`, `apply_room_edit`, the read-only `inspect_retailer_offers` evidence lookup, and the read-only `inspect_room_shopping_plan` comparison.
 - A versioned `.wimy` file for no-account export/import. The file is UTF-8 JSON, intentionally human-readable and strict; a custom Markdown-like room language is not part of v1.
 
 ## One canonical room
@@ -30,7 +30,7 @@ The human UI, templates, import, export, undo, WebMCP handlers, 2D projection, a
 
 ## WebMCP interface
 
-When the host exposes `document.modelContext`, Wimy registers exactly four tools once. The header reports the live registered count, a degraded registration, or `WebMCP unavailable — human room access remains available`. The room remains human-editable and file-portable when WebMCP is unavailable.
+When the host exposes `document.modelContext`, Wimy registers exactly five tools once. The header reports the live registered count, a degraded registration, or `WebMCP unavailable — human room access remains available`. The room remains human-editable and file-portable when WebMCP is unavailable.
 
 | Tool | Input and result | Annotation and effect |
 | --- | --- | --- |
@@ -38,6 +38,7 @@ When the host exposes `document.modelContext`, Wimy registers exactly four tools
 | `find_furniture` | Optional `category`, up to eight `styleTags`, `maxPrice`, `maxWidth`, `maxDepth`, and `limit` from 1–5. Returns local catalog/product IDs, snapshot facts, fictional price, and a deterministic `suggestedPose`. | `readOnlyHint: true`, `untrustedContentHint: false` for the local fictional catalog. Does not change the room. |
 | `apply_room_edit` | `expectedRevision` plus 1–8 exact `add`, `transform`, or `remove` operations. Returns the accepted revision, applied count, generated item IDs, and warnings, or a bounded failure code/message. | `readOnlyHint: false`, `untrustedContentHint: true`. Valid operations commit atomically through the same transaction seam as human edits. |
 | `inspect_retailer_offers` | Canonical project-authored `catalogId` and `productId` UUIDs. Returns synthetic retailer/source, price/currency, availability, inert product URL text, observed/expiry timestamps, mapping confidence/evidence, and exact/ambiguous/substitute/stale/unavailable state. | `readOnlyHint: true`, `untrustedContentHint: true`. Reads volatile evidence only; it never changes the room. |
+| `inspect_room_shopping_plan` | Empty object. Resolves the canonical catalog variants currently placed in the room, compares only current exact offers with compatible currency and price basis, and groups the bounded result by retailer. | `readOnlyHint: true`, `untrustedContentHint: true`. Reads volatile evidence only; it never changes the room. Prices exclude delivery, tax, membership discounts or fees, regional costs, and other unavailable landed-cost inputs. |
 
 An add operation supplies a catalog `productId` and pose; Wimy generates the placed-item ID. Placement checks room bounds, blocking overlaps, and protected door clearance. The tool does not expose arbitrary HTML, file access, arbitrary URL navigation, checkout, or purchase actions.
 
@@ -45,7 +46,7 @@ An add operation supplies a catalog `productId` and pose; Wimy generates the pla
 
 Wimy has no authentication, backend, database, cloud room storage, internal chat, live retailer API, scraping, checkout, or real-time inventory/price feed. Offer evidence in this slice is synthetic, local, volatile, and explicitly non-purchasable. The demo catalog is fictional and local; its price fields are snapshots for deterministic interaction, not retailer facts or freshness claims.
 
-Imported strings are bounded and validated. HTTPS product URLs may be stored in an imported snapshot but are never fetched automatically. Synthetic offer URLs are displayed as inert text and use `example.invalid`. Imported names are treated as untrusted text. Invalid files fail closed without replacing the current room, and stale agent edits fail closed at the revision seam.
+Imported strings are bounded and validated. HTTPS product URLs may be stored in an imported snapshot but are never fetched automatically. Synthetic offer URLs use `example.invalid` and are exposed only as transparent inert handoff links. Imported names are treated as untrusted text. Invalid files fail closed without replacing the current room, and stale agent edits fail closed at the revision seam.
 
 ## Local development
 

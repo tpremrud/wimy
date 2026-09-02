@@ -6,6 +6,11 @@ import {
   type RetailerOfferResolver,
 } from "../commerce/retailer-offer-adapter";
 import { createSyntheticRetailerOfferResolver } from "../commerce/synthetic-retailer-offers";
+import {
+  createRoomShoppingPlan,
+  type ComparableShoppingOffer,
+  type RoomShoppingPlan,
+} from "../commerce/shopping-plan";
 import { findFurniture } from "../room/catalog";
 import {
   EntityIdSchema,
@@ -255,12 +260,20 @@ const INSPECT_RETAILER_OFFERS_INPUT_SCHEMA = {
   additionalProperties: false,
 } as const;
 
+const INSPECT_ROOM_SHOPPING_PLAN_INPUT_SCHEMA = {
+  type: "object",
+  properties: {},
+  additionalProperties: false,
+} as const;
+
 const InspectRetailerOffersInputSchema = z
   .object({
     catalogId: z.string().uuid(),
     productId: z.string().uuid(),
   })
   .strict();
+
+const InspectRoomShoppingPlanInputSchema = z.object({}).strict();
 
 const ENTITY_ID_INPUT_SCHEMA = {
   type: "string",
@@ -409,6 +422,102 @@ const inspectRetailerOffers = async (
       },
     })),
   });
+};
+
+const projectShoppingOffer = (offer: ComparableShoppingOffer) => ({
+  offerId: offer.offerId,
+  retailer: projectUntrustedText(offer.provenance.sourceName),
+  sellerId: offer.sellerId,
+  displayName: projectUntrustedText(offer.displayName),
+  price: { ...offer.price },
+  normalizedAmountMinor: offer.normalizedAmountMinor,
+  normalizedUnitCount: offer.normalizedUnitCount,
+  isCheapest: offer.isCheapest,
+  availability: offer.availability,
+  productUrl: offer.productUrl,
+  provenance: {
+    sourceName: projectUntrustedText(offer.provenance.sourceName),
+    sourceUrl: offer.provenance.sourceUrl,
+    sourceKind: offer.provenance.sourceKind,
+  },
+  observedAt: offer.observedAt,
+  expiresAt: offer.expiresAt,
+  identityEvidence: {
+    match: offer.identityEvidence.match,
+    method: offer.identityEvidence.method,
+    confidence: offer.identityEvidence.confidence ?? "not_provided",
+    evidence: offer.identityEvidence.evidence?.map(projectUntrustedText) ?? [],
+  },
+});
+
+const MAX_PROJECTED_SHOPPING_OFFERS = 24;
+
+const projectShoppingPlan = (plan: RoomShoppingPlan, revision: number) => {
+  const allOffers = plan.retailers.flatMap(({ offers }) => offers);
+  const visibleOfferIds = new Set(
+    allOffers.slice(0, MAX_PROJECTED_SHOPPING_OFFERS).map(({ offerId }) => offerId),
+  );
+
+  return enforceWebMcpOutputBound({
+    revision,
+    status: plan.status,
+    costDisclosure: plan.costDisclosure,
+    untrackedItemCount: plan.untrackedItemCount,
+    truncatedRequirementCount: plan.truncatedRequirementCount,
+    truncatedOfferCount: Math.max(0, allOffers.length - visibleOfferIds.size),
+    requirements: plan.requirements.map((requirement) => ({
+      requirementId: requirement.requirementId,
+      catalogRef: { ...requirement.catalogRef },
+      name: projectUntrustedText(requirement.name),
+      quantity: requirement.quantity,
+      resolutionStatus: requirement.resolutionStatus,
+      comparisons: requirement.comparison.groups.map((group) => ({
+        currency: group.currency,
+        basis: group.basis,
+        cheapestOfferId: group.cheapestOfferId,
+        offerIds: group.offers.map(({ offerId }) => offerId),
+      })),
+      excluded: requirement.comparison.excluded.map(({ offerId, reason }) => ({
+        offerId,
+        reason,
+      })),
+    })),
+    retailers: plan.retailers
+      .map((retailer) => ({
+        retailerId: retailer.retailerId,
+        retailer: projectUntrustedText(retailer.retailer),
+        offers: retailer.offers
+          .filter(({ offerId }) => visibleOfferIds.has(offerId))
+          .map((offer) => ({
+            ...projectShoppingOffer(offer),
+            requirementId: offer.requirementId,
+            requirementName: projectUntrustedText(offer.requirementName),
+            quantity: offer.quantity,
+          })),
+      }))
+      .filter(({ offers }) => offers.length > 0),
+  });
+};
+
+const inspectRoomShoppingPlan = async (
+  store: RoomStore,
+  resolver: RetailerOfferResolver,
+  rawInput: unknown,
+  signal?: AbortSignal,
+) => {
+  throwIfAborted(signal);
+  if (!InspectRoomShoppingPlanInputSchema.safeParse(rawInput).success) {
+    throw new TypeError("inspect_room_shopping_plan input must be an empty object");
+  }
+
+  const state = store.getState();
+  const plan = await createRoomShoppingPlan(
+    state.room as WimyRoomV1,
+    resolver,
+    { signal },
+  );
+  throwIfAborted(signal);
+  return projectShoppingPlan(plan, state.revision);
 };
 
 const APPLY_ROOM_EDIT_INPUT_SCHEMA = {
@@ -682,6 +791,19 @@ export const createRoomToolDefinitions = (
       },
       execute: (input, { signal }) =>
         inspectRetailerOffers(offerResolver, input, signal),
+    },
+    {
+      name: "inspect_room_shopping_plan",
+      title: "Inspect room shopping plan",
+      description:
+        "Read a bounded retailer-grouped comparison of current exact synthetic offers for the placed room variants; this never changes the room.",
+      inputSchema: INSPECT_ROOM_SHOPPING_PLAN_INPUT_SCHEMA,
+      annotations: {
+        readOnlyHint: true,
+        untrustedContentHint: true,
+      },
+      execute: (input, { signal }) =>
+        inspectRoomShoppingPlan(store, offerResolver, input, signal),
     },
   ];
 

@@ -43,6 +43,24 @@ const HttpsUrlSchema = boundedText(2_048).refine((value) => {
 
 const TimestampSchema = z.string().datetime({ offset: true });
 
+const OfferPriceSchema = z
+  .object({
+    amountMinor: z.number().int().nonnegative().max(1_000_000_000),
+    currency: z.string().regex(/^[A-Z]{3}$/u),
+    unit: z.enum(["each", "pack"]).optional(),
+    quantity: z.number().int().positive().max(10_000).optional(),
+  })
+  .strict()
+  .superRefine((price, context) => {
+    if ((price.unit === undefined) !== (price.quantity === undefined)) {
+      context.addIssue({
+        code: "custom",
+        message: "Price unit and quantity must be supplied together",
+        path: [price.unit === undefined ? "unit" : "quantity"],
+      });
+    }
+  });
+
 const IdentityEvidenceSchema = z.discriminatedUnion("match", [
   z
     .object({
@@ -78,12 +96,7 @@ const RetailerOfferSchema = z
     catalogRef: CatalogRefSchema,
     displayName: boundedText(160),
     productUrl: HttpsUrlSchema,
-    price: z
-      .object({
-        amountMinor: z.number().int().nonnegative().max(1_000_000_000),
-        currency: z.string().regex(/^[A-Z]{3}$/u),
-      })
-      .strict(),
+    price: OfferPriceSchema,
     availability: z.enum(["in_stock", "out_of_stock", "unknown"]),
     observedAt: TimestampSchema,
     expiresAt: TimestampSchema,

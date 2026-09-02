@@ -38,6 +38,14 @@ _Avoid_: Cache, duplicate product
 A deterministic result showing whether a Catalog Item can occupy a Pose without leaving the room or violating a protected clearance.
 _Avoid_: Recommendation, aesthetic score
 
+**Retailer Offer**:
+A time-bounded, provenance-backed price and availability observation for one Catalog Variant; it is not a purchase or order.
+_Avoid_: Retailer Product, listing
+
+**Room Shopping Plan**:
+A volatile, retailer-grouped view of current comparable Retailer Offers for the Catalog Variants required by a Room Document.
+_Avoid_: Cart, checkout plan
+
 ## Change and Sharing
 
 **Room Operation**:

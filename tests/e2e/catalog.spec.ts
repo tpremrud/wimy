@@ -235,3 +235,83 @@ test("shows synthetic offer evidence without exposing a purchase action", async 
   await expect(evidence.getByRole("button")).toHaveCount(0);
   expect(externalRequests).toEqual([]);
 });
+
+test("builds a retailer-grouped shopping plan for a placed project-authored variant", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1_280, height: 900 });
+  const externalRequests: string[] = [];
+  page.on("request", (request) => {
+    if (!request.url().startsWith("http://127.0.0.1")) externalRequests.push(request.url());
+  });
+  await page.goto("/");
+
+  const projectPackage = {
+    format: "wimy-catalog",
+    schemaVersion: 1,
+    publisher: {
+      publisherId: "00000000-0000-4000-8000-000000000601",
+      name: "Wimy Project Studio",
+    },
+    catalog: {
+      catalogId: "00000000-0000-4000-8000-000000000602",
+      name: "Project Authored Shopping Browser Fixture",
+      version: "2026.09.02",
+      license: { name: "Wimy Project Authored License", spdxId: "MIT" },
+      provenance: {
+        sourceName: "Wimy Project Studio",
+        sourceUrl: "https://wimy.example.invalid/catalog",
+        observedAt: "2026-09-02T01:00:00-04:00",
+      },
+    },
+    items: [
+      {
+        itemId: "00000000-0000-4000-8000-000000000603",
+        name: "Aurora Shopping Browser Chair",
+        variants: [
+          {
+            variantId: "00000000-0000-4000-8000-000000000604",
+            snapshot: {
+              name: "Aurora Shopping Browser Chair",
+              category: "chair",
+              dimensions: { width: 0.55, depth: 0.55, height: 0.8 },
+              appearance: { color: "#76543A" },
+              styleTags: ["project-authored"],
+            },
+            externalIdentifiers: [],
+            classifications: [],
+          },
+        ],
+      },
+    ],
+  };
+
+  await page.getByLabel("Import project-authored catalog package").setInputFiles({
+    name: "shopping.wimy-catalog",
+    mimeType: "application/json",
+    buffer: Buffer.from(JSON.stringify(projectPackage)),
+  });
+  await expect(page.getByRole("status", { name: "Catalog import result" })).toContainText(
+    "Aurora Shopping Browser Chair",
+  );
+  await page.getByRole("combobox", { name: "Category" }).selectOption("chair");
+  await page.getByText("More filters").click();
+  await page.getByRole("textbox", { name: "Style tags" }).fill("project-authored");
+  await page.getByRole("button", { name: "Search catalog" }).click();
+  await expect(page.getByRole("list", { name: "Catalog results" })).toContainText(
+    "Aurora Shopping Browser Chair",
+  );
+  await page.getByRole("button", { name: "Add best fit" }).click();
+  await expect(page.getByRole("region", { name: "Living Room" })).toContainText("Revision 2");
+  await page.getByRole("button", { name: "Build room shopping plan" }).click();
+
+  const plan = page.getByRole("region", { name: "Room shopping plan" });
+  await expect(plan).toContainText("Northstar Furnishings");
+  await expect(plan).toContainText("Elm Commons");
+  await expect(plan).toContainText("Cheapest current comparable exact offer");
+  await expect(plan).toContainText("Excluded from exact price ranking");
+  await expect(plan).toContainText("delivery");
+  await expect(plan.locator('a[href^="https://offers.example.invalid/"]')).not.toHaveCount(0);
+  await expect(plan).not.toContainText(/purchase|checkout|cart/iu);
+  expect(externalRequests).toEqual([]);
+});
