@@ -6,10 +6,17 @@ export type ProceduralAppearanceKey =
   | "corner-sofa"
   | "pedestal-dining-table"
   | "reed-dining-chair"
-  | "console-storage";
+  | "console-storage"
+  | "slatted-bed"
+  | "layered-plant"
+  | "woven-rug"
+  | "folding-desk";
 
 export type CatalogPresentation = {
   readonly productId: string;
+  readonly variantId: string;
+  readonly presentationKey: string;
+  readonly presentationType: "procedural";
   readonly appearanceKey: ProceduralAppearanceKey;
   readonly origin: "project-authored";
   readonly license: {
@@ -18,6 +25,7 @@ export type CatalogPresentation = {
   };
   readonly approvalStatus: "approved";
   readonly runtimeNetworkRequired: false;
+  readonly maxPrimitiveParts: number;
   readonly notes: string;
 };
 
@@ -38,13 +46,18 @@ const deepFreeze = <T>(value: T): T => {
 const presentation = (
   productId: string,
   appearanceKey: ProceduralAppearanceKey = "category-default",
+  maxPrimitiveParts = 8,
 ): CatalogPresentation => ({
   productId,
+  variantId: productId,
+  presentationKey: `wimy-procedural/${productId}`,
+  presentationType: "procedural",
   appearanceKey,
   origin: "project-authored",
   license: { spdxId: "MIT", attributionRequired: false },
   approvalStatus: "approved",
   runtimeNetworkRequired: false,
+  maxPrimitiveParts,
   notes:
     "Fictional Wimy demo presentation authored as bounded procedural geometry; no external model or runtime URL.",
 });
@@ -52,12 +65,12 @@ const presentation = (
 const PRESENTATION_RECORDS = [
   presentation("ember-nest-chair"),
   presentation("cedar-arc-chair"),
-  presentation("lumen-fold-desk"),
+  presentation("lumen-fold-desk", "folding-desk", 5),
   presentation("hearthline-sofa"),
   presentation("pebble-drum-table"),
-  presentation("juniper-rise-plant"),
-  presentation("saffron-loom-rug"),
-  presentation("harbor-slat-bed"),
+  presentation("juniper-rise-plant", "layered-plant", 6),
+  presentation("saffron-loom-rug", "woven-rug", 5),
+  presentation("harbor-slat-bed", "slatted-bed", 6),
   presentation("vale-drawer-dresser"),
   presentation("orbit-side-table"),
   presentation("dune-shell-lounger", "molded-shell-lounge"),
@@ -84,9 +97,9 @@ export const getCatalogPresentation = (
     ? undefined
     : CATALOG_PRESENTATION_MANIFEST[productId];
 
-export const resolveCatalogPresentationKey = (
+export const resolveCatalogPresentation = (
   refOrProductId?: string | CatalogPresentationRef,
-): ProceduralAppearanceKey =>
+): CatalogPresentation | undefined =>
   getCatalogPresentation(
     typeof refOrProductId === "string" ||
       refOrProductId?.catalogId === "wimy-demo-v1"
@@ -94,4 +107,10 @@ export const resolveCatalogPresentationKey = (
         ? refOrProductId
         : refOrProductId.productId
       : undefined,
-  )?.appearanceKey ?? "category-default";
+  );
+
+export const resolveCatalogPresentationKey = (
+  refOrProductId?: string | CatalogPresentationRef,
+): ProceduralAppearanceKey =>
+  resolveCatalogPresentation(refOrProductId)?.appearanceKey ??
+  "category-default";

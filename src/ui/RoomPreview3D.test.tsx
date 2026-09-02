@@ -3,10 +3,12 @@ import { Children, useState, type ReactNode } from "react";
 import { useStore } from "zustand";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { projectRoomToScene, type SceneItem } from "../room/projection";
+import { getCatalogPresentation } from "../room/catalog-presentation";
 import { projectFurnitureOrientation } from "../room/orientation";
 import { createRoomStore, type RoomStore } from "../room/store";
 import { TEST_TRANSACTION_DEPENDENCIES } from "../room/transaction";
 import { makePlacedItem, makeRoom } from "../test/room-fixtures";
+import { MAX_FURNITURE_PRIMITIVE_PARTS } from "./catalog-procedural-layout";
 import {
   projectFurniturePrimitiveLayout,
   probeWebGL2PreviewSupport,
@@ -228,6 +230,33 @@ const primitiveSignature = (
     };
   });
 };
+
+const newlyAuthoredLayoutCases = [
+  {
+    catalogProductId: "harbor-slat-bed",
+    category: "bed",
+    kinds: ["box", "box", "box", "box", "box", "box"],
+    size: [1.5, 0.5, 2.05],
+  },
+  {
+    catalogProductId: "juniper-rise-plant",
+    category: "plant",
+    kinds: ["cylinder", "cylinder", "sphere", "sphere", "sphere", "sphere"],
+    size: [0.42, 1.25, 0.42],
+  },
+  {
+    catalogProductId: "saffron-loom-rug",
+    category: "rug",
+    kinds: ["box", "box", "box", "box", "box"],
+    size: [2.2, 0.02, 1.6],
+  },
+  {
+    catalogProductId: "lumen-fold-desk",
+    category: "desk",
+    kinds: ["box", "box", "box", "box", "box"],
+    size: [1, 0.75, 0.5],
+  },
+] as const;
 
 describe("projectFurniturePrimitiveLayout", () => {
   it("keeps the Cove Shell Chair back at local positive Z and seat/front open toward local negative Z", () => {
@@ -660,6 +689,47 @@ describe("projectFurniturePrimitiveLayout", () => {
       expect(envelope.max[2]).toBeLessThanOrEqual(size[2] / 2 + 1e-9);
     },
   );
+
+  it.each(
+    newlyAuthoredLayoutCases.map(({ catalogProductId, category, kinds }) => [
+      catalogProductId,
+      category,
+      kinds,
+    ] as const),
+  )(
+    "selects the %s authored layout through the manifest",
+    (catalogProductId, category, kinds) => {
+      const parts = projectFurniturePrimitiveLayout({
+        ...makeSceneItem(category),
+        catalogProductId,
+      });
+
+      expect(parts.map((part) => part.kind)).toEqual(kinds);
+      expect(parts.length).toBeGreaterThan(1);
+      expect(parts.length).toBeLessThanOrEqual(
+        getCatalogPresentation(catalogProductId)?.maxPrimitiveParts ?? 0,
+      );
+      expect(parts.length).toBeLessThanOrEqual(MAX_FURNITURE_PRIMITIVE_PARTS);
+    },
+  );
+
+  it("keeps every newly authored category layout inside its certified footprint", () => {
+    for (const { catalogProductId, category, size } of newlyAuthoredLayoutCases) {
+      const item = {
+        ...makeSceneItem(category),
+        catalogProductId,
+        size: [...size] as SceneItem["size"],
+      };
+      const envelope = partEnvelope(item, projectFurniturePrimitiveLayout(item));
+
+      expect(envelope.min[0]).toBeGreaterThanOrEqual(-size[0] / 2 - 1e-9);
+      expect(envelope.min[1]).toBeGreaterThanOrEqual(-1e-9);
+      expect(envelope.min[2]).toBeGreaterThanOrEqual(-size[2] / 2 - 1e-9);
+      expect(envelope.max[0]).toBeLessThanOrEqual(size[0] / 2 + 1e-9);
+      expect(envelope.max[1]).toBeLessThanOrEqual(size[1] + 1e-9);
+      expect(envelope.max[2]).toBeLessThanOrEqual(size[2] / 2 + 1e-9);
+    }
+  });
 
   it("keeps the Arclet Dining Table base, support, and oval top in contact", () => {
     const item = {

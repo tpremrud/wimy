@@ -13,8 +13,14 @@ import {
   type SceneProjection,
   type SceneVector3,
 } from "../room/projection";
-import { resolveCatalogPresentationKey } from "../room/catalog-presentation";
 import {
+  resolveCatalogPresentation,
+  resolveCatalogPresentationKey,
+} from "../room/catalog-presentation";
+import {
+  FURNITURE_CYLINDER_SEGMENTS,
+  FURNITURE_SPHERE_HEIGHT_SEGMENTS,
+  FURNITURE_SPHERE_WIDTH_SEGMENTS,
   projectCatalogProceduralLayout,
   type FurniturePrimitivePart,
 } from "./catalog-procedural-layout";
@@ -228,90 +234,20 @@ export const projectFurniturePrimitiveLayout = (
     item.catalogRef ?? item.catalogProductId,
   );
 
-  if (item.category === "chair" && appearanceKey === "molded-shell-lounge") {
-    const seatHeight = height * 0.1;
-    const seatWorldY = height * 0.43;
-    const seatZ = -depth * 0.06;
-    const legHeight = height * 0.38;
-    const legRadiusBottom = Math.min(width, depth) * 0.075;
-    const legRadiusTop = Math.min(width, depth) * 0.05;
-
-    return [
-      ellipsoid(
-        item.color,
-        [-width * 0.06, localY(height * 0.62), depth * 0.16],
-        [width * 0.78, height * 0.58, depth * 0.28],
-      ),
-      ellipsoid(
-        item.color,
-        [width * 0.24, localY(height * 0.5), -depth * 0.04],
-        [width * 0.28, height * 0.38, depth * 0.32],
-      ),
-      box(
-        "#f1d5bd",
-        [0, localY(seatWorldY), seatZ],
-        [width * 0.68, seatHeight, depth * 0.55],
-      ),
-      ...[-width * 0.24, width * 0.24].flatMap((x) =>
-        [seatZ - depth * 0.15, seatZ + depth * 0.15].map((z) =>
-          cylinder(
-            item.color,
-            [x, localY(legHeight / 2), z],
-            legRadiusBottom,
-            legRadiusTop,
-            legHeight,
-          ),
-        ),
-      ),
-    ];
-  }
-
-  if (item.category === "sofa" && appearanceKey === "modular-sofa") {
-    const platformHeight = height * 0.16;
-    const seatHeight = height * 0.34;
-    const moduleWidth = width * 0.29;
-    const moduleOffsets = [-width * 0.325, 0, width * 0.325];
-    const backHeight = height * 0.5;
-    const backDepth = depth * 0.16;
-
-    return [
-      box(
-        item.color,
-        [0, localY(platformHeight / 2), 0],
-        [width, platformHeight, depth * 0.92],
-      ),
-      ...moduleOffsets.map((x, index) =>
-        box(
-          "#93a3ad",
-          [
-            x,
-            localY(platformHeight + seatHeight / 2),
-            index === 2 ? -depth * 0.04 : depth * 0.08,
-          ],
-          [
-            moduleWidth,
-            seatHeight,
-            index === 2 ? depth * 0.86 : depth * 0.55,
-          ],
-        ),
-      ),
-      ...moduleOffsets.map((x) =>
-        box(
-          item.color,
-          [x, localY(height - backHeight / 2), depth * 0.38],
-          [moduleWidth, backHeight, backDepth],
-        ),
-      ),
-    ];
-  }
-
   const catalogVariant = projectCatalogProceduralLayout(item, appearanceKey, {
     box,
     cylinder,
     ellipsoid,
     localY,
   });
-  if (catalogVariant) return catalogVariant;
+  if (
+    catalogVariant &&
+    catalogVariant.length <=
+      (resolveCatalogPresentation(item.catalogRef ?? item.catalogProductId)
+        ?.maxPrimitiveParts ?? 0)
+  ) {
+    return catalogVariant;
+  }
 
   switch (item.category) {
     case "rug":
@@ -466,7 +402,12 @@ const FurniturePrimitive = ({ item }: { item: SceneItem }) => {
       return (
         <mesh key={index} position={part.position}>
           <cylinderGeometry
-            args={[part.radiusTop, part.radiusBottom, part.size[1], 16]}
+            args={[
+              part.radiusTop,
+              part.radiusBottom,
+              part.size[1],
+              FURNITURE_CYLINDER_SEGMENTS,
+            ]}
           />
           <meshStandardMaterial color={part.color} />
         </mesh>
@@ -474,7 +415,13 @@ const FurniturePrimitive = ({ item }: { item: SceneItem }) => {
     }
     return (
       <mesh key={index} position={part.position} scale={part.scale}>
-        <sphereGeometry args={[part.radius, 16, 12]} />
+        <sphereGeometry
+          args={[
+            part.radius,
+            FURNITURE_SPHERE_WIDTH_SEGMENTS,
+            FURNITURE_SPHERE_HEIGHT_SEGMENTS,
+          ]}
+        />
         <meshStandardMaterial color={part.color} />
       </mesh>
     );

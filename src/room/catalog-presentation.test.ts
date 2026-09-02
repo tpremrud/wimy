@@ -26,17 +26,47 @@ describe("catalog presentation manifest", () => {
       const presentation = getCatalogPresentation(productId);
       expect(presentation).toMatchObject({
         productId,
+        variantId: productId,
+        presentationType: "procedural",
         origin: "project-authored",
         license: { spdxId: "MIT", attributionRequired: false },
         approvalStatus: "approved",
         runtimeNetworkRequired: false,
       });
+      if (!presentation) throw new Error(`Missing presentation for ${productId}`);
+      expect(presentation.maxPrimitiveParts).toBeGreaterThan(0);
       expect(Object.isFrozen(presentation)).toBe(true);
     }
 
     expect(JSON.stringify(CATALOG_PRESENTATION_MANIFEST)).not.toMatch(
       /https?:\/\//iu,
     );
+  });
+
+  it("declares richer authored geometry across eight supported room categories", () => {
+    const categoryByProductId = new Map(
+      DEMO_CATALOG.map(({ catalogRef, snapshot }) => [
+        catalogRef.productId,
+        snapshot.category,
+      ]),
+    );
+    const richerCategories = new Set(
+      Object.values(CATALOG_PRESENTATION_MANIFEST)
+        .filter(({ appearanceKey }) => appearanceKey !== "category-default")
+        .map(({ productId }) => categoryByProductId.get(productId)),
+    );
+
+    expect(richerCategories).toEqual(
+      new Set(["chair", "sofa", "table", "dresser", "bed", "plant", "rug", "desk"]),
+    );
+  });
+
+  it("keeps every authored presentation bounded and free of asset URLs", () => {
+    for (const presentation of Object.values(CATALOG_PRESENTATION_MANIFEST)) {
+      expect(presentation.presentationKey).toContain(presentation.variantId);
+      expect(presentation.maxPrimitiveParts).toBeLessThanOrEqual(16);
+      expect(JSON.stringify(presentation)).not.toMatch(/https?:\/\//iu);
+    }
   });
 
   it("keeps the five new variants in the stable demo catalog order", () => {
