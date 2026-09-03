@@ -339,6 +339,41 @@ test("keeps browsing and search inside the desktop room-tools rail", async ({ pa
   );
 });
 
+test("keeps advanced catalog filters readable and bounded", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 568 });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Expand room tools" }).click();
+  await page.getByText("More filters", { exact: true }).click();
+
+  const filters = page.locator(".catalog-filters");
+  const clear = page.getByRole("button", { name: "Clear filters" });
+  const style = page.getByRole("textbox", { name: "Style tags" });
+  const depth = page.getByRole("spinbutton", { name: "Maximum depth (m)" });
+
+  await expect(filters).toHaveCSS("overflow-y", "auto");
+  await expect(style).toBeVisible();
+  await filters.evaluate((element) => {
+    element.scrollTop = element.scrollHeight;
+  });
+  await expect(depth).toBeInViewport();
+  await expect.poll(() => clear.evaluate((element) => {
+    const styles = getComputedStyle(element);
+    return {
+      backgroundColor: styles.backgroundColor,
+      fontSize: styles.fontSize,
+      minHeight: styles.minHeight,
+    };
+  })).toEqual({
+    backgroundColor: "rgb(255, 255, 255)",
+    fontSize: "12px",
+    minHeight: "34.4px",
+  });
+  await expect.poll(() => page.evaluate(() => ({
+    clientHeight: document.documentElement.clientHeight,
+    scrollHeight: document.documentElement.scrollHeight,
+  }))).toEqual({ clientHeight: 568, scrollHeight: 568 });
+});
+
 test("shows catalog previews, direct add actions, and readable substitutes", async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1280, height: 720 });
   await page.goto("/");

@@ -349,11 +349,58 @@ export function CatalogPanel({
   const categoryCatalog = category === ""
     ? catalog
     : catalog.filter(({ snapshot }) => snapshot.category === category);
+  const currentQuery = (): CatalogQuery => ({
+    category:
+      category === ""
+        ? undefined
+        : (category as FurnitureSnapshot["category"]),
+    styleTags: styleTags
+      .split(",")
+      .map((styleTag) => styleTag.trim())
+      .filter((styleTag) => styleTag.length > 0),
+    maxPrice: optionalNumber(maxPrice),
+    maxWidth: optionalNumber(maxWidth),
+    maxDepth: optionalNumber(maxDepth),
+  });
+  const draftQuery = currentQuery();
+  const advancedFilterCount = [styleTags, maxPrice, maxWidth, maxDepth]
+    .filter((value) => value.trim().length > 0).length;
+  const appliedAdvancedFilterCount = visibleSearch
+    ? [
+        visibleSearch.query.styleTags?.length,
+        visibleSearch.query.maxPrice !== undefined,
+        visibleSearch.query.maxWidth !== undefined,
+        visibleSearch.query.maxDepth !== undefined,
+      ].filter(Boolean).length
+    : 0;
+  const activeFilterCount = appliedAdvancedFilterCount + (category === "" ? 0 : 1);
+  const hasPendingAdvancedFilters = JSON.stringify([
+    draftQuery.styleTags ?? [],
+    draftQuery.maxPrice ?? null,
+    draftQuery.maxWidth ?? null,
+    draftQuery.maxDepth ?? null,
+  ]) !== JSON.stringify([
+    visibleSearch?.query.styleTags ?? [],
+    visibleSearch?.query.maxPrice ?? null,
+    visibleSearch?.query.maxWidth ?? null,
+    visibleSearch?.query.maxDepth ?? null,
+  ]);
 
   const changeCategory = (value: string) => {
     setCategory(value);
     setSearchState(null);
     setActionState(null);
+  };
+
+  const clearFilters = () => {
+    setCategory("");
+    setStyleTags("");
+    setMaxPrice("");
+    setMaxWidth("");
+    setMaxDepth("");
+    setSearchState(null);
+    setActionState(null);
+    moreFiltersRef.current?.removeAttribute("open");
   };
 
   useEffect(
@@ -392,20 +439,6 @@ export function CatalogPanel({
       }),
     [store],
   );
-
-  const currentQuery = (): CatalogQuery => ({
-    category:
-      category === ""
-        ? undefined
-        : (category as FurnitureSnapshot["category"]),
-    styleTags: styleTags
-      .split(",")
-      .map((styleTag) => styleTag.trim())
-      .filter((styleTag) => styleTag.length > 0),
-    maxPrice: optionalNumber(maxPrice),
-    maxWidth: optionalNumber(maxWidth),
-    maxDepth: optionalNumber(maxDepth),
-  });
 
   const matchesFor = (room: WimyRoomV1, query: CatalogQuery) =>
     findFurniture(room, query, store.readCatalog());
@@ -857,53 +890,32 @@ export function CatalogPanel({
         )}
       </div>
       <form className="catalog-filters" onSubmit={search}>
-        <details ref={moreFiltersRef} className="catalog-more-filters">
-          <summary>More filters</summary>
-          <div className="catalog-filter-details">
-            <label>
-              Style tags
-              <input
-                type="text"
-                value={styleTags}
-                placeholder="warm-modern, compact"
-                onChange={(event) => setStyleTags(event.target.value)}
-              />
-            </label>
-            <label>
-              Maximum price (USD)
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                value={maxPrice}
-                onChange={(event) => setMaxPrice(event.target.value)}
-              />
-            </label>
-            <label>
-              Maximum width (m)
-              <input
-                type="number"
-                min="0"
-                step="0.001"
-                value={maxWidth}
-                onChange={(event) => setMaxWidth(event.target.value)}
-              />
-            </label>
-            <label>
-              Maximum depth (m)
-              <input
-                type="number"
-                min="0"
-                step="0.001"
-                value={maxDepth}
-                onChange={(event) => setMaxDepth(event.target.value)}
-              />
-            </label>
+        <div className="catalog-filter-heading">
+          <div>
+            <strong>Filter catalog</strong>
+            <span>
+              {hasPendingAdvancedFilters
+                ? activeFilterCount === 0
+                  ? "Changes ready to apply"
+                  : `${activeFilterCount} applied · changes ready`
+                : activeFilterCount === 0
+                  ? "No filters applied"
+                  : `${activeFilterCount} filter${activeFilterCount === 1 ? "" : "s"} applied`}
+            </span>
           </div>
-        </details>
+          <button
+            type="button"
+            className="catalog-filter-clear"
+            aria-label="Clear filters"
+            disabled={activeFilterCount === 0 && advancedFilterCount === 0}
+            onClick={clearFilters}
+          >
+            Clear
+          </button>
+        </div>
         <div className="catalog-filter-primary">
           <label>
-            Category
+            <span>Category</span>
             <select
               value={category}
               onChange={(event) => changeCategory(event.target.value)}
@@ -918,10 +930,64 @@ export function CatalogPanel({
               ))}
             </select>
           </label>
-          <button ref={searchButtonRef} type="submit">
-            Search catalog
+          <button ref={searchButtonRef} type="submit" aria-label="Search catalog">
+            Search
           </button>
         </div>
+        <details ref={moreFiltersRef} className="catalog-more-filters">
+          <summary>
+            <span>More filters</span>
+            <span>{advancedFilterCount === 0 ? "Optional" : `${advancedFilterCount} selected`}</span>
+          </summary>
+          <div className="catalog-filter-details">
+            <label className="catalog-filter-style">
+              <span>Style</span>
+              <input
+                type="text"
+                aria-label="Style tags"
+                value={styleTags}
+                placeholder="warm-modern, compact"
+                onChange={(event) => setStyleTags(event.target.value)}
+              />
+            </label>
+            <label className="catalog-filter-price">
+              <span>Price cap</span>
+              <input
+                type="number"
+                aria-label="Maximum price (USD)"
+                min="0"
+                step="0.01"
+                value={maxPrice}
+                placeholder="USD"
+                onChange={(event) => setMaxPrice(event.target.value)}
+              />
+            </label>
+            <label>
+              <span>Width cap</span>
+              <input
+                type="number"
+                aria-label="Maximum width (m)"
+                min="0"
+                step="0.001"
+                value={maxWidth}
+                placeholder="metres"
+                onChange={(event) => setMaxWidth(event.target.value)}
+              />
+            </label>
+            <label>
+              <span>Depth cap</span>
+              <input
+                type="number"
+                aria-label="Maximum depth (m)"
+                min="0"
+                step="0.001"
+                value={maxDepth}
+                placeholder="metres"
+                onChange={(event) => setMaxDepth(event.target.value)}
+              />
+            </label>
+          </div>
+        </details>
       </form>
     </section>
   );
