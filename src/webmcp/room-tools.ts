@@ -1510,6 +1510,12 @@ const APPLY_ROOM_STRUCTURE_EDIT_INPUT_SCHEMA = {
       minimum: 1,
       maximum: Number.MAX_SAFE_INTEGER,
     },
+    name: {
+      type: "string",
+      minLength: 1,
+      maxLength: 80,
+      pattern: STYLE_TAG_PATTERN,
+    },
     dimensions: ROOM_STRUCTURE_DIMENSIONS_INPUT_SCHEMA,
     geometry: ROOM_STRUCTURE_GEOMETRY_INPUT_SCHEMA,
     openingOperations: {
@@ -1521,6 +1527,7 @@ const APPLY_ROOM_STRUCTURE_EDIT_INPUT_SCHEMA = {
   },
   required: ["expectedRevision"],
   anyOf: [
+    { required: ["name"] },
     { required: ["dimensions"] },
     { required: ["geometry"] },
     { required: ["openingOperations"] },
@@ -1561,6 +1568,7 @@ const WebMcpRoomOpeningOperationSchema = z.discriminatedUnion("type", [
 
 const ApplyRoomStructureEditInputSchema = z.object({
   expectedRevision: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+  name: z.string().min(1).max(80).regex(new RegExp(STYLE_TAG_PATTERN, "u")).optional(),
   dimensions: RoomDimensionsSchema.partial().refine(
     (dimensions) => Object.keys(dimensions).length > 0,
     "A dimensions patch must change at least one field",
@@ -1568,8 +1576,8 @@ const ApplyRoomStructureEditInputSchema = z.object({
   geometry: RoomGeometrySchema.optional(),
   openingOperations: z.array(WebMcpRoomOpeningOperationSchema).min(1).max(8).optional(),
 }).strict().refine(
-  (input) => input.dimensions !== undefined || input.geometry !== undefined || (input.openingOperations?.length ?? 0) > 0,
-  "A structure edit must include dimensions, geometry, or openingOperations",
+  (input) => input.name !== undefined || input.dimensions !== undefined || input.geometry !== undefined || (input.openingOperations?.length ?? 0) > 0,
+  "A structure edit must include name, dimensions, geometry, or openingOperations",
 );
 
 const applyRoomEdit = (
@@ -1709,6 +1717,7 @@ const applyRoomStructureEdit = (
     origin: "webmcp",
     change: {
       type: "structure",
+      name: input.name,
       dimensions: input.dimensions,
       geometry: input.geometry,
       openingOperations: input.openingOperations ?? [],
@@ -1789,7 +1798,7 @@ export const createRoomToolDefinitions = (
       name: "apply_room_structure_edit",
       title: "Apply room structure edit",
       description:
-        "Atomically change one room's dimensions, rectangle or southeast-notch L shape, and bounded door or window openings at an exact room revision; invalidated furniture or openings are rejected without relocation.",
+        "Atomically change one room's name, dimensions, rectangle or southeast-notch L shape, and bounded door or window openings at an exact room revision; invalidated furniture or openings are rejected without relocation.",
       inputSchema: APPLY_ROOM_STRUCTURE_EDIT_INPUT_SCHEMA,
       annotations: {
         readOnlyHint: false,

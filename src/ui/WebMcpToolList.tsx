@@ -3,12 +3,14 @@ import type {
   WebMcpRegistrationStatus,
   WebMcpToolDefinition,
 } from "../webmcp/room-tools";
+import { SIGNED_IN_WEBMCP_TOOL_NAMES } from "../webmcp/tool-catalog";
 
 type ToolListRegistration =
   | { phase: "pending" }
   | { phase: "resolved"; status: WebMcpRegistrationStatus };
 
 type WebMcpToolListProps = {
+  authenticated?: boolean;
   definitions: readonly WebMcpToolDefinition[];
   registration: ToolListRegistration;
   statusText?: string;
@@ -53,6 +55,7 @@ const summarizeRegistration = (
 };
 
 export function WebMcpToolList({
+  authenticated = false,
   definitions,
   registration,
   statusText,
@@ -113,7 +116,7 @@ export function WebMcpToolList({
             <strong>WebMCP tools</strong>
             <span>{summary.count}</span>
           </div>
-          <p className="webmcp-tool-list-kicker">Room planning</p>
+          <p className="webmcp-tool-list-kicker">Available now</p>
           <ul>
             {definitions.map((definition) => {
               const registered = summary.registered.has(definition.name);
@@ -139,6 +142,23 @@ export function WebMcpToolList({
               );
             })}
           </ul>
+          {!authenticated ? (
+            <>
+              <p className="webmcp-tool-list-kicker">Available after sign-in</p>
+              <ul aria-label="WebMCP tools available after sign-in">
+                {SIGNED_IN_WEBMCP_TOOL_NAMES.map((name) => (
+                  <li key={name}>
+                    <span
+                      aria-hidden="true"
+                      className="webmcp-tool-state is-gated"
+                    />
+                    <code>{name}</code>
+                    <span className="webmcp-tool-state-label">Sign in</span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          ) : null}
           <p className="webmcp-tool-list-legend">
             Tools are registered with this browser. Changes still use Wimy’s room revision checks.
           </p>

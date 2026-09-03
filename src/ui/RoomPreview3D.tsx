@@ -99,6 +99,19 @@ type MoonStudyRenderState = {
 
 const fixed = (value: number, digits = 1) => value.toFixed(digits);
 
+const approximatePlaceLabel = (input: LightingPreviewDraft) => {
+  const timeZoneSegment = input.timeZone.trim().split("/").at(-1);
+  const place = timeZoneSegment
+    ? timeZoneSegment.replaceAll("_", " ")
+    : "Unknown area";
+  const latitude = Number(input.latitude);
+  const longitude = Number(input.longitude);
+  const coordinates = Number.isFinite(latitude) && Number.isFinite(longitude)
+    ? ` · ${fixed(latitude)}°, ${fixed(longitude)}°`
+    : "";
+  return `Approx. ${place}${coordinates}`;
+};
+
 const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";
 
 const usePrefersReducedMotion = () => {
@@ -179,6 +192,7 @@ const SunStudyControls = ({
         />
         <datalist id="sun-study-timezones">
           <option value="America/New_York" />
+          <option value="Asia/Hong_Kong" />
           <option value="UTC" />
           <option value="Europe/London" />
         </datalist>
@@ -234,6 +248,13 @@ const SkyTimelineDock = ({
   <div className="sky-timeline-dock" aria-label="Sky timeline">
     <div className="sky-timeline-readout">
       <output htmlFor="sun-study-time-slider">{input.localTime}</output>
+      <span
+        aria-label="Approximate lighting location"
+        className="sky-location-label"
+        title="Coarse label derived locally from the timezone and rounded coordinates"
+      >
+        {approximatePlaceLabel(input)}
+      </span>
       {moonIllumination ? (
         <span className="moon-phase-indicator">
           {moonIllumination.phaseName} · {Math.round(moonIllumination.fraction * 100)}%

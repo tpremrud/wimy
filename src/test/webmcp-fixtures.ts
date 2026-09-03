@@ -1,3 +1,5 @@
+import { SIGNED_IN_WEBMCP_TOOL_NAMES } from "../webmcp/tool-catalog";
+
 export const ANONYMOUS_WEBMCP_TOOL_NAMES = [
   "inspect_room",
   "find_furniture",
@@ -22,8 +24,7 @@ export const CART_WRITE_WEBMCP_TOOL_NAMES = [
 ] as const;
 
 export const CART_WEBMCP_TOOL_NAMES = [
-  ...CART_READ_WEBMCP_TOOL_NAMES,
-  ...CART_WRITE_WEBMCP_TOOL_NAMES,
+  ...SIGNED_IN_WEBMCP_TOOL_NAMES,
 ] as const;
 
 export const AUTHENTICATED_WEBMCP_TOOL_NAMES = [

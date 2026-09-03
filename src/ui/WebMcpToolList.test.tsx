@@ -74,6 +74,13 @@ describe("WebMcpToolList", () => {
     expect(panel).toHaveTextContent("5 of 5 registered");
     expect(screen.getAllByText("Registered")).toHaveLength(5);
     expect(screen.getByText("Can change room")).toBeVisible();
+    expect(screen.getByText("Available after sign-in")).toBeVisible();
+    expect(screen.getByText("inspect_cart")).toBeVisible();
+    expect(screen.getByText("find_retailer_offers")).toBeVisible();
+    expect(screen.getByText("add_to_cart")).toBeVisible();
+    expect(screen.getByText("remove_from_cart")).toBeVisible();
+    expect(screen.getByText("set_cart_quantity")).toBeVisible();
+    expect(screen.getAllByText("Sign in")).toHaveLength(5);
   });
 
   it("closes outside and returns focus to the trigger on Escape", async () => {
@@ -104,5 +111,41 @@ describe("WebMcpToolList", () => {
     await user.keyboard("{Escape}");
     expect(screen.queryByRole("dialog", { name: "WebMCP tools" })).not.toBeInTheDocument();
     expect(trigger).toHaveFocus();
+  });
+
+  it("shows signed-in tools in the registered list without a gated duplicate", async () => {
+    const user = userEvent.setup();
+    const authenticatedDefinitions = [
+      ...definitions,
+      {
+        name: "inspect_cart",
+        title: "Inspect cart",
+        description: "Read the cart.",
+        inputSchema: { type: "object" },
+        annotations: { readOnlyHint: true },
+        execute: async () => ({}),
+      },
+    ] satisfies WebMcpToolDefinition[];
+
+    render(
+      <WebMcpToolList
+        authenticated
+        definitions={authenticatedDefinitions}
+        registration={{
+          phase: "resolved",
+          status: {
+            available: true,
+            registered: authenticatedDefinitions.map(({ name }) => name),
+            errors: [],
+          },
+        }}
+      />,
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: "WebMCP tools, 6 registered" }),
+    );
+    expect(screen.getByText("inspect_cart")).toBeVisible();
+    expect(screen.queryByText("Available after sign-in")).not.toBeInTheDocument();
   });
 });

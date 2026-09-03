@@ -39,6 +39,12 @@ test("keeps the directional sun study local and deterministic", async ({
   ).toBeVisible();
   const timeSlider = preview.getByRole("slider", { name: "Local time of day" });
   await expect(timeSlider).toHaveValue("720");
+  await preview.getByLabel("Latitude").fill("22.3");
+  await preview.getByLabel("Longitude").fill("114.2");
+  await preview.getByLabel("IANA time zone").fill("Asia/Hong_Kong");
+  await expect(preview.getByLabel("Approximate lighting location")).toContainText(
+    "Hong Kong",
+  );
   const canvas = preview.locator(".room-preview-canvas");
   await expect(canvas).toHaveAttribute("data-wimy-shadows", "on");
   await expect(canvas).toHaveAttribute(

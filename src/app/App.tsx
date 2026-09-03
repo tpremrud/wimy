@@ -614,6 +614,7 @@ export function App({
         </aside>
       </div>
       <WebMcpToolList
+        authenticated={customerSessionView.authenticated}
         definitions={webMcpToolDefinitions}
         registration={
           visibleRegistration.phase === "pending"

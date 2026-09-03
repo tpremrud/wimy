@@ -214,7 +214,7 @@ describe("createRoomToolDefinitions", () => {
         name: "apply_room_structure_edit",
         title: "Apply room structure edit",
         description:
-          "Atomically change one room's dimensions, rectangle or southeast-notch L shape, and bounded door or window openings at an exact room revision; invalidated furniture or openings are rejected without relocation.",
+          "Atomically change one room's name, dimensions, rectangle or southeast-notch L shape, and bounded door or window openings at an exact room revision; invalidated furniture or openings are rejected without relocation.",
       },
       {
         name: "inspect_lighting_preview",
@@ -445,6 +445,7 @@ describe("createRoomToolDefinitions", () => {
     const output = await tool.execute(
       {
         expectedRevision: 1,
+        name: "Hong Kong Studio",
         dimensions: { width: 5 },
         geometry: {
           shape: "l-shape",
@@ -487,6 +488,7 @@ describe("createRoomToolDefinitions", () => {
     expect((await execute("inspect_room", store))).toMatchObject({
       revision: 2,
       room: {
+        name: "Hong Kong Studio",
         dimensions: { width: 5, depth: 3.5, height: 2.7 },
         geometry: {
           shape: "l-shape",
@@ -496,6 +498,24 @@ describe("createRoomToolDefinitions", () => {
           expect.objectContaining({ id: "opening_added_south" }),
         ]),
       },
+    });
+  });
+
+  it("accepts a name-only room structure edit", async () => {
+    const store = createRoomStore(
+      getTemplate("blank-room"),
+      TEST_TRANSACTION_DEPENDENCIES,
+    );
+
+    expect(
+      await execute("apply_room_structure_edit", store, {
+        expectedRevision: 1,
+        name: "Reading Room",
+      }),
+    ).toMatchObject({ ok: true, revision: 2, applied: 1 });
+    expect((await execute("inspect_room", store))).toMatchObject({
+      revision: 2,
+      room: { name: "Reading Room" },
     });
   });
 

@@ -141,6 +141,10 @@ test("inspect, find, and apply visibly collaborate while stale edits recover", a
   await expect(toolsPanel.getByText("inspect_lighting_preview")).toBeVisible();
   await expect(toolsPanel.getByText("set_lighting_preview")).toBeVisible();
   await expect(toolsPanel.getByText("Can change room")).toHaveCount(3);
+  await expect(toolsPanel.getByText("Available after sign-in")).toBeVisible();
+  await expect(
+    toolsPanel.getByRole("list", { name: "WebMCP tools available after sign-in" }),
+  ).toContainText("inspect_cart");
   await page.keyboard.press("Escape");
   await expect(toolsPanel).toBeHidden();
   await expect(toolsTrigger).toBeFocused();
@@ -489,6 +493,7 @@ test("applies atomic room structure edits across 2D, 3D, receipt, export, and re
 
   const applied = await callTool(page, "apply_room_structure_edit", {
     expectedRevision: inspectedBefore.revision,
+    name: "Hong Kong Studio",
     dimensions: { width: 5.2 },
     geometry: {
       shape: "l-shape",
@@ -522,6 +527,7 @@ test("applies atomic room structure edits across 2D, 3D, receipt, export, and re
     },
   });
 
+  await expect(page.getByLabel("Current room context")).toContainText("Hong Kong Studio");
   await expect(page.getByLabel("Current room context")).toContainText("Revision 2");
   await expect(page.locator(".room-boundary")).toHaveAttribute(
     "points",
@@ -532,11 +538,11 @@ test("applies atomic room structure edits across 2D, 3D, receipt, export, and re
   ).toContainText("Agent: Accepted. Updated room structure");
 
   await page.getByRole("button", { name: "Preview in 3D" }).click();
-  const preview = page.getByRole("region", { name: "3D preview of Living Room" });
+  const preview = page.getByRole("region", { name: "3D preview of Hong Kong Studio" });
   await expect(preview).toBeVisible();
   await expect(preview).toContainText("5.2 m by 4.2 m");
   await expect(
-    preview.getByRole("list", { name: "Placed items in Living Room" }).getByRole("listitem"),
+    preview.getByRole("list", { name: "Placed items in Hong Kong Studio" }).getByRole("listitem"),
   ).toHaveCount(5);
 
   await page.getByRole("button", { name: "Share room", exact: true }).click();
@@ -544,12 +550,13 @@ test("applies atomic room structure edits across 2D, 3D, receipt, export, and re
   const downloadPromise = page.waitForEvent("download");
   await share.getByRole("button", { name: "Export .wimy" }).click();
   const download = await downloadPromise;
-  expect(download.suggestedFilename()).toBe("living-room.wimy");
+  expect(download.suggestedFilename()).toBe("hong-kong-studio.wimy");
   const exportPath = testInfo.outputPath("structure-edit.wimy");
   await download.saveAs(exportPath);
   const exported = JSON.parse(await readFile(exportPath, "utf8")) as {
     schemaVersion: number;
     room: {
+      name: string;
       dimensions: { width: number };
       geometry: { shape: string };
       openings: Array<{ id: string }>;
@@ -558,6 +565,7 @@ test("applies atomic room structure edits across 2D, 3D, receipt, export, and re
   expect(exported).toMatchObject({
     schemaVersion: 2,
     room: {
+      name: "Hong Kong Studio",
       dimensions: { width: 5.2 },
       geometry: { shape: "l-shape" },
       openings: expect.arrayContaining([
@@ -570,6 +578,7 @@ test("applies atomic room structure edits across 2D, 3D, receipt, export, and re
   expect(inspectedAfter).toMatchObject({
     revision: 2,
     room: {
+      name: "Hong Kong Studio",
       dimensions: { width: 5.2 },
       geometry: { shape: "l-shape" },
       openings: expect.arrayContaining([
@@ -627,6 +636,11 @@ test("exposes authenticated cart tools, keeps room state separate, and unregiste
   await expect(page.getByRole("status", { name: "WebMCP status" })).toContainText(
     "WebMCP ready — 14 tools registered",
   );
+  await page.getByRole("button", { name: "WebMCP tools, 14 registered" }).click();
+  const authenticatedToolsPanel = page.getByRole("dialog", { name: "WebMCP tools" });
+  await expect(authenticatedToolsPanel.getByText("inspect_cart")).toBeVisible();
+  await expect(authenticatedToolsPanel.getByText("Available after sign-in")).toHaveCount(0);
+  await page.keyboard.press("Escape");
 
   await page.getByLabel("Import project-authored catalog package").setInputFiles({
     name: "cart-fixture.wimy-catalog",
