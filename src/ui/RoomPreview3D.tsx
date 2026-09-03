@@ -58,6 +58,7 @@ import {
   localTimeFromMinutes,
   minutesFromLocalTime,
   toSunStudyScenario,
+  type LightingPreviewDraft,
   type LightingPreviewStore,
 } from "../room/lighting-preview";
 import {
@@ -81,15 +82,6 @@ type RoomPreview3DProps = {
   lightingPreviewStore?: LightingPreviewStore;
   webglSupportOverride?: boolean;
   shadowSupportOverride?: boolean;
-};
-
-type SunStudyInputState = {
-  latitude: string;
-  longitude: string;
-  date: string;
-  localTime: string;
-  timeZone: string;
-  planNorthAzimuthDeg: string;
 };
 
 type SunStudyRenderState = {
@@ -132,8 +124,8 @@ const SunStudyControls = ({
   shadowsSupported,
   onShadowsChange,
 }: {
-  input: SunStudyInputState;
-  onChange: (field: keyof SunStudyInputState, value: string) => void;
+  input: LightingPreviewDraft;
+  onChange: (field: keyof LightingPreviewDraft, value: string) => void;
   shadowsEnabled: boolean;
   shadowsSupported: boolean;
   onShadowsChange: (enabled: boolean) => void;
@@ -231,9 +223,9 @@ const SkyTimelineDock = ({
 }: {
   animationDisabled: boolean;
   dayAnimating: boolean;
-  input: SunStudyInputState;
+  input: LightingPreviewDraft;
   moonIllumination: LunarIllumination | null;
-  onChange: (field: keyof SunStudyInputState, value: string) => void;
+  onChange: (field: keyof LightingPreviewDraft, value: string) => void;
   onDayAnimationChange: (playing: boolean) => void;
   onOpenSettings: () => void;
   settingsButtonRef: RefObject<HTMLButtonElement | null>;
@@ -1152,7 +1144,7 @@ export function RoomPreview3D({
   }, [shadowSupport, shadowsEnabled, sunStudyValidation]);
   const summary = `${room.name}: ${room.dimensions.width} m by ${room.dimensions.depth} m room with ${room.items.length} placed item${room.items.length === 1 ? "" : "s"}.`;
   const updateSunStudyInput = (
-    field: keyof SunStudyInputState,
+    field: keyof LightingPreviewDraft,
     value: string,
   ) => {
     sharedLightingPreviewStore.getState().setHumanDraft({ [field]: value });

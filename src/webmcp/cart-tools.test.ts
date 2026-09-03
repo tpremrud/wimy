@@ -6,6 +6,10 @@ import { resolveCatalogProduct } from "../room/catalog";
 import { createRoomStore } from "../room/store";
 import { getTemplate } from "../room/templates";
 import { TEST_TRANSACTION_DEPENDENCIES } from "../room/transaction";
+import {
+  AUTHENTICATED_WEBMCP_TOOL_NAMES,
+  CART_WEBMCP_TOOL_NAMES,
+} from "../test/webmcp-fixtures";
 import { createRoomToolDefinitions } from "./room-tools";
 
 const CATALOG_TRANSACTION_DEPENDENCIES = {
@@ -70,13 +74,7 @@ describe("authenticated WebMCP Cart tools", () => {
 
     expect(
       createRoomToolDefinitions(store).map(({ name }) => name),
-    ).not.toEqual(expect.arrayContaining([
-      "inspect_cart",
-      "find_retailer_offers",
-      "add_to_cart",
-      "remove_from_cart",
-      "set_cart_quantity",
-    ]));
+    ).not.toEqual(expect.arrayContaining([...CART_WEBMCP_TOOL_NAMES]));
 
     const session = await customerSession.signIn("Demo customer");
     const definitions = createRoomToolDefinitions(
@@ -85,22 +83,9 @@ describe("authenticated WebMCP Cart tools", () => {
       { customerSession, session } as never,
     );
 
-    expect(definitions.map(({ name }) => name)).toEqual([
-      "inspect_room",
-      "find_furniture",
-      "apply_room_edit",
-      "apply_room_structure_edit",
-      "inspect_lighting_preview",
-      "set_lighting_preview",
-      "inspect_retailer_offers",
-      "inspect_room_shopping_plan",
-      "find_substitutes",
-      "inspect_cart",
-      "find_retailer_offers",
-      "add_to_cart",
-      "remove_from_cart",
-      "set_cart_quantity",
-    ]);
+    expect(definitions.map(({ name }) => name)).toEqual(
+      AUTHENTICATED_WEBMCP_TOOL_NAMES,
+    );
     expect(
       definitions
         .filter(({ name }) => name.endsWith("_cart") || name === "set_cart_quantity")

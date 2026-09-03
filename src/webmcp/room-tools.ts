@@ -203,7 +203,7 @@ const enforceWebMcpOutputBound = <Output,>(output: Output): Output => {
   return output;
 };
 
-const InspectRoomInputSchema = z.object({}).strict();
+const EmptyInputSchema = z.object({}).strict();
 
 const INSPECT_LIGHTING_PREVIEW_INPUT_SCHEMA = {
   type: "object",
@@ -361,8 +361,6 @@ const InspectRetailerOffersInputSchema = z
   })
   .strict();
 
-const InspectRoomShoppingPlanInputSchema = z.object({}).strict();
-
 const ENTITY_ID_INPUT_SCHEMA = {
   type: "string",
   pattern: "^[A-Za-z][A-Za-z0-9_-]{0,63}$",
@@ -508,7 +506,6 @@ const FindRetailerOffersInputSchema = z.union([
   z.object({ placedItemId: EntityIdSchema }).strict(),
 ]);
 
-const CartReadInputSchema = z.object({}).strict();
 const hasControlCharacters = (value: string) =>
   Array.from(value).some((character) => {
     const codePoint = character.codePointAt(0);
@@ -597,7 +594,7 @@ const inspectLightingPreview = (
   signal?: AbortSignal,
 ) => {
   throwIfAborted(signal);
-  if (!InspectRoomInputSchema.safeParse(rawInput).success) {
+  if (!EmptyInputSchema.safeParse(rawInput).success) {
     throw new TypeError("inspect_lighting_preview input must be an empty object");
   }
   const state = lightingPreviewStore.getState();
@@ -668,7 +665,7 @@ const inspectRoom = (
   signal?: AbortSignal,
 ) => {
   throwIfAborted(signal);
-  if (!InspectRoomInputSchema.safeParse(rawInput).success) {
+  if (!EmptyInputSchema.safeParse(rawInput).success) {
     throw new TypeError("inspect_room input must be an empty object");
   }
 
@@ -1000,7 +997,7 @@ const inspectRoomShoppingPlan = async (
   signal?: AbortSignal,
 ) => {
   throwIfAborted(signal);
-  if (!InspectRoomShoppingPlanInputSchema.safeParse(rawInput).success) {
+  if (!EmptyInputSchema.safeParse(rawInput).success) {
     throw new TypeError("inspect_room_shopping_plan input must be an empty object");
   }
 
@@ -1181,7 +1178,7 @@ const inspectCartTool = async (
   rawInput: unknown,
   signal: AbortSignal,
 ) => {
-  const parsed = CartReadInputSchema.safeParse(rawInput);
+  const parsed = EmptyInputSchema.safeParse(rawInput);
   if (!parsed.success) return cartToolFailure("read", "INVALID_REQUEST", "inspect_cart input must be empty");
   const authorization = await authorizeCartReadTool(customerSession, signal);
   if (!authorization.ok) return authorization;
@@ -1946,11 +1943,11 @@ export const registerRoomTools = async (
     ...definition,
     execute: (
       input: Record<string, unknown>,
-      { signal }: { signal: AbortSignal },
+      options?: WebMCP.ToolExecuteCallbackOptions,
     ) =>
       definition.execute(input, {
-        signal: signal
-          ? AbortSignal.any([controller.signal, signal])
+        signal: options?.signal
+          ? AbortSignal.any([controller.signal, options.signal])
           : controller.signal,
       }),
   }));
