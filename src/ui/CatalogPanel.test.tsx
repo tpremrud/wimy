@@ -384,6 +384,8 @@ describe("CatalogPanel", () => {
     expect(
       screen.getByRole("combobox", { name: "Category" }),
     ).toBeVisible();
+    expect(screen.getByText("Filter catalog")).toBeVisible();
+    expect(screen.getByText("No filters applied")).toBeVisible();
     expect(screen.getByText("More filters")).toBeVisible();
     expect(
       screen.getByRole("textbox", { name: "Style tags" }),
@@ -402,6 +404,16 @@ describe("CatalogPanel", () => {
     expect(
       screen.getByRole("spinbutton", { name: "Maximum depth (m)" }),
     ).toBeVisible();
+
+    await revealUser.type(
+      screen.getByRole("textbox", { name: "Style tags" }),
+      "compact",
+    );
+    expect(screen.getByText("1 selected")).toBeVisible();
+    expect(screen.getByText("Changes ready to apply")).toBeVisible();
+    await revealUser.click(screen.getByRole("button", { name: "Clear filters" }));
+    expect(screen.getByRole("textbox", { name: "Style tags" })).toHaveValue("");
+    expect(screen.getByText("No filters applied")).toBeVisible();
 
     const user = await searchForWarmModernChair();
     const results = screen.getByRole("list", { name: "Catalog results" });
