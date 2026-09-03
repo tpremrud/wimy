@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   createRetailerOfferResolver,
+  getRetailerOfferVersion,
   SANDBOX_RETAILER_ADAPTER,
   type RetailerOfferAdapter,
   type RetailerOfferLookup,
@@ -55,6 +56,15 @@ const resolverFor = (
 ) => createRetailerOfferResolver([adapter], { clock: () => now, ...options });
 
 describe("createRetailerOfferResolver", () => {
+  it("versions provider identity as part of the offer snapshot", async () => {
+    const resolver = resolverFor(adapterReturning([{ ...freshOffer, provider: { providerId: "provider-a", name: "Provider A" } }]));
+    const resolved = await resolver.resolve(lookup);
+    if (resolved.status !== "ok") throw new Error("Expected offer resolution");
+    const original = resolved.offers[0]!;
+    expect(getRetailerOfferVersion({ ...original, provider: { providerId: "provider-b", name: "Provider B" } }))
+      .not.toBe(getRetailerOfferVersion(original));
+  });
+
   it("returns an exact offer with canonical identity, provenance, and freshness", async () => {
     const fetchOffers = vi.fn(async () => [freshOffer]);
     const resolver = resolverFor(adapterReturning([], { fetchOffers }));

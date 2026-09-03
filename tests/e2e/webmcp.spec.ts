@@ -704,22 +704,22 @@ test("exposes authenticated cart tools, keeps room state separate, and unregiste
       revision: 2,
       target: {
         displayName: "Aurora Browser Chair",
-        retailer: "Northstar Furnishings",
+        retailer: "Northstar Home",
       },
     },
   });
   await expect(cartDialog).toContainText("Aurora Browser Chair");
   await expect(
     cartDialog
-      .getByRole("region", { name: "Plan for Northstar Furnishings" })
+      .getByRole("region", { name: "Plan for Northstar Home" })
       .getByRole("img", { name: "Aurora Browser Chair preview" }),
   ).toBeVisible();
   await expect(cartDialog.getByLabel("Cart revision 2")).toBeVisible();
   await expect(cartDialog).toContainText(
-    "Latest mutation: webmcp · add · accepted · Cart rev 2 · Aurora Browser Chair · Northstar Furnishings",
+    "Latest mutation: webmcp · add · accepted · Cart rev 2 · Aurora Browser Chair · Northstar Home",
   );
-  await expect(cartDialog.getByRole("region", { name: "Plan for Northstar Furnishings" })).toBeVisible();
-  await expect(cartDialog.getByRole("button", { name: "Checkout at Northstar Furnishings — not connected" })).toBeDisabled();
+  await expect(cartDialog.getByRole("region", { name: "Plan for Northstar Home" })).toBeVisible();
+  await expect(cartDialog.getByRole("button", { name: "Checkout at Northstar Home — not connected" })).toBeDisabled();
   await expect(cartDialog).toContainText("Provider connection not available yet.");
   await page.screenshot({ path: testInfo.outputPath("provider-shopping-plan.png") });
   expect(await page.evaluate(() => Object.keys((window as typeof window & { __wimyModelContextHarness: ModelContextHarness }).__wimyModelContextHarness.tools))).not.toContain("confirm_checkout");
@@ -743,13 +743,13 @@ test("exposes authenticated cart tools, keeps room state separate, and unregiste
       revision: 3,
       target: {
         displayName: "Aurora Browser Chair",
-        retailer: "Northstar Furnishings",
+        retailer: "Northstar Home",
       },
     },
   });
   await expect(cartDialog).toContainText("No provider selections yet.");
   await expect(cartDialog).toContainText(
-    "Latest mutation: webmcp · remove · accepted · Cart rev 3 · Aurora Browser Chair · Northstar Furnishings",
+    "Latest mutation: webmcp · remove · accepted · Cart rev 3 · Aurora Browser Chair · Northstar Home",
   );
 
   await page.getByRole("button", { name: "Sign out" }).click();

@@ -185,7 +185,7 @@ describe("CatalogPanel", () => {
     const evidence = await screen.findByRole("region", {
       name: "Offer evidence for Aurora Project Chair",
     });
-    expect(evidence).toHaveTextContent("Northstar Furnishings");
+    expect(evidence).toHaveTextContent("Northstar Home");
     expect(evidence).toHaveTextContent("Exact product");
     expect(evidence).toHaveTextContent("Unverified candidate");
     expect(evidence).toHaveTextContent("Substitute");
@@ -240,7 +240,7 @@ describe("CatalogPanel", () => {
       name: "Room shopping plan",
     });
     expect(plan).toHaveTextContent("Aurora Project Chair");
-    expect(plan).toHaveTextContent("Northstar Furnishings");
+    expect(plan).toHaveTextContent("Northstar Home");
     expect(plan).toHaveTextContent("Elm Commons");
     expect(plan).toHaveTextContent("Cheapest current comparable exact offer");
     expect(plan).toHaveTextContent("delivery");

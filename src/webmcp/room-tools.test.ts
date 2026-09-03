@@ -1462,7 +1462,7 @@ describe("createRoomToolDefinitions", () => {
       status: "ok",
       offers: expect.arrayContaining([
         expect.objectContaining({
-          retailer: "Northstar Furnishings",
+          retailer: "Northstar Home",
           state: "exact",
           observedAt: "2026-09-02T12:00:00.000Z",
         }),
@@ -1561,7 +1561,7 @@ describe("createRoomToolDefinitions", () => {
       ],
       retailers: expect.arrayContaining([
         expect.objectContaining({
-          retailer: "Northstar Furnishings",
+        retailer: "Northstar Home",
           offers: expect.arrayContaining([
             expect.objectContaining({ isCheapest: true, productUrl: expect.stringContaining("example.invalid") }),
           ]),

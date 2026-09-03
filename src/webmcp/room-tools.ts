@@ -1242,7 +1242,13 @@ const addToCartTool = async (
       "add_to_cart requires an exact offer for a product currently placed in the room",
     );
   }
-  const result = await client.addLine({ ...parsed.data, quantity, signal, origin: "webmcp" });
+  const result = await client.addLine({
+    ...parsed.data,
+    quantity,
+    quantityMode: "set",
+    signal,
+    origin: "webmcp",
+  });
   throwIfAborted(signal);
   return projectMutation(result);
 };

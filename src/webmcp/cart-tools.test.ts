@@ -293,14 +293,23 @@ describe("authenticated WebMCP Cart tools", () => {
     );
     expect(replay).toEqual(added);
 
+    const refreshed = await tool("add_to_cart").execute(
+      { expectedRevision: 2, idempotencyKey: "refresh-chair", offer: offerInput },
+      { signal },
+    );
+    expect(refreshed).toMatchObject({
+      ok: true,
+      cart: { revision: 3, lines: [{ quantity: 2 }] },
+    });
+
     const lineId = (added as { cart: { lines: Array<{ lineId: string }> } }).cart.lines[0]!.lineId;
     const removed = await tool("remove_from_cart").execute(
-      { expectedRevision: 2, idempotencyKey: "remove-chair", lineId },
+      { expectedRevision: 3, idempotencyKey: "remove-chair", lineId },
       { signal },
     );
     expect(removed).toMatchObject({
       ok: true,
-      cart: { revision: 3, lines: [] },
+      cart: { revision: 4, lines: [] },
       receipt: {
         origin: "webmcp",
         operation: "remove",
@@ -314,7 +323,7 @@ describe("authenticated WebMCP Cart tools", () => {
 
     currentOffer = createOffer({ price: { amountMinor: 50_000, currency: "USD" } });
     const stale = await tool("add_to_cart").execute(
-      { expectedRevision: 3, idempotencyKey: "stale-chair", offer: offerInput },
+      { expectedRevision: 4, idempotencyKey: "stale-chair", offer: offerInput },
       { signal },
     );
     expect(stale).toMatchObject({ ok: false, error: { code: "OFFER_VERSION_MISMATCH" }, receipt: { origin: "webmcp" } });

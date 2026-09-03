@@ -23,9 +23,10 @@ const availabilityLabel = (
 const groupLinesByProvider = (lines: readonly CartLine[]) => {
   const groups = new Map<string, CartLine[]>();
   for (const line of lines) {
-    const group = groups.get(line.offer.retailerId) ?? [];
+    const providerId = line.offer.provider?.providerId ?? line.offer.retailerId;
+    const group = groups.get(providerId) ?? [];
     group.push(line);
-    groups.set(line.offer.retailerId, group);
+    groups.set(providerId, group);
   }
   return [...groups.entries()];
 };
@@ -164,7 +165,8 @@ export function CartReviewPanel({
                   </div>
                   <div className="provider-plan-groups">
                     {groupLinesByProvider(state.result.cart.lines).map(([providerId, lines]) => {
-                      const providerName = lines[0].offer.provenance.sourceName;
+                      const providerName = lines[0].offer.provider?.name
+                        ?? lines[0].offer.provenance.sourceName;
                       const providerTotal = lines.reduce((total, line) => total + line.lineTotalMinor, 0);
                       return (
                         <section key={providerId} className="provider-plan-group" aria-label={`Plan for ${providerName}`}>

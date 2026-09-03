@@ -240,7 +240,7 @@ test("shows synthetic offer evidence without exposing a purchase action", async 
   const evidence = page.getByRole("region", {
     name: "Offer evidence for Aurora Browser Chair",
   });
-  await expect(evidence).toContainText("Northstar Furnishings");
+  await expect(evidence).toContainText("Northstar Home");
   await expect(evidence).toContainText("Exact product");
   await expect(evidence).toContainText("Unverified candidate");
   await expect(evidence).toContainText("Stale evidence");
@@ -326,7 +326,7 @@ test("builds a retailer-grouped shopping plan for a placed project-authored vari
   await page.getByRole("button", { name: "Build room shopping plan" }).click();
 
   const plan = page.getByRole("region", { name: "Room shopping plan" });
-  await expect(plan).toContainText("Northstar Furnishings");
+  await expect(plan).toContainText("Northstar Home");
   await expect(plan).toContainText("Elm Commons");
   await expect(plan).toContainText("Cheapest current comparable exact offer");
   await expect(plan).toContainText("Excluded from exact price ranking");
