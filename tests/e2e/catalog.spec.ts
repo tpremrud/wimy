@@ -111,6 +111,11 @@ test("imports a project-authored catalog package without fetching its metadata",
   const projectPackage = {
     format: "wimy-catalog",
     schemaVersion: 1,
+    provider: {
+      providerId: "00000000-0000-4000-8000-000000000305",
+      name: "Northstar Home",
+      connection: "not_connected",
+    },
     publisher: {
       publisherId: "00000000-0000-4000-8000-000000000301",
       name: "Wimy Project Studio",
@@ -178,6 +183,11 @@ test("shows synthetic offer evidence without exposing a purchase action", async 
   const projectPackage = {
     format: "wimy-catalog",
     schemaVersion: 1,
+    provider: {
+      providerId: "00000000-0000-4000-8000-000000000305",
+      name: "Northstar Home",
+      connection: "not_connected",
+    },
     publisher: {
       publisherId: "00000000-0000-4000-8000-000000000301",
       name: "Wimy Project Studio",
@@ -230,7 +240,7 @@ test("shows synthetic offer evidence without exposing a purchase action", async 
   const evidence = page.getByRole("region", {
     name: "Offer evidence for Aurora Browser Chair",
   });
-  await expect(evidence).toContainText("Northstar Furnishings");
+  await expect(evidence).toContainText("Northstar Home");
   await expect(evidence).toContainText("Exact product");
   await expect(evidence).toContainText("Unverified candidate");
   await expect(evidence).toContainText("Stale evidence");
@@ -254,6 +264,11 @@ test("builds a retailer-grouped shopping plan for a placed project-authored vari
   const projectPackage = {
     format: "wimy-catalog",
     schemaVersion: 1,
+    provider: {
+      providerId: "00000000-0000-4000-8000-000000000605",
+      name: "Northstar Home",
+      connection: "not_connected",
+    },
     publisher: {
       publisherId: "00000000-0000-4000-8000-000000000601",
       name: "Wimy Project Studio",
@@ -311,7 +326,7 @@ test("builds a retailer-grouped shopping plan for a placed project-authored vari
   await page.getByRole("button", { name: "Build room shopping plan" }).click();
 
   const plan = page.getByRole("region", { name: "Room shopping plan" });
-  await expect(plan).toContainText("Northstar Furnishings");
+  await expect(plan).toContainText("Northstar Home");
   await expect(plan).toContainText("Elm Commons");
   await expect(plan).toContainText("Cheapest current comparable exact offer");
   await expect(plan).toContainText("Excluded from exact price ranking");

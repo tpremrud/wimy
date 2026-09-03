@@ -28,6 +28,11 @@ const makePackage = ({
 }> = {}): WimyCatalogV1 => ({
   format: "wimy-catalog",
   schemaVersion: 1,
+  provider: {
+    providerId: uuid(24),
+    name: "Northstar Home",
+    connection: "not_connected",
+  },
   publisher: {
     publisherId,
     name: "Wimy Project Studio",
@@ -87,6 +92,7 @@ describe("catalog registry", () => {
         publisherId: catalogPackage.publisher.publisherId,
         catalogId: catalogPackage.catalog.catalogId,
         catalogVersion: catalogPackage.catalog.version,
+        provider: catalogPackage.provider,
         itemId: catalogPackage.items[0]?.itemId,
         variantId: catalogPackage.items[0]?.variants[0]?.variantId,
         provenance: catalogPackage.catalog.provenance,
@@ -104,6 +110,10 @@ describe("catalog registry", () => {
     expect(registry.getItems()[0]?.metadata).toMatchObject({
       origin: "fictional",
       catalogId: "wimy-demo-v1",
+      provider: {
+        name: "Wimy Atelier",
+        connection: "not_connected",
+      },
     });
   });
 

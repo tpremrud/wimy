@@ -98,6 +98,13 @@ const RetailerOfferSchema = z
     productUrl: HttpsUrlSchema,
     price: OfferPriceSchema,
     availability: z.enum(["in_stock", "out_of_stock", "unknown"]),
+    provider: z
+      .object({
+        providerId: boundedText(160),
+        name: boundedText(160),
+      })
+      .strict()
+      .optional(),
     observedAt: TimestampSchema,
     expiresAt: TimestampSchema,
     provenance: z
@@ -159,6 +166,8 @@ export const getRetailerOfferVersion = (offer: RetailerOffer): string => {
     offer.price.unit ?? null,
     offer.price.quantity ?? null,
     offer.availability,
+    offer.provider?.providerId ?? null,
+    offer.provider?.name ?? null,
     offer.observedAt,
     offer.expiresAt,
     offer.provenance.sourceName,

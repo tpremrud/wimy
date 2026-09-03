@@ -37,6 +37,10 @@ export type RetailerOfferSnapshot = Readonly<{
   productUrl: string;
   price: CartMoney;
   availability: RetailerOffer["availability"];
+  provider?: Readonly<{
+    providerId: string;
+    name: string;
+  }>;
   eligibility: RetailerOffer["eligibility"];
   identityEvidence: Readonly<{
     match: "exact";
@@ -173,6 +177,7 @@ export type CartAddRequest = Readonly<{
     price: CartMoney;
   }>;
   quantity: number;
+  quantityMode?: "increment" | "set";
 }>;
 
 export type CartRemoveRequest = Readonly<{
@@ -591,6 +596,7 @@ const snapshotFor = (offer: RetailerOffer): RetailerOfferSnapshot => ({
     ...(offer.price.unit !== undefined ? { unit: offer.price.unit, quantity: offer.price.quantity } : {}),
   },
   availability: offer.availability,
+  ...(offer.provider ? { provider: clone(offer.provider) } : {}),
   eligibility: offer.eligibility,
   identityEvidence: {
     match: "exact",
@@ -782,7 +788,15 @@ export const createCartService = (options: CartServiceOptions): CartService => {
     try {
       assertCartRequest(request);
       if (operation === "add") {
-        assertQuantity((request as CartAddRequest).quantity);
+        const addRequest = request as CartAddRequest;
+        assertQuantity(addRequest.quantity);
+        if (
+          addRequest.quantityMode !== undefined &&
+          addRequest.quantityMode !== "increment" &&
+          addRequest.quantityMode !== "set"
+        ) {
+          throw new CartError("INVALID_REQUEST", "Cart quantity mode is invalid");
+        }
       } else {
         assertBoundedIdentifier((request as CartRemoveRequest).lineId, "Cart line identity");
         if (operation === "change_quantity") assertQuantity((request as CartChangeQuantityRequest).quantity);
@@ -812,7 +826,11 @@ export const createCartService = (options: CartServiceOptions): CartService => {
         cartId: cart.cartId,
         expectedRevision: request.expectedRevision,
         ...(operation === "add"
-          ? { offer: (request as CartAddRequest).offer, quantity: (request as CartAddRequest).quantity }
+          ? {
+              offer: (request as CartAddRequest).offer,
+              quantity: (request as CartAddRequest).quantity,
+              quantityMode: (request as CartAddRequest).quantityMode ?? "increment",
+            }
           : { lineId: (request as CartRemoveRequest).lineId, quantity: operation === "change_quantity" ? (request as CartChangeQuantityRequest).quantity : undefined }),
       });
       const storeResult = await options.store.transact(
@@ -871,7 +889,9 @@ export const createCartService = (options: CartServiceOptions): CartService => {
     const existing = cart.lines.find(({ offer: lineOffer }) => lineOffer.offerId === offerSnapshot.offerId);
     if (existing && existing.offer.offerVersion !== offerSnapshot.offerVersion) throw new CartError("OFFER_VERSION_MISMATCH", "The existing cart line has a stale offer version");
     if (!existing && cart.lines.length >= MAX_CART_LINES) throw new CartError("CART_LIMIT_REACHED", "Cart line limit reached");
-    const nextQuantity = (existing?.quantity ?? 0) + request.quantity;
+    const nextQuantity = request.quantityMode === "set"
+      ? request.quantity
+      : (existing?.quantity ?? 0) + request.quantity;
     assertQuantity(nextQuantity);
     const line: CartLine = {
       lineId: existing?.lineId ?? createLineId(),

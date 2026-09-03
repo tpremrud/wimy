@@ -1009,7 +1009,7 @@ describe("App", () => {
       expect(getWebMcpStatus()).toHaveTextContent(anonymousWebMcpReadyText),
     );
     expect([...modelContext.activeDefinitions.keys()]).not.toEqual(
-      expect.arrayContaining(["inspect_cart", "add_to_cart", "remove_from_cart", "set_cart_quantity"]),
+      expect.arrayContaining(["inspect_cart", "add_to_cart", "remove_from_cart"]),
     );
   });
 
@@ -1048,7 +1048,7 @@ describe("App", () => {
     );
     expect(getSession.mock.calls.length).toBeGreaterThanOrEqual(2);
     expect([...modelContext.activeDefinitions.keys()]).not.toEqual(
-      expect.arrayContaining(["inspect_cart", "add_to_cart", "remove_from_cart", "set_cart_quantity"]),
+      expect.arrayContaining(["inspect_cart", "add_to_cart", "remove_from_cart"]),
     );
     expect(screen.getByText("Anonymous mode")).toBeVisible();
   });

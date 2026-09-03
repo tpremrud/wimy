@@ -6,6 +6,7 @@ import { projectRoomToScene, type SceneItem } from "../room/projection";
 import { getCatalogPresentation } from "../room/catalog-presentation";
 import { projectFurnitureOrientation } from "../room/orientation";
 import { createRoomStore, type RoomStore } from "../room/store";
+import { createLightingPreviewStore } from "../room/lighting-preview";
 import { TEST_TRANSACTION_DEPENDENCIES } from "../room/transaction";
 import { makeOpening, makePlacedItem, makeRoom } from "../test/room-fixtures";
 import { MAX_FURNITURE_PRIMITIVE_PARTS } from "./catalog-procedural-layout";
@@ -842,6 +843,30 @@ describe("RoomPreview3D", () => {
 
     fireEvent.keyDown(document, { key: "Escape" });
     expect(screen.queryByRole("group", { name: "Sun study controls" })).not.toBeInTheDocument();
+  });
+
+  it("keeps the approximate lighting place visible without opening settings", () => {
+    const lightingPreviewStore = createLightingPreviewStore({
+      latitude: "22.32",
+      longitude: "114.17",
+      date: "2026-09-03",
+      localTime: "18:00",
+      timeZone: "Asia/Hong_Kong",
+      planNorthAzimuthDeg: "0",
+    });
+
+    render(
+      <RoomPreview3D
+        lightingPreviewStore={lightingPreviewStore}
+        room={makeRoom()}
+        webglSupportOverride={false}
+      />,
+    );
+
+    expect(screen.getByLabelText("Approximate lighting location"))
+      .toHaveTextContent("Hong Kong");
+    expect(screen.queryByRole("group", { name: "Sun study controls" }))
+      .not.toBeInTheDocument();
   });
 
   it("dismisses lighting settings when the user points outside the drawer", () => {

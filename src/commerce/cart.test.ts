@@ -432,6 +432,47 @@ describe("CartService", () => {
     expect(removed).toMatchObject({ ok: true, cart: { revision: 5, lines: [], totals: { totalMinor: 0 } } });
   });
 
+  it("sets a room-derived quantity without accumulating and rejects invalid modes", async () => {
+    const { api, ticket } = await createApi();
+    const currentOffer = offer();
+    const offerInput = {
+      offerId: currentOffer.offerId,
+      offerVersion: getRetailerOfferVersion(currentOffer),
+      catalogRef,
+      price: currentOffer.price,
+    };
+    const first = await api.addLine({
+      sessionToken: ticket.sessionToken,
+      csrfSecret: ticket.csrfSecret,
+      expectedRevision: 1,
+      idempotencyKey: "set-1",
+      offer: offerInput,
+      quantity: 2,
+      quantityMode: "set",
+    });
+    expect(first).toMatchObject({ ok: true, cart: { revision: 2, lines: [{ quantity: 2 }] } });
+    const second = await api.addLine({
+      sessionToken: ticket.sessionToken,
+      csrfSecret: ticket.csrfSecret,
+      expectedRevision: 2,
+      idempotencyKey: "set-2",
+      offer: offerInput,
+      quantity: 2,
+      quantityMode: "set",
+    });
+    expect(second).toMatchObject({ ok: true, cart: { revision: 3, lines: [{ quantity: 2 }] } });
+    const invalid = await api.addLine({
+      sessionToken: ticket.sessionToken,
+      csrfSecret: ticket.csrfSecret,
+      expectedRevision: 3,
+      idempotencyKey: "set-invalid",
+      offer: offerInput,
+      quantity: 2,
+      quantityMode: "replace" as never,
+    });
+    expect(invalid).toMatchObject({ ok: false, error: { code: "INVALID_REQUEST" } });
+  });
+
   it("prevents a different customer from reading or mutating another customer's cart", async () => {
     const store = createInMemoryCartStore({ createCartId: (() => { let index = 0; return () => `cart-${++index}`; })() });
     const a = await createApi({ store, customerId: "customer-a" });

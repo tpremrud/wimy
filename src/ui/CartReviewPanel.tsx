@@ -1,11 +1,7 @@
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { useEffect, useState, type RefObject } from "react";
 import type { CustomerSessionView } from "../commerce/customer-session";
-import type { CartReceipt } from "../commerce/cart";
-import type {
-  CustomerCartClient,
-  CustomerCheckoutClient,
-} from "../commerce/customer-session-demo";
-import type { CheckoutReceipt, CheckoutReview, CheckoutSession } from "../commerce/checkout";
+import type { CartLine, CartReceipt } from "../commerce/cart";
+import type { CustomerCartClient } from "../commerce/customer-session-demo";
 import { formatMinorMoney } from "../commerce/money";
 import type { CatalogItem } from "../room/catalog";
 import type { RoomStoreState } from "../room/store";
@@ -24,6 +20,30 @@ const availabilityLabel = (
   }
 };
 
+const groupLinesByProvider = (lines: readonly CartLine[]) => {
+  const groups = new Map<string, CartLine[]>();
+  for (const line of lines) {
+    const providerId = line.offer.provider?.providerId ?? line.offer.retailerId;
+    const group = groups.get(providerId) ?? [];
+    group.push(line);
+    groups.set(providerId, group);
+  }
+  return [...groups.entries()];
+};
+
+const roomRequirements = (room: RoomStoreState["room"]) => {
+  const groups = new Map<string, RoomStoreState["room"]["items"][number][]>();
+  for (const item of room.items) {
+    const key = item.catalogRef
+      ? `${item.catalogRef.catalogId}:${item.catalogRef.productId}`
+      : `placed:${item.id}`;
+    const group = groups.get(key) ?? [];
+    group.push(item);
+    groups.set(key, group);
+  }
+  return [...groups.entries()].map(([key, items]) => ({ key, item: items[0], quantity: items.length }));
+};
+
 type CartReviewPanelProps = Readonly<{
   catalog?: readonly CatalogItem[];
   open: boolean;
@@ -34,7 +54,6 @@ type CartReviewPanelProps = Readonly<{
   roomRevision: number;
   session: CustomerSessionView;
   client?: CustomerCartClient;
-  checkout?: CustomerCheckoutClient;
 }>;
 
 export function CartReviewPanel({
@@ -47,7 +66,6 @@ export function CartReviewPanel({
   roomRevision,
   session,
   client,
-  checkout,
 }: CartReviewPanelProps) {
   const sessionKey = session.authenticated ? session.customerId : "anonymous";
   const [state, setState] = useState<{
@@ -55,16 +73,6 @@ export function CartReviewPanel({
     result: Awaited<ReturnType<CustomerCartClient["getCart"]>>;
     receipt: CartReceipt;
   } | null>(null);
-  const [checkoutState, setCheckoutState] = useState<
-    | { phase: "idle" }
-    | { phase: "loading" }
-    | { phase: "reviewed"; review: CheckoutReview }
-    | { phase: "session"; session: CheckoutSession }
-    | { phase: "error"; message: string }
-  >({ phase: "idle" });
-  const [checkoutBusy, setCheckoutBusy] = useState(false);
-  const [checkoutReceipt, setCheckoutReceipt] = useState<CheckoutReceipt | undefined>();
-  const confirmationKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     let current = true;
@@ -89,69 +97,18 @@ export function CartReviewPanel({
     };
   }, [client, open, sessionKey]);
 
-  const prepareCheckout = async () => {
-    if (!checkout) return;
-    setCheckoutState({ phase: "loading" });
-    const result = await checkout.getReview();
-    if (!result.ok) {
-      setCheckoutReceipt(result.receipt);
-      setCheckoutState({ phase: "error", message: result.error.message });
-      return;
-    }
-    setCheckoutReceipt(result.receipt);
-    setCheckoutState({ phase: "reviewed", review: result.review });
-  };
-
-  const confirmCheckout = async () => {
-    if (!checkout || checkoutState.phase !== "reviewed" || !checkoutState.review.canConfirm) return;
-    setCheckoutBusy(true);
-    const reviewId = checkoutState.review.reviewId;
-    confirmationKeyRef.current ??= `checkout-confirm-${reviewId}`;
-    const result = await checkout.confirm(reviewId, confirmationKeyRef.current);
-    setCheckoutReceipt(result.receipt);
-    if (result.ok) {
-      setCheckoutState({ phase: "session", session: result.session });
-    } else {
-      setCheckoutState({ phase: "error", message: result.error.message });
-    }
-    setCheckoutBusy(false);
-  };
-
-  const updateCheckoutSession = async (action: "cancel" | "returnToWimy") => {
-    if (!checkout || checkoutState.phase !== "session") return;
-    setCheckoutBusy(true);
-    const result = await checkout[action](checkoutState.session.checkoutSessionId);
-    setCheckoutReceipt(result.receipt);
-    if (result.ok && action === "returnToWimy") {
-      window.history.replaceState({}, "", result.session.returnPath);
-    }
-    if (result.ok) setCheckoutState({ phase: "session", session: result.session });
-    else setCheckoutState({ phase: "error", message: result.error.message });
-    setCheckoutBusy(false);
-  };
-
-  const openCheckout = async () => {
-    if (!checkout || checkoutState.phase !== "session") return;
-    setCheckoutBusy(true);
-    const result = await checkout.open(checkoutState.session.checkoutSessionId);
-    setCheckoutReceipt(result.receipt);
-    if (result.ok) setCheckoutState({ phase: "session", session: result.session });
-    else setCheckoutState({ phase: "error", message: result.error.message });
-    setCheckoutBusy(false);
-  };
-
   return (
     <div className={`cart-review-region${open ? " is-open" : ""}`}>
       <button
         ref={openerRef}
         type="button"
         className="header-action-button cart-review-trigger"
-        aria-label="Review cart"
+        aria-label="Review shopping plan"
         aria-expanded={open}
         aria-controls="cart-review-panel"
         onClick={() => (open ? onClose() : onOpen())}
       >
-        Cart · {room.items.length} planned
+        Plan · {room.items.length} placed
       </button>
       <section
         id="cart-review-panel"
@@ -173,7 +130,7 @@ export function CartReviewPanel({
           <>
             <CartReviewHeading onClose={onClose} roomRevision={roomRevision} />
             <RoomItemsInCart room={room} />
-            <p role="status">Cart review is not configured for this session client.</p>
+            <p role="status">Shopping-plan review is not configured for this session client.</p>
           </>
         ) : !state || state.key !== sessionKey ? (
           <>
@@ -185,7 +142,7 @@ export function CartReviewPanel({
           <>
             <CartReviewHeading onClose={onClose} roomRevision={roomRevision} />
             <RoomItemsInCart room={room} />
-            <p role="alert">Cart review is unavailable: {state.result.error.message}.</p>
+            <p role="alert">Shopping-plan review is unavailable: {state.result.error.message}.</p>
           </>
         ) : (
           <>
@@ -197,17 +154,31 @@ export function CartReviewPanel({
             {state.result.cart.lines.length === 0 ? (
               <>
                 <RoomItemsInCart room={room} />
-                <p>No retailer cart lines yet.</p>
+                <p>No provider selections yet.</p>
               </>
             ) : (
               <>
-                <section className="retailer-cart" aria-label="Retailer cart lines">
+                <section className="provider-plan" aria-label="Provider selections">
                   <div className="cart-room-items-heading">
-                    <h3>Retailer cart</h3>
+                    <h3>Selected offers</h3>
                     <span>{state.result.cart.lines.length} line{state.result.cart.lines.length === 1 ? "" : "s"}</span>
                   </div>
-                  <ul className="cart-review-lines">
-                    {state.result.cart.lines.map((line) => {
+                  <div className="provider-plan-groups">
+                    {groupLinesByProvider(state.result.cart.lines).map(([providerId, lines]) => {
+                      const providerName = lines[0].offer.provider?.name
+                        ?? lines[0].offer.provenance.sourceName;
+                      const providerTotal = lines.reduce((total, line) => total + line.lineTotalMinor, 0);
+                      return (
+                        <section key={providerId} className="provider-plan-group" aria-label={`Plan for ${providerName}`}>
+                          <div className="provider-plan-heading">
+                            <div>
+                              <span className="provider-plan-eyebrow">Provider</span>
+                              <h4>{providerName}</h4>
+                            </div>
+                            <span>{formatMinorMoney(providerTotal, lines[0].offer.price.currency)}</span>
+                          </div>
+                          <ul className="cart-review-lines">
+                            {lines.map((line) => {
                       const catalogItem = catalog.find(
                         ({ catalogRef }) =>
                           catalogRef.catalogId === line.offer.catalogRef.catalogId &&
@@ -218,8 +189,8 @@ export function CartReviewPanel({
                         category: "generic" as const,
                         appearance: { color: "#78928A" },
                       };
-                      return (
-                        <li key={line.lineId}>
+                              return (
+                                <li key={line.lineId}>
                           <CatalogItemPreview snapshot={previewSnapshot} />
                           <div className="cart-line-copy">
                             <strong>{line.offer.displayName}</strong>
@@ -233,10 +204,20 @@ export function CartReviewPanel({
                               {formatMinorMoney(line.lineTotalMinor, line.offer.price.currency)}
                             </strong>
                           </div>
-                        </li>
+                                </li>
+                              );
+                            })}
+                          </ul>
+                          <div className="provider-plan-handoff">
+                            <button type="button" disabled aria-label={`Checkout at ${providerName} — not connected`}>
+                              Checkout at {providerName}
+                            </button>
+                            <p>Provider connection not available yet.</p>
+                          </div>
+                        </section>
                       );
                     })}
-                  </ul>
+                  </div>
                   <p className="cart-review-total">
                     <strong>Total</strong>
                     <span>{formatMinorMoney(state.result.cart.totals.totalMinor, state.result.cart.totals.currency)}</span>
@@ -250,22 +231,8 @@ export function CartReviewPanel({
                 Latest mutation: {state.receipt.origin} · {state.receipt.operation} · {state.receipt.status} · Cart rev {state.receipt.revision} · {state.receipt.target.displayName} · {state.receipt.target.retailer} · {state.receipt.target.offerId}
               </p>
             ) : null}
-            {checkout && state.result.cart.lines.length > 0 ? (
-              <SandboxCheckoutReview
-                busy={checkoutBusy}
-                onCancel={() => void updateCheckoutSession("cancel")}
-                onConfirm={() => void confirmCheckout()}
-                onOpen={() => void openCheckout()}
-                onPrepare={() => void prepareCheckout()}
-                onReturn={() => void updateCheckoutSession("returnToWimy")}
-                receipt={checkoutReceipt}
-                state={checkoutState}
-              />
-            ) : null}
             <p className="cart-review-disclosure">
-              {checkout
-                ? "Cart addition and sandbox checkout handoff are separate from any completed purchase; payment, addresses, and orders remain provider-owned."
-                : "Synthetic local cart review only. Checkout, payment, and purchase are not available."}
+              Local shopping plan only. Provider checkout, payment, and purchase connections are not available yet.
             </p>
           </>
         )}
@@ -275,6 +242,7 @@ export function CartReviewPanel({
 }
 
 function RoomItemsInCart({ room }: Readonly<{ room: RoomStoreState["room"] }>) {
+  const requirements = roomRequirements(room);
   return (
     <section className="cart-room-items" aria-label="Items in this room">
       <div className="cart-room-items-heading">
@@ -282,14 +250,14 @@ function RoomItemsInCart({ room }: Readonly<{ room: RoomStoreState["room"] }>) {
         <span>{room.items.length} placed</span>
       </div>
       <p>
-        This planning list mirrors the room automatically. Retailer cart lines remain explicit and require an exact eligible offer.
+        Quantities mirror placed catalog items automatically. Provider selections remain explicit and are not connected to checkout.
       </p>
       {room.items.length === 0 ? (
         <p>No items are placed in this room.</p>
       ) : (
         <ul>
-          {room.items.map((item) => (
-            <li key={item.id}>
+          {requirements.map(({ key, item, quantity }) => (
+            <li key={key}>
               <CatalogItemPreview snapshot={item.snapshot} />
               <div className="cart-room-item-copy">
                 <strong>{item.snapshot.name}</strong>
@@ -301,6 +269,7 @@ function RoomItemsInCart({ room }: Readonly<{ room: RoomStoreState["room"] }>) {
                     ? "Placed item · offer lookup ready"
                     : "Placed item · no catalog reference"}
                 </span>
+                <span>Quantity {quantity}</span>
               </div>
             </li>
           ))}
@@ -308,94 +277,6 @@ function RoomItemsInCart({ room }: Readonly<{ room: RoomStoreState["room"] }>) {
       )}
     </section>
   );
-}
-
-function SandboxCheckoutReview({
-  busy,
-  onCancel,
-  onConfirm,
-  onOpen,
-  onPrepare,
-  onReturn,
-  receipt,
-  state,
-}: Readonly<{
-  busy: boolean;
-  onCancel: () => void;
-  onConfirm: () => void;
-  onOpen: () => void;
-  onPrepare: () => void;
-  onReturn: () => void;
-  receipt?: CheckoutReceipt;
-  state:
-    | { phase: "idle" }
-    | { phase: "loading" }
-    | { phase: "reviewed"; review: CheckoutReview }
-    | { phase: "session"; session: CheckoutSession }
-    | { phase: "error"; message: string };
-}>) {
-  if (state.phase === "idle") {
-    return <button type="button" onClick={onPrepare}>Review sandbox checkout</button>;
-  }
-  if (state.phase === "loading") return <p role="status">Refreshing sandbox offer facts…</p>;
-  if (state.phase === "error") {
-    return (
-      <div className="checkout-review-state">
-        <p role="alert">Sandbox checkout unavailable: {state.message}.</p>
-        <CheckoutReceiptView receipt={receipt} />
-        <button type="button" onClick={onPrepare}>Review sandbox checkout again</button>
-      </div>
-    );
-  }
-  if (state.phase === "session") {
-    return (
-      <div className="checkout-review-state">
-        <h3>Sandbox checkout handoff ready</h3>
-        <p>Only a sandbox handoff session was created; no order or payment was created.</p>
-        {state.session.status === "returned" ? <p role="status">Returned to Wimy through the local synthetic return path.</p> : null}
-        {state.session.status === "handoff_ready" ? <button type="button" disabled={busy} onClick={onOpen}>Open sandbox checkout (inert)</button> : null}
-        {state.session.status === "handoff_ready" ? <button type="button" disabled={busy} onClick={onCancel}>Cancel sandbox handoff</button> : null}
-        {state.session.status === "handoff_ready" ? <button type="button" disabled={busy} onClick={onReturn}>Return to Wimy</button> : null}
-        <p>Inert handoff URL: {state.session.handoffUrl}</p>
-        <p role="status">Handoff status: {state.session.status}. Return path: {state.session.returnUrl}</p>
-        <CheckoutReceiptView receipt={receipt} />
-      </div>
-    );
-  }
-  return (
-    <div className="checkout-review-state">
-      <h3>Sandbox checkout review</h3>
-      <p>Retailer: {state.review.retailer}</p>
-      <ul className="checkout-review-lines">
-        {state.review.lines.map((line) => (
-          <li key={line.lineId}>
-            <strong>{line.displayName}</strong>
-            <span>{line.quantity} × {line.price.amountMinor} {line.price.currency} = {line.lineTotalMinor} {line.price.currency}</span>
-            <span>Availability: {line.availability} · Freshness: {line.freshness}</span>
-            {line.priceChangeMinor !== 0 ? <span>Price changed by {line.priceChangeMinor} minor units.</span> : null}
-          </li>
-        ))}
-      </ul>
-      <p><strong>Total</strong> {state.review.totals.totalMinor} {state.review.totals.currency}</p>
-      <p>{state.review.shippingTaxDisclosure}</p>
-      {state.review.warnings.length > 0 ? (
-        <ul aria-label="Checkout review warnings">
-          {state.review.warnings.map((warning) => <li key={warning}>{warning}</li>)}
-        </ul>
-      ) : null}
-      <button type="button" disabled={busy || !state.review.canConfirm} onClick={onConfirm}>
-        Confirm sandbox checkout handoff
-      </button>
-      {!state.review.canConfirm ? <button type="button" disabled={busy} onClick={onPrepare}>Review sandbox checkout again</button> : null}
-      {state.review.retailerIds.length > 1 ? <p>One retailer handoff at a time; split the cart before confirming.</p> : null}
-      <CheckoutReceiptView receipt={receipt} />
-    </div>
-  );
-}
-
-function CheckoutReceiptView({ receipt }: Readonly<{ receipt?: CheckoutReceipt }>) {
-  if (!receipt) return null;
-  return <p aria-label="Latest checkout receipt">Latest checkout receipt: {receipt.operation} · {receipt.status} · Cart rev {receipt.cartRevision} · {receipt.lineCount} lines · {receipt.totalMinor} {receipt.currency}</p>;
 }
 
 function CartReviewHeading({
@@ -410,15 +291,15 @@ function CartReviewHeading({
   return (
     <div className="cart-review-heading">
       <div>
-        <p className="drawer-kicker">Commerce review</p>
-        <h2 id="cart-review-heading">Cart review</h2>
+        <p className="drawer-kicker">Room-linked purchasing</p>
+        <h2 id="cart-review-heading">Shopping plan</h2>
       </div>
       <div className="cart-review-heading-actions">
         <span aria-label={`Room revision ${roomRevision}`}>Room rev {roomRevision}</span>
         {cartRevision === undefined ? null : (
           <span aria-label={`Cart revision ${cartRevision}`}>Cart rev {cartRevision}</span>
         )}
-        <button type="button" aria-label="Close cart review" onClick={onClose} autoFocus>Close</button>
+        <button type="button" aria-label="Close shopping plan" onClick={onClose} autoFocus>Close</button>
       </div>
     </div>
   );

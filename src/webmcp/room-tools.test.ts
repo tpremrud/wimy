@@ -202,7 +202,7 @@ describe("createRoomToolDefinitions", () => {
         name: "find_furniture",
         title: "Find furniture",
         description:
-          "Find deterministic geometric fits in Wimy's local fictional catalog without changing the room; suggestions are not aesthetic guarantees.",
+          "Find deterministic geometric fits in Wimy's local fictional and imported project-authored catalog without changing the room; suggestions are not aesthetic guarantees.",
       },
       {
         name: "apply_room_edit",
@@ -214,7 +214,7 @@ describe("createRoomToolDefinitions", () => {
         name: "apply_room_structure_edit",
         title: "Apply room structure edit",
         description:
-          "Atomically change one room's dimensions, rectangle or southeast-notch L shape, and bounded door or window openings at an exact room revision; invalidated furniture or openings are rejected without relocation.",
+          "Atomically change one room's name, dimensions, rectangle or southeast-notch L shape, and bounded door or window openings at an exact room revision; invalidated furniture or openings are rejected without relocation.",
       },
       {
         name: "inspect_lighting_preview",
@@ -445,6 +445,7 @@ describe("createRoomToolDefinitions", () => {
     const output = await tool.execute(
       {
         expectedRevision: 1,
+        name: "Hong Kong Studio",
         dimensions: { width: 5 },
         geometry: {
           shape: "l-shape",
@@ -487,6 +488,7 @@ describe("createRoomToolDefinitions", () => {
     expect((await execute("inspect_room", store))).toMatchObject({
       revision: 2,
       room: {
+        name: "Hong Kong Studio",
         dimensions: { width: 5, depth: 3.5, height: 2.7 },
         geometry: {
           shape: "l-shape",
@@ -496,6 +498,24 @@ describe("createRoomToolDefinitions", () => {
           expect.objectContaining({ id: "opening_added_south" }),
         ]),
       },
+    });
+  });
+
+  it("accepts a name-only room structure edit", async () => {
+    const store = createRoomStore(
+      getTemplate("blank-room"),
+      TEST_TRANSACTION_DEPENDENCIES,
+    );
+
+    expect(
+      await execute("apply_room_structure_edit", store, {
+        expectedRevision: 1,
+        name: "Reading Room",
+      }),
+    ).toMatchObject({ ok: true, revision: 2, applied: 1 });
+    expect((await execute("inspect_room", store))).toMatchObject({
+      revision: 2,
+      room: { name: "Reading Room" },
     });
   });
 
@@ -1049,7 +1069,7 @@ describe("createRoomToolDefinitions", () => {
 
     expect(find.annotations).toEqual({
       readOnlyHint: true,
-      untrustedContentHint: false,
+      untrustedContentHint: true,
     });
     expect(find.inputSchema).toEqual({
       type: "object",
@@ -1119,6 +1139,27 @@ describe("createRoomToolDefinitions", () => {
           dimensions: { width: 0.6, depth: 0.6, height: 0.82 },
           styleTags: ["warm-modern", "compact"],
           price: { amount: 499, currency: "USD" },
+          metadata: {
+            origin: "fictional",
+            publisherId: "wimy-project-publisher",
+            catalogId: "wimy-demo-v1",
+            catalogVersion: "builtin-v1",
+            itemId: "ember-nest-chair",
+            variantId: "ember-nest-chair",
+            provider: {
+              providerId: "00000000-0000-4000-8000-000000000001",
+              name: "Wimy Atelier",
+              connection: "not_connected",
+            },
+            provenance: {
+              sourceName: "Wimy fictional demo catalog",
+              observedAt: "2026-09-02T00:00:00Z",
+            },
+            license: {
+              name: "Wimy Project Authored License",
+              spdxId: "MIT",
+            },
+          },
           suggestedPose: { x: 0.3, y: 0.3, rotationDeg: 0 },
         },
       ],
@@ -1352,6 +1393,11 @@ describe("createRoomToolDefinitions", () => {
     const catalogPackage = {
       format: "wimy-catalog" as const,
       schemaVersion: 1 as const,
+      provider: {
+        providerId: "00000000-0000-4000-8000-000000000405",
+        name: "Northstar Home",
+        connection: "not_connected" as const,
+      },
       publisher: {
         publisherId: "00000000-0000-4000-8000-000000000401",
         name: "Wimy Project Studio",
@@ -1416,7 +1462,7 @@ describe("createRoomToolDefinitions", () => {
       status: "ok",
       offers: expect.arrayContaining([
         expect.objectContaining({
-          retailer: "Northstar Furnishings",
+          retailer: "Northstar Home",
           state: "exact",
           observedAt: "2026-09-02T12:00:00.000Z",
         }),
@@ -1438,6 +1484,11 @@ describe("createRoomToolDefinitions", () => {
     const catalogPackage = {
       format: "wimy-catalog" as const,
       schemaVersion: 1 as const,
+      provider: {
+        providerId: "00000000-0000-4000-8000-000000000505",
+        name: "Northstar Home",
+        connection: "not_connected" as const,
+      },
       publisher: {
         publisherId: "00000000-0000-4000-8000-000000000501",
         name: "Wimy Project Studio",
@@ -1510,7 +1561,7 @@ describe("createRoomToolDefinitions", () => {
       ],
       retailers: expect.arrayContaining([
         expect.objectContaining({
-          retailer: "Northstar Furnishings",
+        retailer: "Northstar Home",
           offers: expect.arrayContaining([
             expect.objectContaining({ isCheapest: true, productUrl: expect.stringContaining("example.invalid") }),
           ]),

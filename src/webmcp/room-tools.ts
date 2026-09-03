@@ -469,9 +469,8 @@ const ADD_TO_CART_INPUT_SCHEMA = {
       required: ["offerId", "offerVersion", "catalogRef", "price"],
       additionalProperties: false,
     },
-    quantity: { type: "integer", minimum: 1, maximum: 99 },
   },
-  required: ["expectedRevision", "idempotencyKey", "offer", "quantity"],
+  required: ["expectedRevision", "idempotencyKey", "offer"],
   additionalProperties: false,
 } as const;
 
@@ -482,17 +481,6 @@ const REMOVE_FROM_CART_INPUT_SCHEMA = {
     lineId: ENTITY_ID_INPUT_SCHEMA,
   },
   required: ["expectedRevision", "idempotencyKey", "lineId"],
-  additionalProperties: false,
-} as const;
-
-const SET_CART_QUANTITY_INPUT_SCHEMA = {
-  ...REMOVE_FROM_CART_INPUT_SCHEMA,
-  properties: {
-    ...CART_MUTATION_COMMON_SCHEMA.properties,
-    lineId: ENTITY_ID_INPUT_SCHEMA,
-    quantity: { type: "integer", minimum: 1, maximum: 99 },
-  },
-  required: ["expectedRevision", "idempotencyKey", "lineId", "quantity"],
   additionalProperties: false,
 } as const;
 
@@ -541,15 +529,10 @@ const AddToCartInputSchema = CartMutationCommonInputSchema.extend({
     catalogRef: CatalogRefInputSchema,
     price: CartMoneyInputSchema,
   }).strict(),
-  quantity: z.number().int().min(1).max(99),
 }).strict();
 const RemoveFromCartInputSchema = CartMutationCommonInputSchema.extend({
   lineId: EntityIdSchema,
 }).strict();
-const SetCartQuantityInputSchema = RemoveFromCartInputSchema.extend({
-  quantity: z.number().int().min(1).max(99),
-}).strict();
-
 const PRODUCT_ID_INPUT_SCHEMA = {
   type: "string",
   pattern: "^[a-z][a-z0-9-]{0,127}$",
@@ -737,6 +720,7 @@ const findFurnitureForRoom = (
       ...(match.snapshot.commerce
         ? { price: { ...match.snapshot.commerce.price } }
         : {}),
+      metadata: projectCatalogMetadata(match),
       suggestedPose: { ...match.suggestedPose },
     }),
   );
@@ -757,6 +741,11 @@ const projectCatalogMetadata = (item: CatalogItem) =>
         catalogVersion: item.metadata.catalogVersion,
         itemId: item.metadata.itemId,
         variantId: item.metadata.variantId,
+        provider: {
+          providerId: item.metadata.provider.providerId,
+          name: projectUntrustedText(item.metadata.provider.name),
+          connection: item.metadata.provider.connection,
+        },
         provenance: {
           sourceName: projectUntrustedText(item.metadata.provenance.sourceName),
           observedAt: item.metadata.provenance.observedAt,
@@ -1232,12 +1221,34 @@ const projectMutation = (result: CartMutationResult) => result.ok
   ? { ok: true as const, cart: projectCart(result.cart), receipt: projectCartReceipt(result.receipt) }
   : { ok: false as const, error: projectCartError(result.error), receipt: projectCartReceipt(result.receipt) };
 
-const addToCartTool = async (client: CustomerCartClient, rawInput: unknown, signal: AbortSignal) => {
+const addToCartTool = async (
+  store: RoomStore,
+  client: CustomerCartClient,
+  rawInput: unknown,
+  signal: AbortSignal,
+) => {
   const parsed = AddToCartInputSchema.safeParse(rawInput);
   if (!parsed.success) return cartToolFailure("add", "INVALID_REQUEST", "add_to_cart input is invalid");
   throwIfAborted(signal);
   if (!client.addLine) return cartToolFailure("add", "SESSION_UNAVAILABLE", "Cart access is unavailable");
-  const result = await client.addLine({ ...parsed.data, signal, origin: "webmcp" });
+  const quantity = store.getState().room.items.filter(({ catalogRef }) =>
+    catalogRef?.catalogId === parsed.data.offer.catalogRef.catalogId &&
+    catalogRef.productId === parsed.data.offer.catalogRef.productId,
+  ).length;
+  if (quantity === 0) {
+    return cartToolFailure(
+      "add",
+      "INVALID_REQUEST",
+      "add_to_cart requires an exact offer for a product currently placed in the room",
+    );
+  }
+  const result = await client.addLine({
+    ...parsed.data,
+    quantity,
+    quantityMode: "set",
+    signal,
+    origin: "webmcp",
+  });
   throwIfAborted(signal);
   return projectMutation(result);
 };
@@ -1248,16 +1259,6 @@ const removeFromCartTool = async (client: CustomerCartClient, rawInput: unknown,
   throwIfAborted(signal);
   if (!client.removeLine) return cartToolFailure("remove", "SESSION_UNAVAILABLE", "Cart access is unavailable");
   const result = await client.removeLine({ ...parsed.data, signal, origin: "webmcp" });
-  throwIfAborted(signal);
-  return projectMutation(result);
-};
-
-const setCartQuantityTool = async (client: CustomerCartClient, rawInput: unknown, signal: AbortSignal) => {
-  const parsed = SetCartQuantityInputSchema.safeParse(rawInput);
-  if (!parsed.success) return cartToolFailure("change_quantity", "INVALID_REQUEST", "set_cart_quantity input is invalid");
-  throwIfAborted(signal);
-  if (!client.changeQuantity) return cartToolFailure("change_quantity", "SESSION_UNAVAILABLE", "Cart access is unavailable");
-  const result = await client.changeQuantity({ ...parsed.data, signal, origin: "webmcp" });
   throwIfAborted(signal);
   return projectMutation(result);
 };
@@ -1510,6 +1511,12 @@ const APPLY_ROOM_STRUCTURE_EDIT_INPUT_SCHEMA = {
       minimum: 1,
       maximum: Number.MAX_SAFE_INTEGER,
     },
+    name: {
+      type: "string",
+      minLength: 1,
+      maxLength: 80,
+      pattern: STYLE_TAG_PATTERN,
+    },
     dimensions: ROOM_STRUCTURE_DIMENSIONS_INPUT_SCHEMA,
     geometry: ROOM_STRUCTURE_GEOMETRY_INPUT_SCHEMA,
     openingOperations: {
@@ -1521,6 +1528,7 @@ const APPLY_ROOM_STRUCTURE_EDIT_INPUT_SCHEMA = {
   },
   required: ["expectedRevision"],
   anyOf: [
+    { required: ["name"] },
     { required: ["dimensions"] },
     { required: ["geometry"] },
     { required: ["openingOperations"] },
@@ -1561,6 +1569,7 @@ const WebMcpRoomOpeningOperationSchema = z.discriminatedUnion("type", [
 
 const ApplyRoomStructureEditInputSchema = z.object({
   expectedRevision: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+  name: z.string().min(1).max(80).regex(new RegExp(STYLE_TAG_PATTERN, "u")).optional(),
   dimensions: RoomDimensionsSchema.partial().refine(
     (dimensions) => Object.keys(dimensions).length > 0,
     "A dimensions patch must change at least one field",
@@ -1568,8 +1577,8 @@ const ApplyRoomStructureEditInputSchema = z.object({
   geometry: RoomGeometrySchema.optional(),
   openingOperations: z.array(WebMcpRoomOpeningOperationSchema).min(1).max(8).optional(),
 }).strict().refine(
-  (input) => input.dimensions !== undefined || input.geometry !== undefined || (input.openingOperations?.length ?? 0) > 0,
-  "A structure edit must include dimensions, geometry, or openingOperations",
+  (input) => input.name !== undefined || input.dimensions !== undefined || input.geometry !== undefined || (input.openingOperations?.length ?? 0) > 0,
+  "A structure edit must include name, dimensions, geometry, or openingOperations",
 );
 
 const applyRoomEdit = (
@@ -1709,6 +1718,7 @@ const applyRoomStructureEdit = (
     origin: "webmcp",
     change: {
       type: "structure",
+      name: input.name,
       dimensions: input.dimensions,
       geometry: input.geometry,
       openingOperations: input.openingOperations ?? [],
@@ -1764,11 +1774,11 @@ export const createRoomToolDefinitions = (
       name: "find_furniture",
       title: "Find furniture",
       description:
-        "Find deterministic geometric fits in Wimy's local fictional catalog without changing the room; suggestions are not aesthetic guarantees.",
+        "Find deterministic geometric fits in Wimy's local fictional and imported project-authored catalog without changing the room; suggestions are not aesthetic guarantees.",
       inputSchema: FIND_FURNITURE_INPUT_SCHEMA,
       annotations: {
         readOnlyHint: true,
-        untrustedContentHint: false,
+        untrustedContentHint: true,
       },
       execute: (input, { signal }) =>
         findFurnitureForRoom(store, input, signal),
@@ -1789,7 +1799,7 @@ export const createRoomToolDefinitions = (
       name: "apply_room_structure_edit",
       title: "Apply room structure edit",
       description:
-        "Atomically change one room's dimensions, rectangle or southeast-notch L shape, and bounded door or window openings at an exact room revision; invalidated furniture or openings are rejected without relocation.",
+        "Atomically change one room's name, dimensions, rectangle or southeast-notch L shape, and bounded door or window openings at an exact room revision; invalidated furniture or openings are rejected without relocation.",
       inputSchema: APPLY_ROOM_STRUCTURE_EDIT_INPUT_SCHEMA,
       annotations: {
         readOnlyHint: false,
@@ -1875,9 +1885,9 @@ export const createRoomToolDefinitions = (
     definitions.push(
       {
         name: "inspect_cart",
-        title: "Inspect cart",
+        title: "Inspect shopping plan",
         description:
-          "Read bounded totals, lines, offer freshness, and recoverable warnings for the signed-in customer cart; this never changes the room or places an order.",
+          "Read bounded provider selections, totals, offer freshness, and recoverable warnings for the signed-in room shopping plan; this never changes the room or places an order.",
         inputSchema: CART_READ_INPUT_SCHEMA,
         annotations: { readOnlyHint: true, untrustedContentHint: true },
         execute: (input, { signal }) => inspectCartTool(commerce.customerSession, input, signal),
@@ -1898,12 +1908,12 @@ export const createRoomToolDefinitions = (
     definitions.push(
       {
         name: "add_to_cart",
-        title: "Add to cart",
+        title: "Select provider offer",
         description:
-          "Add a bounded quantity of one exact authorized offer using the current cart revision, offer version, price, currency, catalog identity, and idempotency key; no checkout or purchase is available.",
+          "Select one exact authorized offer for a product placed in the current room using the current plan revision, offer version, price, currency, catalog identity, and idempotency key; quantity is derived from the room and no checkout or purchase connection is available.",
         inputSchema: ADD_TO_CART_INPUT_SCHEMA,
         annotations: { readOnlyHint: false, untrustedContentHint: true },
-        execute: (input, { signal }) => addToCartTool(cart, input, signal),
+        execute: (input, { signal }) => addToCartTool(store, cart, input, signal),
       },
       {
         name: "remove_from_cart",
@@ -1913,15 +1923,6 @@ export const createRoomToolDefinitions = (
         inputSchema: REMOVE_FROM_CART_INPUT_SCHEMA,
         annotations: { readOnlyHint: false, untrustedContentHint: true },
         execute: (input, { signal }) => removeFromCartTool(cart, input, signal),
-      },
-      {
-        name: "set_cart_quantity",
-        title: "Set cart quantity",
-        description:
-          "Set one exact cart line quantity using the current cart revision and idempotency key; this is not checkout or purchase.",
-        inputSchema: SET_CART_QUANTITY_INPUT_SCHEMA,
-        annotations: { readOnlyHint: false, untrustedContentHint: true },
-        execute: (input, { signal }) => setCartQuantityTool(cart, input, signal),
       },
     );
   }

@@ -16,6 +16,7 @@ type RetailerFixture = {
   readonly observedAt: string;
   readonly expiresAt: string;
   readonly priceDeltaMinor: number;
+  readonly usesCatalogProvider?: true;
 };
 
 const RETAILER_FIXTURES: readonly RetailerFixture[] = [
@@ -28,6 +29,7 @@ const RETAILER_FIXTURES: readonly RetailerFixture[] = [
     observedAt: "2026-09-02T12:00:00.000Z",
     expiresAt: "2026-09-02T12:30:00.000Z",
     priceDeltaMinor: 0,
+    usesCatalogProvider: true,
   },
   {
     retailerId: "synthetic-cedar-exchange",
@@ -85,6 +87,15 @@ const syntheticOfferFor = (
   item: CatalogItem,
   fixture: RetailerFixture,
 ) => {
+  const canonicalProvider = fixture.usesCatalogProvider
+    ? item.metadata?.provider
+    : undefined;
+  const retailerId = fixture.retailerId;
+  const retailerName = canonicalProvider?.name ?? fixture.retailerName;
+  const provider = canonicalProvider ?? {
+    providerId: fixture.retailerId,
+    name: fixture.retailerName,
+  };
   const amountMinor = Math.max(
     0,
     Math.round((item.snapshot.commerce?.price.amount ?? 0) * 100) +
@@ -100,21 +111,25 @@ const syntheticOfferFor = (
 
   return {
     offerId: `${fixture.retailerId}-offer-${productId}`,
-    retailerId: fixture.retailerId,
+    retailerId,
     sellerId: fixture.sellerId,
     catalogRef: structuredClone(item.catalogRef),
     displayName: item.snapshot.name,
-    productUrl: `https://offers.example.invalid/${fixture.retailerId}/${productId}`,
+    productUrl: `https://offers.example.invalid/${retailerId}/${productId}`,
     price: {
       amountMinor,
       currency: item.snapshot.commerce?.price.currency ?? "USD",
     },
     availability: fixture.availability,
+    provider: {
+      providerId: provider.providerId,
+      name: provider.name,
+    },
     observedAt: fixture.observedAt,
     expiresAt: fixture.expiresAt,
     provenance: {
-      sourceName: fixture.retailerName,
-      sourceUrl: `https://offers.example.invalid/sources/${fixture.retailerId}`,
+      sourceName: retailerName,
+      sourceUrl: `https://offers.example.invalid/sources/${retailerId}`,
       sourceKind: "authorized_api" as const,
     },
     identityEvidence: {

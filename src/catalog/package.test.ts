@@ -75,6 +75,11 @@ const makeItem = (itemValue = 3, variantValue = itemValue + 1) => ({
 const makeCatalog = () => ({
   format: "wimy-catalog",
   schemaVersion: 1,
+  provider: {
+    providerId: uuid(5),
+    name: "Northstar Home",
+    connection: "not_connected",
+  },
   publisher: {
     publisherId: uuid(1),
     name: "Wimy Studio",
@@ -97,6 +102,11 @@ describe("WimyCatalogV1Schema", () => {
     expect(parsed).toMatchObject({
       format: "wimy-catalog",
       schemaVersion: 1,
+      provider: {
+        providerId: uuid(5),
+        name: "Northstar Home",
+        connection: "not_connected",
+      },
       publisher: { publisherId: uuid(1) },
       catalog: { catalogId: uuid(2) },
       items: [
@@ -134,6 +144,13 @@ describe("WimyCatalogV1Schema", () => {
         },
       ],
     });
+  });
+
+  it("requires a fictional commerce provider with an explicit connection state", () => {
+    const candidate: Record<string, unknown> = structuredClone(makeCatalog());
+    delete candidate.provider;
+
+    expect(WimyCatalogV1Schema.safeParse(candidate).success).toBe(false);
   });
 
   it.each([

@@ -22,20 +22,20 @@ test("keeps anonymous room and file access while local session UX is optional", 
   await page.getByRole("button", { name: "Continue locally" }).click();
   await expect(session).toContainText("Signed in locally as Demo browser customer");
   await expect(page.locator(".cart-review-panel")).toBeHidden();
-  await page.getByRole("button", { name: "Review cart" }).click();
-  const cartReview = page.getByRole("dialog", { name: "Cart review" });
+  await page.getByRole("button", { name: "Review shopping plan" }).click();
+  const cartReview = page.getByRole("dialog", { name: "Shopping plan" });
   await expect(cartReview.getByRole("region", { name: "Items in this room" })).toContainText(
     "Linen Apartment Sofa",
   );
   await expect(cartReview.getByRole("region", { name: "Items in this room" })).toContainText(
     "Tall Leaf Plant",
   );
-  await expect(cartReview).toContainText("No retailer cart lines yet.");
+  await expect(cartReview).toContainText("No provider selections yet.");
 
   await page.getByRole("button", { name: "Sign out" }).click();
   await expect(session).toContainText("Anonymous mode");
-  await page.getByRole("button", { name: "Review cart" }).click();
-  await expect(page.getByRole("dialog", { name: "Cart review" })).toContainText("Sign in locally to review");
+  await page.getByRole("button", { name: "Review shopping plan" }).click();
+  await expect(page.getByRole("dialog", { name: "Shopping plan" })).toContainText("Sign in locally to review");
 
   await page.getByRole("button", { name: "Share room" }).click();
   const share = page.getByRole("dialog", { name: "Share room" });
@@ -61,9 +61,9 @@ test("shows the live room revision and product previews in cart review", async (
 
   await page.getByRole("button", { name: "Sign in (optional)" }).click();
   await page.getByRole("button", { name: "Continue locally" }).click();
-  await page.getByRole("button", { name: "Review cart" }).click();
+  await page.getByRole("button", { name: "Review shopping plan" }).click();
 
-  const cart = page.getByRole("dialog", { name: "Cart review" });
+  const cart = page.getByRole("dialog", { name: "Shopping plan" });
   await expect(cart.getByLabel("Room revision 4")).toBeVisible();
   await expect(cart.getByLabel("Cart revision 1")).toBeVisible();
   await expect(

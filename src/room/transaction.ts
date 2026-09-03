@@ -63,6 +63,7 @@ export type RoomOpeningOperation =
 
 export type RoomStructureChange = {
   type: "structure";
+  name?: string;
   dimensions?: Partial<RoomDimensions>;
   geometry?: RoomGeometry;
   openingOperations: RoomOpeningOperation[];
@@ -214,6 +215,9 @@ const applyRoomStructureChange = (
   change: RoomStructureChange,
 ): StructureCandidateResult => {
   const nextRoom = structuredClone(currentRoom);
+  if (change.name !== undefined) {
+    nextRoom.name = change.name;
+  }
   if (change.dimensions) {
     nextRoom.dimensions = { ...nextRoom.dimensions, ...change.dimensions };
   }
@@ -343,6 +347,7 @@ export function applyRoomTransaction(
     request.change.type === "structure" &&
     (request.change.openingOperations.length > 8 ||
       (request.change.openingOperations.length === 0 &&
+        request.change.name === undefined &&
         (request.change.dimensions === undefined ||
           Object.keys(request.change.dimensions).length === 0) &&
         request.change.geometry === undefined))
@@ -354,7 +359,7 @@ export function applyRoomTransaction(
       "TOO_MANY_OPERATIONS",
       request.change.openingOperations.length > 8
         ? "Structure edits allow at most 8 opening operations"
-        : "Structure edits require dimensions, geometry, or an opening operation",
+        : "Structure edits require a name, dimensions, geometry, or an opening operation",
     );
   }
 
@@ -452,6 +457,7 @@ export function applyRoomTransaction(
       revision,
       changeType: request.change.type,
       summary: `Updated room structure (${[
+        request.change.name !== undefined ? "name" : undefined,
         request.change.dimensions ? "dimensions" : undefined,
         request.change.geometry ? "geometry" : undefined,
         request.change.openingOperations.length > 0

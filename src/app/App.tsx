@@ -291,7 +291,7 @@ export function App({
   useEffect(() => {
     if (!customerSessionView.authenticated) return;
     let current = true;
-    const delay = Math.max(0, customerSessionView.expiresAt - Date.now());
+    const delay = Math.max(0, customerSessionView.expiresAt - Date.now() + 1);
     const timer = window.setTimeout(() => {
       void customerSession.getSession()
         .then((nextSession) => {
@@ -444,7 +444,6 @@ export function App({
           <CartReviewPanel
             key={`checkout-${customerSessionKey}`}
             catalog={store.readCatalog()}
-            checkout={customerSession.checkout}
             client={customerSession.cart}
             onClose={() => closeSurface("cart")}
             onOpen={() => openSurface("cart")}
@@ -614,6 +613,7 @@ export function App({
         </aside>
       </div>
       <WebMcpToolList
+        authenticated={customerSessionView.authenticated}
         definitions={webMcpToolDefinitions}
         registration={
           visibleRegistration.phase === "pending"

@@ -75,6 +75,11 @@ const callTool = async (
 const projectAuthoredCartPackage = {
   format: "wimy-catalog",
   schemaVersion: 1,
+  provider: {
+    providerId: "00000000-0000-4000-8000-000000000405",
+    name: "Northstar Home",
+    connection: "not_connected",
+  },
   publisher: {
     publisherId: "00000000-0000-4000-8000-000000000401",
     name: "Wimy Cart Fixture Studio",
@@ -141,6 +146,10 @@ test("inspect, find, and apply visibly collaborate while stale edits recover", a
   await expect(toolsPanel.getByText("inspect_lighting_preview")).toBeVisible();
   await expect(toolsPanel.getByText("set_lighting_preview")).toBeVisible();
   await expect(toolsPanel.getByText("Can change room")).toHaveCount(3);
+  await expect(toolsPanel.getByText("Available after sign-in")).toBeVisible();
+  await expect(
+    toolsPanel.getByRole("list", { name: "WebMCP tools available after sign-in" }),
+  ).toContainText("inspect_cart");
   await page.keyboard.press("Escape");
   await expect(toolsPanel).toBeHidden();
   await expect(toolsTrigger).toBeFocused();
@@ -489,6 +498,7 @@ test("applies atomic room structure edits across 2D, 3D, receipt, export, and re
 
   const applied = await callTool(page, "apply_room_structure_edit", {
     expectedRevision: inspectedBefore.revision,
+    name: "Hong Kong Studio",
     dimensions: { width: 5.2 },
     geometry: {
       shape: "l-shape",
@@ -522,6 +532,7 @@ test("applies atomic room structure edits across 2D, 3D, receipt, export, and re
     },
   });
 
+  await expect(page.getByLabel("Current room context")).toContainText("Hong Kong Studio");
   await expect(page.getByLabel("Current room context")).toContainText("Revision 2");
   await expect(page.locator(".room-boundary")).toHaveAttribute(
     "points",
@@ -532,11 +543,11 @@ test("applies atomic room structure edits across 2D, 3D, receipt, export, and re
   ).toContainText("Agent: Accepted. Updated room structure");
 
   await page.getByRole("button", { name: "Preview in 3D" }).click();
-  const preview = page.getByRole("region", { name: "3D preview of Living Room" });
+  const preview = page.getByRole("region", { name: "3D preview of Hong Kong Studio" });
   await expect(preview).toBeVisible();
   await expect(preview).toContainText("5.2 m by 4.2 m");
   await expect(
-    preview.getByRole("list", { name: "Placed items in Living Room" }).getByRole("listitem"),
+    preview.getByRole("list", { name: "Placed items in Hong Kong Studio" }).getByRole("listitem"),
   ).toHaveCount(5);
 
   await page.getByRole("button", { name: "Share room", exact: true }).click();
@@ -544,12 +555,13 @@ test("applies atomic room structure edits across 2D, 3D, receipt, export, and re
   const downloadPromise = page.waitForEvent("download");
   await share.getByRole("button", { name: "Export .wimy" }).click();
   const download = await downloadPromise;
-  expect(download.suggestedFilename()).toBe("living-room.wimy");
+  expect(download.suggestedFilename()).toBe("hong-kong-studio.wimy");
   const exportPath = testInfo.outputPath("structure-edit.wimy");
   await download.saveAs(exportPath);
   const exported = JSON.parse(await readFile(exportPath, "utf8")) as {
     schemaVersion: number;
     room: {
+      name: string;
       dimensions: { width: number };
       geometry: { shape: string };
       openings: Array<{ id: string }>;
@@ -558,6 +570,7 @@ test("applies atomic room structure edits across 2D, 3D, receipt, export, and re
   expect(exported).toMatchObject({
     schemaVersion: 2,
     room: {
+      name: "Hong Kong Studio",
       dimensions: { width: 5.2 },
       geometry: { shape: "l-shape" },
       openings: expect.arrayContaining([
@@ -570,6 +583,7 @@ test("applies atomic room structure edits across 2D, 3D, receipt, export, and re
   expect(inspectedAfter).toMatchObject({
     revision: 2,
     room: {
+      name: "Hong Kong Studio",
       dimensions: { width: 5.2 },
       geometry: { shape: "l-shape" },
       openings: expect.arrayContaining([
@@ -625,8 +639,13 @@ test("exposes authenticated cart tools, keeps room state separate, and unregiste
   await page.getByRole("button", { name: "Sign in (optional)" }).click();
   await page.getByRole("button", { name: "Continue locally" }).click();
   await expect(page.getByRole("status", { name: "WebMCP status" })).toContainText(
-    "WebMCP ready — 14 tools registered",
+    "WebMCP ready — 13 tools registered",
   );
+  await page.getByRole("button", { name: "WebMCP tools, 13 registered" }).click();
+  const authenticatedToolsPanel = page.getByRole("dialog", { name: "WebMCP tools" });
+  await expect(authenticatedToolsPanel.getByText("inspect_cart")).toBeVisible();
+  await expect(authenticatedToolsPanel.getByText("Available after sign-in")).toHaveCount(0);
+  await page.keyboard.press("Escape");
 
   await page.getByLabel("Import project-authored catalog package").setInputFiles({
     name: "cart-fixture.wimy-catalog",
@@ -636,13 +655,14 @@ test("exposes authenticated cart tools, keeps room state separate, and unregiste
   await expect(page.getByRole("status", { name: "Catalog import result" })).toContainText(
     "Imported 1 project-authored catalog item: Aurora Browser Chair",
   );
+  await page.getByRole("button", { name: "Add Aurora Browser Chair to room" }).click();
 
   const initialRoom = (await callTool(page, "inspect_room", {})) as { revision: number };
   const initialCart = (await callTool(page, "inspect_cart", {})) as {
     ok: boolean;
     cart: { revision: number; lines: unknown[] };
   };
-  expect(initialRoom.revision).toBe(1);
+  expect(initialRoom.revision).toBe(2);
   expect(initialCart).toMatchObject({ ok: true, cart: { revision: 1, lines: [] } });
 
   const found = (await callTool(page, "find_retailer_offers", {
@@ -671,10 +691,9 @@ test("exposes authenticated cart tools, keeps room state separate, and unregiste
       catalogRef: found.catalogRef,
       price: offer.price,
     },
-    quantity: 1,
   })) as { ok: boolean; cart: { revision: number; lines: Array<{ lineId: string }> } };
-  await page.getByRole("button", { name: "Review cart" }).click();
-  const cartDialog = page.getByRole("dialog", { name: "Cart review" });
+  await page.getByRole("button", { name: "Review shopping plan" }).click();
+  const cartDialog = page.getByRole("dialog", { name: "Shopping plan" });
   expect(added).toMatchObject({
     ok: true,
     cart: { revision: 2, lines: [{ lineId: expect.any(String) }] },
@@ -685,87 +704,52 @@ test("exposes authenticated cart tools, keeps room state separate, and unregiste
       revision: 2,
       target: {
         displayName: "Aurora Browser Chair",
-        retailer: "Northstar Furnishings",
+        retailer: "Northstar Home",
       },
     },
   });
   await expect(cartDialog).toContainText("Aurora Browser Chair");
   await expect(
-    cartDialog.getByRole("img", { name: "Aurora Browser Chair preview" }),
+    cartDialog
+      .getByRole("region", { name: "Plan for Northstar Home" })
+      .getByRole("img", { name: "Aurora Browser Chair preview" }),
   ).toBeVisible();
   await expect(cartDialog.getByLabel("Cart revision 2")).toBeVisible();
   await expect(cartDialog).toContainText(
-    "Latest mutation: webmcp · add · accepted · Cart rev 2 · Aurora Browser Chair · Northstar Furnishings",
+    "Latest mutation: webmcp · add · accepted · Cart rev 2 · Aurora Browser Chair · Northstar Home",
   );
-  await expect(cartDialog.getByRole("button", { name: "Review sandbox checkout" })).toBeVisible();
-  await page.screenshot({ path: testInfo.outputPath("retailer-cart-review.png") });
+  await expect(cartDialog.getByRole("region", { name: "Plan for Northstar Home" })).toBeVisible();
+  await expect(cartDialog.getByRole("button", { name: "Checkout at Northstar Home — not connected" })).toBeDisabled();
+  await expect(cartDialog).toContainText("Provider connection not available yet.");
+  await page.screenshot({ path: testInfo.outputPath("provider-shopping-plan.png") });
   expect(await page.evaluate(() => Object.keys((window as typeof window & { __wimyModelContextHarness: ModelContextHarness }).__wimyModelContextHarness.tools))).not.toContain("confirm_checkout");
-  await cartDialog.getByRole("button", { name: "Review sandbox checkout" }).click();
-  await expect(cartDialog).toContainText("Retailer: Northstar Furnishings");
-  await expect(cartDialog).toContainText("shipping and tax are unknown");
-  await expect(cartDialog.getByRole("button", { name: "Confirm sandbox checkout handoff" })).toBeEnabled();
-  await cartDialog.getByRole("button", { name: "Confirm sandbox checkout handoff" }).click();
-  await expect(cartDialog).toContainText("Sandbox checkout handoff ready");
-  await expect(cartDialog).toContainText("no order or payment was created");
-  await expect(cartDialog).toContainText("Latest checkout receipt: confirm · accepted");
-  await cartDialog.getByRole("button", { name: "Open sandbox checkout (inert)" }).click();
-  await expect(cartDialog).toContainText("Latest checkout receipt: open · accepted");
-  await cartDialog.getByRole("button", { name: "Return to Wimy" }).click();
-  await expect(cartDialog).toContainText("Returned to Wimy through the local synthetic return path.");
-  await expect(page).toHaveURL(/\?checkout=return&session=checkout-/u);
   expect(await page.locator("body").innerText()).not.toMatch(/order placed|payment completed|purchase successful/iu);
-  expect((await callTool(page, "inspect_room", {}))).toMatchObject({ revision: 1 });
+  expect((await callTool(page, "inspect_room", {}))).toMatchObject({ revision: 2 });
 
   const lineId = added.cart.lines[0]!.lineId;
   await expect(
-    callTool(page, "set_cart_quantity", {
-      expectedRevision: 2,
-      idempotencyKey: "browser-set-aurora",
-      lineId,
-      quantity: 2,
-    }),
-  ).resolves.toMatchObject({
-    ok: true,
-    cart: { revision: 3, lines: [{ quantity: 2 }] },
-    receipt: {
-      origin: "webmcp",
-      operation: "change_quantity",
-      status: "accepted",
-      revision: 3,
-      target: {
-        displayName: "Aurora Browser Chair",
-        retailer: "Northstar Furnishings",
-      },
-    },
-  });
-  await expect(cartDialog.getByLabel("Cart revision 3")).toBeVisible();
-  await expect(cartDialog).toContainText(
-    "Latest mutation: webmcp · change_quantity · accepted · Cart rev 3 · Aurora Browser Chair · Northstar Furnishings",
-  );
-
-  await expect(
     callTool(page, "remove_from_cart", {
-      expectedRevision: 3,
+      expectedRevision: 2,
       idempotencyKey: "browser-remove-aurora",
       lineId,
     }),
   ).resolves.toMatchObject({
     ok: true,
-    cart: { revision: 4, lines: [] },
+    cart: { revision: 3, lines: [] },
     receipt: {
       origin: "webmcp",
       operation: "remove",
       status: "accepted",
-      revision: 4,
+      revision: 3,
       target: {
         displayName: "Aurora Browser Chair",
-        retailer: "Northstar Furnishings",
+        retailer: "Northstar Home",
       },
     },
   });
-  await expect(cartDialog).toContainText("No retailer cart lines yet.");
+  await expect(cartDialog).toContainText("No provider selections yet.");
   await expect(cartDialog).toContainText(
-    "Latest mutation: webmcp · remove · accepted · Cart rev 4 · Aurora Browser Chair · Northstar Furnishings",
+    "Latest mutation: webmcp · remove · accepted · Cart rev 3 · Aurora Browser Chair · Northstar Home",
   );
 
   await page.getByRole("button", { name: "Sign out" }).click();
@@ -801,7 +785,7 @@ test("refreshes session scope at natural expiry and unregisters commerce tools",
   await page.getByRole("button", { name: "Sign in (optional)" }).click();
   await page.getByRole("button", { name: "Continue locally" }).click();
   await expect(page.getByRole("status", { name: "WebMCP status" })).toContainText(
-    "WebMCP ready — 14 tools registered",
+    "WebMCP ready — 13 tools registered",
   );
 
   await page.clock.runFor("30:01");
