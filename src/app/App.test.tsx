@@ -890,7 +890,7 @@ describe("App", () => {
 
     await waitFor(() =>
       expect(getWebMcpStatus()).toHaveTextContent(
-        "WebMCP ready — 7 tools registered",
+        "WebMCP ready — 9 tools registered",
       ),
     );
     expect(modelContext.definitions.map(({ name }) => name)).toEqual([
@@ -898,14 +898,16 @@ describe("App", () => {
       "find_furniture",
       "apply_room_edit",
       "apply_room_structure_edit",
+      "inspect_lighting_preview",
+      "set_lighting_preview",
       "inspect_retailer_offers",
       "inspect_room_shopping_plan",
       "find_substitutes",
     ]);
     const toolsTrigger = screen.getByRole("button", {
-      name: "WebMCP tools, 7 registered",
+      name: "WebMCP tools, 9 registered",
     });
-    expect(toolsTrigger).toHaveTextContent("WebMCP · 7 tools");
+    expect(toolsTrigger).toHaveTextContent("WebMCP · 9 tools");
     await user.click(toolsTrigger);
     const toolsPanel = screen.getByRole("dialog", { name: "WebMCP tools" });
     expect(toolsPanel).toHaveTextContent("inspect_room");
@@ -933,7 +935,7 @@ describe("App", () => {
         "Revision 2",
       ),
     ).toBeVisible();
-    expect(modelContext.definitions).toHaveLength(7);
+    expect(modelContext.definitions).toHaveLength(9);
     expect(
       modelContext.options.every(({ signal } = {}) => !signal?.aborted),
     ).toBe(true);
@@ -945,7 +947,7 @@ describe("App", () => {
     ).toBe(true);
   });
 
-  it("attempts exactly seven live registrations under StrictMode", async () => {
+  it("attempts exactly nine live registrations under StrictMode", async () => {
     const modelContext = new AppModelContext();
     setModelContext(modelContext);
     const store = createRoomStore(
@@ -961,7 +963,7 @@ describe("App", () => {
 
     await waitFor(() =>
       expect(getWebMcpStatus()).toHaveTextContent(
-        "WebMCP ready — 7 tools registered",
+        "WebMCP ready — 9 tools registered",
       ),
     );
     expect(modelContext.definitions.map(({ name }) => name)).toEqual([
@@ -969,6 +971,8 @@ describe("App", () => {
       "find_furniture",
       "apply_room_edit",
       "apply_room_structure_edit",
+      "inspect_lighting_preview",
+      "set_lighting_preview",
       "inspect_retailer_offers",
       "inspect_room_shopping_plan",
       "find_substitutes",
@@ -991,19 +995,21 @@ describe("App", () => {
     render(<App />);
 
     await waitFor(() =>
-      expect(getWebMcpStatus()).toHaveTextContent("WebMCP ready — 7 tools registered"),
+      expect(getWebMcpStatus()).toHaveTextContent("WebMCP ready — 9 tools registered"),
     );
     await user.click(screen.getByRole("button", { name: "Sign in (optional)" }));
     await user.click(screen.getByRole("button", { name: "Continue locally" }));
 
     await waitFor(() =>
-      expect(getWebMcpStatus()).toHaveTextContent("WebMCP ready — 12 tools registered"),
+      expect(getWebMcpStatus()).toHaveTextContent("WebMCP ready — 14 tools registered"),
     );
     expect([...modelContext.activeDefinitions.keys()]).toEqual([
       "inspect_room",
       "find_furniture",
       "apply_room_edit",
       "apply_room_structure_edit",
+      "inspect_lighting_preview",
+      "set_lighting_preview",
       "inspect_retailer_offers",
       "inspect_room_shopping_plan",
       "find_substitutes",
@@ -1016,7 +1022,7 @@ describe("App", () => {
 
     await user.click(screen.getByRole("button", { name: "Sign out" }));
     await waitFor(() =>
-      expect(getWebMcpStatus()).toHaveTextContent("WebMCP ready — 7 tools registered"),
+      expect(getWebMcpStatus()).toHaveTextContent("WebMCP ready — 9 tools registered"),
     );
     expect([...modelContext.activeDefinitions.keys()]).not.toEqual(
       expect.arrayContaining(["inspect_cart", "add_to_cart", "remove_from_cart", "set_cart_quantity"]),
@@ -1050,10 +1056,10 @@ describe("App", () => {
     render(<App customerSession={customerSession} />);
 
     await waitFor(() =>
-      expect(getWebMcpStatus()).toHaveTextContent("WebMCP ready — 12 tools registered"),
+      expect(getWebMcpStatus()).toHaveTextContent("WebMCP ready — 14 tools registered"),
     );
     await waitFor(() =>
-      expect(getWebMcpStatus()).toHaveTextContent("WebMCP ready — 7 tools registered"),
+      expect(getWebMcpStatus()).toHaveTextContent("WebMCP ready — 9 tools registered"),
       { timeout: 1_000 },
     );
     expect(getSession.mock.calls.length).toBeGreaterThanOrEqual(2);
@@ -1075,7 +1081,7 @@ describe("App", () => {
 
     await waitFor(() =>
       expect(getWebMcpStatus()).toHaveTextContent(
-        "WebMCP degraded — 6 of 7 tools registered",
+        "WebMCP degraded — 8 of 9 tools registered",
       ),
     );
     expect(getWebMcpStatus()).toHaveTextContent(
@@ -1083,8 +1089,8 @@ describe("App", () => {
     );
     expect(getWebMcpStatus()).not.toHaveTextContent("WebMCP ready");
     expect(
-      screen.getByRole("button", { name: "WebMCP tools, 6 registered" }),
-    ).toHaveTextContent("WebMCP · 6/7 tools");
+      screen.getByRole("button", { name: "WebMCP tools, 8 registered" }),
+    ).toHaveTextContent("WebMCP · 8/9 tools");
   });
 
   it("renders pending immediately while replacement-store tools register", async () => {
@@ -1092,6 +1098,8 @@ describe("App", () => {
     const findSecondStore = createDeferred();
     const applySecondStore = createDeferred();
     const structureSecondStore = createDeferred();
+    const inspectLightingSecondStore = createDeferred();
+    const setLightingSecondStore = createDeferred();
     const offerSecondStore = createDeferred();
     const planSecondStore = createDeferred();
     const substituteSecondStore = createDeferred();
@@ -1103,10 +1111,14 @@ describe("App", () => {
       () => Promise.resolve(),
       () => Promise.resolve(),
       () => Promise.resolve(),
+      () => Promise.resolve(),
+      () => Promise.resolve(),
       () => inspectSecondStore.promise,
       () => findSecondStore.promise,
       () => applySecondStore.promise,
       () => structureSecondStore.promise,
+      () => inspectLightingSecondStore.promise,
+      () => setLightingSecondStore.promise,
       () => offerSecondStore.promise,
       () => planSecondStore.promise,
       () => substituteSecondStore.promise,
@@ -1124,7 +1136,7 @@ describe("App", () => {
     const view = render(<App store={firstStore} />);
     await waitFor(() =>
       expect(getWebMcpStatus()).toHaveTextContent(
-        "WebMCP ready — 7 tools registered",
+        "WebMCP ready — 9 tools registered",
       ),
     );
 
@@ -1134,8 +1146,8 @@ describe("App", () => {
       "WebMCP registration pending",
     );
     expect(getWebMcpStatus()).not.toHaveTextContent("WebMCP ready");
-    await waitFor(() => expect(modelContext.definitions).toHaveLength(14));
-    expect(modelContext.options.slice(0, 7).every(
+    await waitFor(() => expect(modelContext.definitions).toHaveLength(18));
+    expect(modelContext.options.slice(0, 9).every(
       ({ signal } = {}) => signal?.aborted,
     )).toBe(true);
 
@@ -1161,6 +1173,16 @@ describe("App", () => {
     expect(getWebMcpStatus()).toHaveTextContent(
       "WebMCP registration pending",
     );
+    inspectLightingSecondStore.resolve();
+    await act(() => Promise.resolve());
+    expect(getWebMcpStatus()).toHaveTextContent(
+      "WebMCP registration pending",
+    );
+    setLightingSecondStore.resolve();
+    await act(() => Promise.resolve());
+    expect(getWebMcpStatus()).toHaveTextContent(
+      "WebMCP registration pending",
+    );
 
     offerSecondStore.resolve();
     await act(() => Promise.resolve());
@@ -1175,7 +1197,7 @@ describe("App", () => {
     substituteSecondStore.resolve();
     await waitFor(() =>
       expect(getWebMcpStatus()).toHaveTextContent(
-        "WebMCP ready — 7 tools registered",
+        "WebMCP ready — 9 tools registered",
       ),
     );
   });
@@ -1235,7 +1257,7 @@ describe("App", () => {
     const view = render(<ReplacementProbe store={firstStore} />);
     await waitFor(() =>
       expect(getWebMcpStatus()).toHaveTextContent(
-        "WebMCP ready — 7 tools registered",
+        "WebMCP ready — 9 tools registered",
       ),
     );
 
@@ -1246,7 +1268,7 @@ describe("App", () => {
     expect(secondStore.getState()).toMatchObject({ revision: 1, receipts: [] });
 
     await waitFor(() =>
-      expect(modelContext.activeDefinitions.size).toBe(7),
+      expect(modelContext.activeDefinitions.size).toBe(9),
     );
     const replacementInspect =
       modelContext.activeDefinitions.get("inspect_room");
@@ -1281,24 +1303,24 @@ describe("App", () => {
     const view = render(<App store={firstStore} />);
     await waitFor(() =>
       expect(getWebMcpStatus()).toHaveTextContent(
-        "WebMCP ready — 7 tools registered",
+        "WebMCP ready — 9 tools registered",
       ),
     );
-    const capturedFirstGeneration = modelContext.definitions.slice(0, 7);
+    const capturedFirstGeneration = modelContext.definitions.slice(0, 9);
 
     view.rerender(<App store={secondStore} />);
-    await waitFor(() => expect(modelContext.definitions).toHaveLength(14));
+    await waitFor(() => expect(modelContext.definitions).toHaveLength(18));
     await waitFor(() =>
       expect(getWebMcpStatus()).toHaveTextContent(
-        "WebMCP ready — 7 tools registered",
+        "WebMCP ready — 9 tools registered",
       ),
     );
 
     view.rerender(<App store={firstStore} />);
-    await waitFor(() => expect(modelContext.definitions).toHaveLength(21));
+    await waitFor(() => expect(modelContext.definitions).toHaveLength(27));
     await waitFor(() =>
       expect(getWebMcpStatus()).toHaveTextContent(
-        "WebMCP ready — 7 tools registered",
+        "WebMCP ready — 9 tools registered",
       ),
     );
 
@@ -1307,6 +1329,8 @@ describe("App", () => {
       "find_furniture",
       "apply_room_edit",
       "apply_room_structure_edit",
+      "inspect_lighting_preview",
+      "set_lighting_preview",
       "inspect_retailer_offers",
       "inspect_room_shopping_plan",
       "find_substitutes",
@@ -1314,6 +1338,8 @@ describe("App", () => {
       "find_furniture",
       "apply_room_edit",
       "apply_room_structure_edit",
+      "inspect_lighting_preview",
+      "set_lighting_preview",
       "inspect_retailer_offers",
       "inspect_room_shopping_plan",
       "find_substitutes",
@@ -1321,18 +1347,20 @@ describe("App", () => {
       "find_furniture",
       "apply_room_edit",
       "apply_room_structure_edit",
+      "inspect_lighting_preview",
+      "set_lighting_preview",
       "inspect_retailer_offers",
       "inspect_room_shopping_plan",
       "find_substitutes",
     ]);
 
     expect(
-      modelContext.options.slice(0, 14).every(
+      modelContext.options.slice(0, 18).every(
         ({ signal } = {}) => signal?.aborted,
       ),
     ).toBe(true);
     expect(
-      modelContext.options.slice(14).every(
+      modelContext.options.slice(18).every(
         ({ signal } = {}) => !signal?.aborted,
       ),
     ).toBe(true);
@@ -1368,7 +1396,7 @@ describe("App", () => {
     expect(firstStore.getState()).toMatchObject({ revision: 1, receipts: [] });
     expect(secondStore.getState()).toMatchObject({ revision: 1, receipts: [] });
 
-    const currentInspect = modelContext.definitions[14];
+    const currentInspect = modelContext.definitions[18];
     if (!currentInspect) throw new Error("current inspect_room was not active");
     await expect(
       Promise.resolve(

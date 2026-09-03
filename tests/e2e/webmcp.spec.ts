@@ -122,15 +122,15 @@ test("inspect, find, and apply visibly collaborate while stale edits recover", a
   await expect(
     page.getByRole("status", { name: "WebMCP status" }),
   ).toContainText(
-    "WebMCP ready — 7 tools registered",
+    "WebMCP ready — 9 tools registered",
   );
   const toolsTrigger = page.getByRole("button", {
-    name: "WebMCP tools, 7 registered",
+    name: "WebMCP tools, 9 registered",
   });
-  await expect(toolsTrigger).toHaveText("WebMCP · 7 tools");
+  await expect(toolsTrigger).toHaveText("WebMCP · 9 tools");
   await toolsTrigger.click();
   const toolsPanel = page.getByRole("dialog", { name: "WebMCP tools" });
-  await expect(toolsPanel).toContainText("7 of 7 registered");
+  await expect(toolsPanel).toContainText("9 of 9 registered");
   await expect(toolsPanel.getByText("inspect_room", { exact: true })).toBeVisible();
   await expect(toolsPanel.getByText("find_furniture")).toBeVisible();
   await expect(toolsPanel.getByText("apply_room_edit")).toBeVisible();
@@ -138,7 +138,9 @@ test("inspect, find, and apply visibly collaborate while stale edits recover", a
   await expect(toolsPanel.getByText("inspect_retailer_offers")).toBeVisible();
   await expect(toolsPanel.getByText("inspect_room_shopping_plan")).toBeVisible();
   await expect(toolsPanel.getByText("find_substitutes")).toBeVisible();
-  await expect(toolsPanel.getByText("Can change room")).toHaveCount(2);
+  await expect(toolsPanel.getByText("inspect_lighting_preview")).toBeVisible();
+  await expect(toolsPanel.getByText("set_lighting_preview")).toBeVisible();
+  await expect(toolsPanel.getByText("Can change room")).toHaveCount(3);
   await page.keyboard.press("Escape");
   await expect(toolsPanel).toBeHidden();
   await expect(toolsTrigger).toBeFocused();
@@ -158,11 +160,13 @@ test("inspect, find, and apply visibly collaborate while stale edits recover", a
     "apply_room_structure_edit",
     "find_furniture",
     "find_substitutes",
+    "inspect_lighting_preview",
     "inspect_retailer_offers",
     "inspect_room",
     "inspect_room_shopping_plan",
+    "set_lighting_preview",
   ]);
-  expect(discovered.registrationCount).toBe(7);
+  expect(discovered.registrationCount).toBe(9);
   const pageUrlBeforeReadOnlyTools = page.url();
   const pageCountBeforeReadOnlyTools = page.context().pages().length;
 
@@ -410,7 +414,65 @@ test("inspect, find, and apply visibly collaborate while stale edits recover", a
     ).__wimyModelContextHarness;
     return harness.registrationCalls.length;
   });
-  expect(registrationCountAfterEdits).toBe(7);
+  expect(registrationCountAfterEdits).toBe(9);
+});
+
+test("set_lighting_preview synchronizes the timeline and window light without resetting orbit", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1_280, height: 900 });
+  await installModelContextHarness(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Preview in 3D" }).click();
+
+  const preview = page.getByRole("region", {
+    name: "3D preview of Living Room",
+  });
+  const canvas = preview.locator(".room-preview-canvas canvas");
+  await expect(canvas).toBeVisible();
+  await expect(canvas).toHaveAttribute("data-wimy-camera-position", /.+/u);
+  const initialCamera = await canvas.getAttribute("data-wimy-camera-position");
+  if (!initialCamera) throw new Error("expected initial orbit diagnostics");
+  await canvas.scrollIntoViewIfNeeded();
+  const canvasBox = await canvas.boundingBox();
+  if (!canvasBox) throw new Error("expected a visible 3D canvas");
+  await page.mouse.move(canvasBox.x + canvasBox.width / 2, canvasBox.y + canvasBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(canvasBox.x + canvasBox.width * 0.7, canvasBox.y + canvasBox.height * 0.42, { steps: 8 });
+  await page.mouse.up();
+  await expect(canvas).not.toHaveAttribute("data-wimy-camera-position", initialCamera);
+  const userOrbitCamera = await canvas.getAttribute("data-wimy-camera-position");
+  if (!userOrbitCamera) throw new Error("expected user orbit diagnostics");
+  const timeline = preview.getByRole("slider", { name: "Local time of day" });
+  await expect(timeline).toHaveValue("720");
+  await preview.getByRole("button", { name: "Open lighting settings" }).click();
+  await expect(preview.getByRole("status", { name: "Sun study status" })).toContainText(
+    "Direct sun is above the modeled horizon",
+  );
+  const lightingSurface = preview.locator(".room-preview-canvas");
+  await expect(lightingSurface).toHaveAttribute("data-wimy-sunbeams", /[1-9]/u);
+
+  const inspected = (await callTool(page, "inspect_lighting_preview", {})) as {
+    revision: number;
+  };
+  expect(inspected.revision).toBe(1);
+  const accepted = await callTool(page, "set_lighting_preview", {
+    expectedLightingRevision: inspected.revision,
+    minuteOfDay: 0,
+  });
+  expect(accepted).toMatchObject({ ok: true, revision: 2 });
+
+  await expect(timeline).toHaveValue("0");
+  await expect(preview.getByRole("status", { name: "Sun study status" })).toContainText(
+    "Direct sun is at or below the modeled horizon",
+  );
+  await expect(lightingSurface).toHaveAttribute("data-wimy-sunbeams", "0");
+  await expect(canvas).toHaveAttribute("data-wimy-camera-position", userOrbitCamera);
+  await expect(page.getByRole("region", { name: "Living Room", exact: true })).toContainText(
+    "Revision 1",
+  );
+  await expect(page.getByRole("region", { name: "Activity receipts" }).getByRole("listitem")).toHaveCount(0);
+  await expect.poll(async () => (await callTool(page, "inspect_lighting_preview", {})) as { revision: number }).toMatchObject({ revision: 2 });
 });
 
 test("applies atomic room structure edits across 2D, 3D, receipt, export, and reinspection", async ({
@@ -558,12 +620,12 @@ test("exposes authenticated cart tools, keeps room state separate, and unregiste
   await page.goto("/");
 
   await expect(page.getByRole("status", { name: "WebMCP status" })).toContainText(
-    "WebMCP ready — 7 tools registered",
+    "WebMCP ready — 9 tools registered",
   );
   await page.getByRole("button", { name: "Sign in (optional)" }).click();
   await page.getByRole("button", { name: "Continue locally" }).click();
   await expect(page.getByRole("status", { name: "WebMCP status" })).toContainText(
-    "WebMCP ready — 12 tools registered",
+    "WebMCP ready — 14 tools registered",
   );
 
   await page.getByLabel("Import project-authored catalog package").setInputFiles({
@@ -708,7 +770,7 @@ test("exposes authenticated cart tools, keeps room state separate, and unregiste
 
   await page.getByRole("button", { name: "Sign out" }).click();
   await expect(page.getByRole("status", { name: "WebMCP status" })).toContainText(
-    "WebMCP ready — 7 tools registered",
+    "WebMCP ready — 9 tools registered",
   );
   await expect.poll(async () =>
     page.evaluate(() => Object.keys(window.__wimyModelContextHarness.tools).sort()),
@@ -717,9 +779,11 @@ test("exposes authenticated cart tools, keeps room state separate, and unregiste
     "apply_room_structure_edit",
     "find_furniture",
     "find_substitutes",
+    "inspect_lighting_preview",
     "inspect_retailer_offers",
     "inspect_room",
     "inspect_room_shopping_plan",
+    "set_lighting_preview",
   ]);
   await expect(callTool(page, "inspect_cart", {})).rejects.toThrow("inspect_cart is not registered");
 });
@@ -732,17 +796,17 @@ test("refreshes session scope at natural expiry and unregisters commerce tools",
   await page.goto("/");
 
   await expect(page.getByRole("status", { name: "WebMCP status" })).toContainText(
-    "WebMCP ready — 7 tools registered",
+    "WebMCP ready — 9 tools registered",
   );
   await page.getByRole("button", { name: "Sign in (optional)" }).click();
   await page.getByRole("button", { name: "Continue locally" }).click();
   await expect(page.getByRole("status", { name: "WebMCP status" })).toContainText(
-    "WebMCP ready — 12 tools registered",
+    "WebMCP ready — 14 tools registered",
   );
 
   await page.clock.runFor("30:01");
   await expect(page.getByRole("status", { name: "WebMCP status" })).toContainText(
-    "WebMCP ready — 7 tools registered",
+    "WebMCP ready — 9 tools registered",
   );
   await expect(page.getByRole("region", { name: "Customer session" })).toContainText(
     "Anonymous mode",
@@ -754,8 +818,10 @@ test("refreshes session scope at natural expiry and unregisters commerce tools",
     "apply_room_structure_edit",
     "find_furniture",
     "find_substitutes",
+    "inspect_lighting_preview",
     "inspect_retailer_offers",
     "inspect_room",
     "inspect_room_shopping_plan",
+    "set_lighting_preview",
   ]);
 });

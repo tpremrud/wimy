@@ -1,5 +1,6 @@
 import { Grid, OrbitControls } from "@react-three/drei";
 import { Canvas, useThree } from "@react-three/fiber";
+import { useStore } from "zustand";
 import {
   Component,
   useCallback,
@@ -51,8 +52,14 @@ import {
   type CelestialDirection,
   type SolarPosition,
   type SunBeam,
-  type SunStudyScenario,
 } from "../room/sunlight";
+import {
+  createLightingPreviewStore,
+  localTimeFromMinutes,
+  minutesFromLocalTime,
+  toSunStudyScenario,
+  type LightingPreviewStore,
+} from "../room/lighting-preview";
 import {
   calculateIllustrativeMoonlightStrength,
   calculateLunarIlluminationAtUtc,
@@ -71,6 +78,7 @@ RectAreaLightUniformsLib.init();
 
 type RoomPreview3DProps = {
   room: Parameters<typeof projectRoomToScene>[0];
+  lightingPreviewStore?: LightingPreviewStore;
   webglSupportOverride?: boolean;
   shadowSupportOverride?: boolean;
 };
@@ -97,40 +105,7 @@ type MoonStudyRenderState = {
   shadowsEnabled: boolean;
 };
 
-const DEFAULT_SUN_STUDY_INPUT: SunStudyInputState = {
-  latitude: "40.71",
-  longitude: "-74.01",
-  date: "2026-09-01",
-  localTime: "12:00",
-  timeZone: "America/New_York",
-  planNorthAzimuthDeg: "0",
-};
-
-const parseNumberInput = (value: string) =>
-  value.trim() === "" ? Number.NaN : Number(value);
-
-const toSunStudyScenario = (
-  input: SunStudyInputState,
-): SunStudyScenario => ({
-  latitude: parseNumberInput(input.latitude),
-  longitude: parseNumberInput(input.longitude),
-  date: input.date,
-  localTime: input.localTime,
-  timeZone: input.timeZone,
-  planNorthAzimuthDeg: parseNumberInput(input.planNorthAzimuthDeg),
-});
-
 const fixed = (value: number, digits = 1) => value.toFixed(digits);
-
-const minutesFromLocalTime = (localTime: string) => {
-  const [hour = "0", minute = "0"] = localTime.split(":");
-  return Number(hour) * 60 + Number(minute);
-};
-
-const localTimeFromMinutes = (minutes: number) => {
-  const normalized = ((Math.round(minutes) % 1440) + 1440) % 1440;
-  return `${String(Math.floor(normalized / 60)).padStart(2, "0")}:${String(normalized % 60).padStart(2, "0")}`;
-};
 
 const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";
 
@@ -1082,17 +1057,24 @@ const PreviewScene = ({
 };
 
 export function RoomPreview3D({
+  lightingPreviewStore,
   room,
   shadowSupportOverride,
   webglSupportOverride,
 }: RoomPreview3DProps) {
   const scene = useMemo(() => projectRoomToScene(room), [room]);
+  const [ownedLightingPreviewStore] = useState(createLightingPreviewStore);
+  const sharedLightingPreviewStore =
+    lightingPreviewStore ?? ownedLightingPreviewStore;
   const webglSupported = useMemo(
     () => webglSupportOverride ?? supportsWebGLPreview(),
     [webglSupportOverride],
   );
   const shadowSupport = shadowSupportOverride ?? webglSupported;
-  const [sunStudyInput, setSunStudyInput] = useState(DEFAULT_SUN_STUDY_INPUT);
+  const sunStudyInput = useStore(
+    sharedLightingPreviewStore,
+    ({ draft }) => draft,
+  );
   const [shadowsEnabled, setShadowsEnabled] = useState(true);
   const [dayAnimating, setDayAnimating] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -1102,13 +1084,14 @@ export function RoomPreview3D({
   useEffect(() => {
     if (!dayAnimating || prefersReducedMotion) return undefined;
     const timer = window.setInterval(() => {
-      setSunStudyInput((current) => ({
-        ...current,
-        localTime: localTimeFromMinutes(minutesFromLocalTime(current.localTime) + 10),
-      }));
+      sharedLightingPreviewStore.getState().setHumanDraft({
+        localTime: localTimeFromMinutes(
+          minutesFromLocalTime(sharedLightingPreviewStore.getState().draft.localTime) + 10,
+        ),
+      });
     }, 120);
     return () => window.clearInterval(timer);
-  }, [dayAnimating, prefersReducedMotion]);
+  }, [dayAnimating, prefersReducedMotion, sharedLightingPreviewStore]);
   useEffect(() => {
     if (!settingsOpen) return undefined;
     const closeOnEscape = (event: KeyboardEvent) => {
@@ -1172,7 +1155,7 @@ export function RoomPreview3D({
     field: keyof SunStudyInputState,
     value: string,
   ) => {
-    setSunStudyInput((current) => ({ ...current, [field]: value }));
+    sharedLightingPreviewStore.getState().setHumanDraft({ [field]: value });
   };
   const statusText = !sunStudyValidation.valid || !sunStudy
     ? "Sun study unavailable. No fixed fallback sun is shown."
@@ -1335,6 +1318,7 @@ export function RoomPreview3D({
           <p
             aria-label="Sun study status"
             className="sun-study-status"
+            data-wimy-lighting-revision={sharedLightingPreviewStore.getState().revision}
             role="status"
           >
             {statusText}

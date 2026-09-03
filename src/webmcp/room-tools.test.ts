@@ -4,6 +4,10 @@ import { WimyRoomV1Schema, type WimyRoomV1 } from "../room/document";
 import { createRoomStore, type RoomStore } from "../room/store";
 import { getTemplate } from "../room/templates";
 import {
+  createLightingPreviewStore,
+  DEFAULT_LIGHTING_PREVIEW_DRAFT,
+} from "../room/lighting-preview";
+import {
   applyRoomTransaction,
   TEST_TRANSACTION_DEPENDENCIES,
 } from "../room/transaction";
@@ -190,6 +194,18 @@ describe("createRoomToolDefinitions", () => {
           "Atomically change one room's dimensions, rectangle or southeast-notch L shape, and bounded door or window openings at an exact room revision; invalidated furniture or openings are rejected without relocation.",
       },
       {
+        name: "inspect_lighting_preview",
+        title: "Inspect lighting preview",
+        description:
+          "Read the ephemeral Wimy sun and moon preview scenario, independent lighting revision, validation state, and bounded derived status without changing the room.",
+      },
+      {
+        name: "set_lighting_preview",
+        title: "Set lighting preview",
+        description:
+          "Atomically update the ephemeral sun and moon preview at an exact lighting revision using bounded local date, minute-of-day, timezone, coarse coordinates, or Plan North bearing; this never changes the room document.",
+      },
+      {
         name: "inspect_retailer_offers",
         title: "Inspect retailer offer evidence",
         description:
@@ -208,6 +224,90 @@ describe("createRoomToolDefinitions", () => {
           "Rank deterministic same-category catalog substitutes for one placed item without changing the room; every actionable suggestion includes fit, identity differences, rationale, tradeoffs, and provenance, and replacement requires explicit human confirmation.",
       },
     ]);
+  });
+
+  it("inspects and updates one independent lighting revision without changing the room", async () => {
+    const store = createRoomStore(
+      getTemplate("living-room"),
+      TEST_TRANSACTION_DEPENDENCIES,
+    );
+    const lightingStore = createLightingPreviewStore();
+    const definitions = createRoomToolDefinitions(
+      store,
+      undefined,
+      undefined,
+      lightingStore,
+    );
+    const inspect = definitions.find(({ name }) => name === "inspect_lighting_preview");
+    const set = definitions.find(({ name }) => name === "set_lighting_preview");
+    if (!inspect || !set) throw new Error("lighting tools were not defined");
+    const signal = new AbortController().signal;
+    const initialRoom = structuredClone(store.getState().room);
+    const initial = await inspect.execute({}, { signal });
+
+    expect(initial).toMatchObject({
+      revision: 1,
+      scenario: {
+        localTime: DEFAULT_LIGHTING_PREVIEW_DRAFT.localTime,
+      },
+      validation: { valid: true },
+      derived: {
+        sun: { direction: { isAboveHorizon: true } },
+      },
+    });
+
+    const accepted = await set.execute(
+      { expectedLightingRevision: 1, minuteOfDay: 480 },
+      { signal },
+    );
+    expect(accepted).toMatchObject({
+      ok: true,
+      revision: 2,
+      scenario: { localTime: "08:00" },
+    });
+    expect(store.getState().revision).toBe(1);
+    expect(store.getState().room).toEqual(initialRoom);
+
+    expect(
+      await set.execute(
+        { expectedLightingRevision: 1, minuteOfDay: 540 },
+        { signal },
+      ),
+    ).toEqual({
+      ok: false,
+      revision: 2,
+      code: "LIGHTING_REVISION_CONFLICT",
+      message: "Expected lighting revision 1, but the preview is at revision 2",
+    });
+
+    await expect(
+      set.execute(
+        { expectedLightingRevision: 2, latitude: 40.711 },
+        { signal },
+      ),
+    ).rejects.toThrow("set_lighting_preview input must match the bounded scenario schema");
+    expect(lightingStore.getState().draft.localTime).toBe("08:00");
+  });
+
+  it("fails cancelled lighting calls before mutation", async () => {
+    const store = createLightingPreviewStore();
+    const definition = createRoomToolDefinitions(
+      createRoomStore(getTemplate("living-room"), TEST_TRANSACTION_DEPENDENCIES),
+      undefined,
+      undefined,
+      store,
+    ).find(({ name }) => name === "set_lighting_preview");
+    if (!definition) throw new Error("set_lighting_preview was not defined");
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(
+      definition.execute(
+        { expectedLightingRevision: 1, minuteOfDay: 480 },
+        { signal: controller.signal },
+      ),
+    ).rejects.toMatchObject({ name: "AbortError" });
+    expect(store.getState().revision).toBe(1);
   });
 
   it("applies one stale-safe atomic room structure edit and exposes its receipt", async () => {
@@ -2454,6 +2554,8 @@ describe("registerRoomTools", () => {
       "find_furniture",
       "apply_room_edit",
       "apply_room_structure_edit",
+      "inspect_lighting_preview",
+      "set_lighting_preview",
       "inspect_retailer_offers",
       "inspect_room_shopping_plan",
       "find_substitutes",
@@ -2471,7 +2573,7 @@ describe("registerRoomTools", () => {
     third.resolve();
     await expect(registration).resolves.toEqual({
       available: true,
-      registered: ["inspect_room", "find_furniture", "apply_room_edit", "apply_room_structure_edit", "inspect_retailer_offers", "inspect_room_shopping_plan", "find_substitutes"],
+      registered: ["inspect_room", "find_furniture", "apply_room_edit", "apply_room_structure_edit", "inspect_lighting_preview", "set_lighting_preview", "inspect_retailer_offers", "inspect_room_shopping_plan", "find_substitutes"],
       errors: [],
     });
   });
@@ -2493,7 +2595,7 @@ describe("registerRoomTools", () => {
     const registration = registerRoomTools(modelContext, store, controller);
 
     await Promise.resolve();
-    expect(modelContext.definitions).toHaveLength(7);
+    expect(modelContext.definitions).toHaveLength(9);
 
     controller.abort();
     first.resolve();
@@ -2551,7 +2653,7 @@ describe("registerRoomTools", () => {
       fulfilled: true,
       value: {
         available: true,
-        registered: ["find_furniture", "apply_room_edit", "apply_room_structure_edit", "inspect_retailer_offers", "inspect_room_shopping_plan", "find_substitutes"],
+        registered: ["find_furniture", "apply_room_edit", "apply_room_structure_edit", "inspect_lighting_preview", "set_lighting_preview", "inspect_retailer_offers", "inspect_room_shopping_plan", "find_substitutes"],
         errors: ["inspect_room: client denied by policy"],
       },
     });
@@ -2572,7 +2674,7 @@ describe("registerRoomTools", () => {
       registerRoomTools(modelContext, store, new AbortController()),
     ).resolves.toEqual({
       available: true,
-      registered: ["inspect_room", "find_furniture", "apply_room_structure_edit", "inspect_retailer_offers", "inspect_room_shopping_plan", "find_substitutes"],
+      registered: ["inspect_room", "find_furniture", "apply_room_structure_edit", "inspect_lighting_preview", "set_lighting_preview", "inspect_retailer_offers", "inspect_room_shopping_plan", "find_substitutes"],
       errors: ["apply_room_edit: mutating tool denied"],
     });
     expect(modelContext.definitions.map(({ name }) => name)).toEqual([
@@ -2580,6 +2682,8 @@ describe("registerRoomTools", () => {
       "find_furniture",
       "apply_room_edit",
       "apply_room_structure_edit",
+      "inspect_lighting_preview",
+      "set_lighting_preview",
       "inspect_retailer_offers",
       "inspect_room_shopping_plan",
       "find_substitutes",
@@ -2624,6 +2728,8 @@ describe("registerRoomTools", () => {
       "find_furniture",
       "apply_room_edit",
       "apply_room_structure_edit",
+      "inspect_lighting_preview",
+      "set_lighting_preview",
       "inspect_retailer_offers",
       "inspect_room_shopping_plan",
       "find_substitutes",
@@ -2639,7 +2745,7 @@ describe("registerRoomTools", () => {
       fulfilled: true,
       value: {
         available: true,
-        registered: ["find_furniture", "apply_room_edit", "apply_room_structure_edit", "inspect_retailer_offers", "inspect_room_shopping_plan", "find_substitutes"],
+        registered: ["find_furniture", "apply_room_edit", "apply_room_structure_edit", "inspect_lighting_preview", "set_lighting_preview", "inspect_retailer_offers", "inspect_room_shopping_plan", "find_substitutes"],
         errors: ["inspect_room: synchronous client refusal"],
       },
     });
@@ -2673,6 +2779,8 @@ describe("registerRoomTools", () => {
       ]),
     );
     expect(modelContext.options.map((options) => options?.signal)).toEqual([
+      controller.signal,
+      controller.signal,
       controller.signal,
       controller.signal,
       controller.signal,

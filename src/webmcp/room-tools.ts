@@ -39,6 +39,12 @@ import {
 import { projectFurnitureOrientation } from "../room/orientation";
 import { projectOpeningSemantics } from "../room/opening";
 import { findLayoutWarnings, type RoomWarning } from "../room/placement";
+import {
+  createLightingPreviewStore,
+  deriveLightingPreview,
+  localTimeFromMinutes,
+  type LightingPreviewStore,
+} from "../room/lighting-preview";
 import type { RoomStore } from "../room/store";
 import { LOCAL_CATALOG_TRANSACTION } from "../room/transaction";
 import type { RoomStructureChange } from "../room/transaction";
@@ -198,6 +204,64 @@ const enforceWebMcpOutputBound = <Output,>(output: Output): Output => {
 };
 
 const InspectRoomInputSchema = z.object({}).strict();
+
+const INSPECT_LIGHTING_PREVIEW_INPUT_SCHEMA = {
+  type: "object",
+  properties: {},
+  additionalProperties: false,
+} as const;
+
+const hasLightingDecimalPlacesAtMost = (value: number, places: number) =>
+  Number(value.toFixed(places)) === value;
+
+const SET_LIGHTING_PREVIEW_INPUT_SCHEMA = {
+  type: "object",
+  properties: {
+    expectedLightingRevision: {
+      type: "integer",
+      minimum: 1,
+      maximum: Number.MAX_SAFE_INTEGER,
+    },
+    date: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
+    minuteOfDay: { type: "integer", minimum: 0, maximum: 1439 },
+    timeZone: { type: "string", minLength: 1, maxLength: 64 },
+    latitude: { type: "number", minimum: -90, maximum: 90, multipleOf: 0.01 },
+    longitude: { type: "number", minimum: -180, maximum: 180, multipleOf: 0.01 },
+    planNorthAzimuthDeg: { type: "number", minimum: 0, exclusiveMaximum: 360, multipleOf: 0.001 },
+  },
+  required: ["expectedLightingRevision"],
+  anyOf: [
+    { required: ["date"] },
+    { required: ["minuteOfDay"] },
+    { required: ["timeZone"] },
+    { required: ["latitude"] },
+    { required: ["longitude"] },
+    { required: ["planNorthAzimuthDeg"] },
+  ],
+  additionalProperties: false,
+} as const;
+
+const SetLightingPreviewInputSchema = z.object({
+  expectedLightingRevision: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/u).optional(),
+  minuteOfDay: z.number().int().min(0).max(1439).optional(),
+  timeZone: z.string().min(1).max(64).optional(),
+  latitude: z.number().finite().min(-90).max(90)
+    .refine((value) => hasLightingDecimalPlacesAtMost(value, 2), "Latitude is limited to two decimal places")
+    .optional(),
+  longitude: z.number().finite().min(-180).max(180)
+    .refine((value) => hasLightingDecimalPlacesAtMost(value, 2), "Longitude is limited to two decimal places")
+    .optional(),
+  planNorthAzimuthDeg: z.number().finite().min(0).lt(360)
+    .refine((value) => hasLightingDecimalPlacesAtMost(value, 3), "Plan North is limited to three decimal places")
+    .optional(),
+}).strict().refine(
+  ({ date, minuteOfDay, timeZone, latitude, longitude, planNorthAzimuthDeg }) =>
+    date !== undefined || minuteOfDay !== undefined || timeZone !== undefined ||
+    latitude !== undefined || longitude !== undefined ||
+    planNorthAzimuthDeg !== undefined,
+  { message: "At least one lighting field is required" },
+);
 
 const isStoreCatalogProductAvailable = (
   store: RoomStore,
@@ -515,6 +579,85 @@ const FindSubstitutesInputSchema = z
     limit: z.number().int().min(1).max(5).default(5),
   })
   .strict();
+
+const projectLightingScenario = (scenario: ReturnType<typeof deriveLightingPreview>["scenario"]) => ({
+  latitude: Number.isFinite(scenario.latitude) ? scenario.latitude : null,
+  longitude: Number.isFinite(scenario.longitude) ? scenario.longitude : null,
+  date: scenario.date.slice(0, 128),
+  localTime: scenario.localTime.slice(0, 128),
+  timeZone: scenario.timeZone.slice(0, 128),
+  planNorthAzimuthDeg: Number.isFinite(scenario.planNorthAzimuthDeg)
+    ? scenario.planNorthAzimuthDeg
+    : null,
+});
+
+const inspectLightingPreview = (
+  lightingPreviewStore: LightingPreviewStore,
+  rawInput: Record<string, unknown>,
+  signal?: AbortSignal,
+) => {
+  throwIfAborted(signal);
+  if (!InspectRoomInputSchema.safeParse(rawInput).success) {
+    throw new TypeError("inspect_lighting_preview input must be an empty object");
+  }
+  const state = lightingPreviewStore.getState();
+  const preview = deriveLightingPreview(state.draft);
+  return enforceWebMcpOutputBound({
+    revision: state.revision,
+    scenario: projectLightingScenario(preview.scenario),
+    draft: {
+      latitude: state.draft.latitude.slice(0, 128),
+      longitude: state.draft.longitude.slice(0, 128),
+      date: state.draft.date.slice(0, 128),
+      localTime: state.draft.localTime.slice(0, 128),
+      timeZone: state.draft.timeZone.slice(0, 128),
+      planNorthAzimuthDeg: state.draft.planNorthAzimuthDeg.slice(0, 128),
+    },
+    validation: preview.validation.valid
+      ? { valid: true as const, errors: {} }
+      : { valid: false as const, errors: { ...preview.validation.errors } },
+    derived: preview.derived,
+  });
+};
+
+const setLightingPreview = async (
+  lightingPreviewStore: LightingPreviewStore,
+  rawInput: Record<string, unknown>,
+  signal?: AbortSignal,
+) => {
+  throwIfAborted(signal);
+  const parsed = SetLightingPreviewInputSchema.safeParse(rawInput);
+  if (!parsed.success) {
+    throw new TypeError("set_lighting_preview input must match the bounded scenario schema");
+  }
+  const input = parsed.data;
+  const result = lightingPreviewStore.getState().setScenario(
+    input.expectedLightingRevision,
+    {
+      ...(input.date === undefined ? {} : { date: input.date }),
+      ...(input.minuteOfDay === undefined
+        ? {}
+        : { localTime: localTimeFromMinutes(input.minuteOfDay) }),
+      ...(input.timeZone === undefined ? {} : { timeZone: input.timeZone }),
+      ...(input.latitude === undefined ? {} : { latitude: input.latitude }),
+      ...(input.longitude === undefined ? {} : { longitude: input.longitude }),
+      ...(input.planNorthAzimuthDeg === undefined
+        ? {}
+        : { planNorthAzimuthDeg: input.planNorthAzimuthDeg }),
+    },
+  );
+  if (!result.ok) {
+    return enforceWebMcpOutputBound(result);
+  }
+  const preview = deriveLightingPreview(result.draft);
+  return enforceWebMcpOutputBound({
+    ok: true as const,
+    revision: result.revision,
+    scenario: projectLightingScenario(preview.scenario),
+    validation: { valid: true as const, errors: {} },
+    derived: preview.derived,
+  });
+};
 const PORTABLE_COORDINATE_INPUT_SCHEMA = {
   type: "number",
 } as const;
@@ -1601,6 +1744,7 @@ export const createRoomToolDefinitions = (
     store.readCatalog,
   ),
   commerce?: WebMcpCommerceContext,
+  lightingPreviewStore: LightingPreviewStore = createLightingPreviewStore(),
 ): WebMcpToolDefinition[] => {
   const definitions: WebMcpToolDefinition[] = [
     {
@@ -1656,6 +1800,32 @@ export const createRoomToolDefinitions = (
       },
       execute: (input, { signal }) =>
         applyRoomStructureEdit(store, input, signal),
+    },
+    {
+      name: "inspect_lighting_preview",
+      title: "Inspect lighting preview",
+      description:
+        "Read the ephemeral Wimy sun and moon preview scenario, independent lighting revision, validation state, and bounded derived status without changing the room.",
+      inputSchema: INSPECT_LIGHTING_PREVIEW_INPUT_SCHEMA,
+      annotations: {
+        readOnlyHint: true,
+        untrustedContentHint: false,
+      },
+      execute: (input, { signal }) =>
+        inspectLightingPreview(lightingPreviewStore, input, signal),
+    },
+    {
+      name: "set_lighting_preview",
+      title: "Set lighting preview",
+      description:
+        "Atomically update the ephemeral sun and moon preview at an exact lighting revision using bounded local date, minute-of-day, timezone, coarse coordinates, or Plan North bearing; this never changes the room document.",
+      inputSchema: SET_LIGHTING_PREVIEW_INPUT_SCHEMA,
+      annotations: {
+        readOnlyHint: false,
+        untrustedContentHint: false,
+      },
+      execute: (input, { signal }) =>
+        setLightingPreview(lightingPreviewStore, input, signal),
     },
     {
       name: "inspect_retailer_offers",

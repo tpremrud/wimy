@@ -90,6 +90,8 @@ describe("authenticated WebMCP Cart tools", () => {
       "find_furniture",
       "apply_room_edit",
       "apply_room_structure_edit",
+      "inspect_lighting_preview",
+      "set_lighting_preview",
       "inspect_retailer_offers",
       "inspect_room_shopping_plan",
       "find_substitutes",

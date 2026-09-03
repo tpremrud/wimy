@@ -25,6 +25,10 @@ import { CustomerSessionPanel } from "../ui/CustomerSessionPanel";
 import { CartReviewPanel } from "../ui/CartReviewPanel";
 import { RoomGeometryPanel } from "../ui/RoomGeometryPanel";
 import {
+  createLightingPreviewStore,
+  type LightingPreviewStore,
+} from "../room/lighting-preview";
+import {
   createCustomerSessionDemo,
   type CustomerSessionClient,
 } from "../commerce/customer-session-demo";
@@ -40,6 +44,7 @@ type RailTab = "add" | "placed" | "favorites";
 type ActiveSurface = "share" | "help" | "activity" | "cart" | "geometry" | null;
 
 type PreviewProps = {
+  lightingPreviewStore: LightingPreviewStore;
   room: ReturnType<RoomStore["getState"]>["room"];
 };
 
@@ -56,6 +61,7 @@ const RejectedRoomPreview3D = lazy(async () =>
 );
 
 type AppProps = {
+  lightingPreviewStore?: LightingPreviewStore;
   previewLoadFailure?: boolean;
   store?: RoomStore;
   customerSession?: CustomerSessionClient;
@@ -88,7 +94,7 @@ class PreviewLoadBoundary extends Component<
 const PreviewLoadFailure = ({
   onReturnTo2D,
   room,
-}: PreviewProps & { onReturnTo2D: () => void }) => (
+}: Pick<PreviewProps, "room"> & { onReturnTo2D: () => void }) => (
   <section aria-label={`3D preview of ${room.name}`} className="room-preview">
     <div className="room-preview-heading-row">
       <h3>3D room preview</h3>
@@ -153,11 +159,16 @@ const registrationStatusText = (state: RegistrationViewState) => {
 };
 
 export function App({
+  lightingPreviewStore: providedLightingPreviewStore,
   previewLoadFailure = false,
   store = roomStore,
   customerSession: providedCustomerSession,
 }: AppProps) {
   const { room, revision, receipts } = useStore(store);
+  const lightingPreviewStore = useMemo(
+    () => providedLightingPreviewStore ?? createLightingPreviewStore(),
+    [providedLightingPreviewStore],
+  );
   const [viewMode, setViewMode] = useState<ViewMode>("2d");
   const [railTab, setRailTab] = useState<RailTab>("add");
   const [railCollapsed, setRailCollapsed] = useState(startsWithCompactRoomTools);
@@ -187,14 +198,19 @@ export function App({
     [offerResolver, providedCustomerSession],
   );
   const webMcpToolDefinitions = useMemo(
-    () => createRoomToolDefinitions(store, offerResolver, {
-      customerSession,
-      session: customerSessionView,
-    }),
+    () => createRoomToolDefinitions(
+      store,
+      offerResolver,
+      {
+        customerSession,
+        session: customerSessionView,
+      },
+      lightingPreviewStore,
+    ),
     // customerSessionKey is the semantic auth snapshot; expiresAt changes must
     // not churn the native registration generation.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [customerSession, customerSessionKey, offerResolver, store],
+    [customerSession, customerSessionKey, lightingPreviewStore, offerResolver, store],
   );
   const registrationGenerationRef = useRef<{
     controller: AbortController;
@@ -581,7 +597,7 @@ export function App({
               }
             >
               <Suspense fallback={<p role="status">Loading 3D preview…</p>}>
-                <Preview3D room={room} />
+                <Preview3D lightingPreviewStore={lightingPreviewStore} room={room} />
               </Suspense>
             </PreviewLoadBoundary>
           )}
