@@ -404,6 +404,7 @@ export const WimyFileV2Schema = z.object({
 export type EntityId = z.infer<typeof EntityIdSchema>;
 export type RotationDeg = z.infer<typeof RotationDegSchema>;
 export type Dimensions = z.infer<typeof DimensionsSchema>;
+export type RoomDimensions = z.infer<typeof RoomDimensionsSchema>;
 export type Pose = z.infer<typeof PoseSchema>;
 export type Opening = z.infer<typeof OpeningSchema>;
 export type RoomGeometry = z.infer<typeof RoomGeometrySchema>;

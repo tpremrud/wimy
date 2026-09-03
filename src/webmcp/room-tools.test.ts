@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { resolveCatalogProduct } from "../room/catalog";
-import { WimyRoomV1Schema } from "../room/document";
+import { WimyRoomV1Schema, type WimyRoomV1 } from "../room/document";
 import { createRoomStore, type RoomStore } from "../room/store";
 import { getTemplate } from "../room/templates";
 import {
@@ -184,6 +184,12 @@ describe("createRoomToolDefinitions", () => {
           "Atomically add, transform, or remove placed items at an exact room revision.",
       },
       {
+        name: "apply_room_structure_edit",
+        title: "Apply room structure edit",
+        description:
+          "Atomically change one room's dimensions, rectangle or southeast-notch L shape, and bounded door or window openings at an exact room revision; invalidated furniture or openings are rejected without relocation.",
+      },
+      {
         name: "inspect_retailer_offers",
         title: "Inspect retailer offer evidence",
         description:
@@ -202,6 +208,269 @@ describe("createRoomToolDefinitions", () => {
           "Rank deterministic same-category catalog substitutes for one placed item without changing the room; every actionable suggestion includes fit, identity differences, rationale, tradeoffs, and provenance, and replacement requires explicit human confirmation.",
       },
     ]);
+  });
+
+  it("applies one stale-safe atomic room structure edit and exposes its receipt", async () => {
+    const store = createRoomStore(
+      getTemplate("blank-room"),
+      TEST_TRANSACTION_DEPENDENCIES,
+    );
+    const tool = createRoomToolDefinitions(store).find(
+      ({ name }) => name === "apply_room_structure_edit",
+    );
+    if (!tool) throw new Error("apply_room_structure_edit was not defined");
+
+    expect(tool.annotations).toEqual({
+      readOnlyHint: false,
+      untrustedContentHint: true,
+    });
+
+    const output = await tool.execute(
+      {
+        expectedRevision: 1,
+        dimensions: { width: 5 },
+        geometry: {
+          shape: "l-shape",
+          notch: { corner: "south-east", width: 1, depth: 1 },
+        },
+        openingOperations: [
+          {
+            type: "add",
+            opening: {
+              id: "opening_added_south",
+              kind: "window",
+              wall: "south",
+              centerOffset: 2,
+              width: 1,
+              bottom: 0.9,
+              height: 1.2,
+            },
+          },
+        ],
+      },
+      { signal: new AbortController().signal },
+    );
+
+    expect(output).toMatchObject({
+      ok: true,
+      revision: 2,
+      applied: 1,
+      warnings: [],
+      warningCount: 0,
+      warningsTruncated: false,
+      receipt: {
+        origin: "webmcp",
+        status: "accepted",
+        revision: 2,
+        changeType: "structure",
+        affectedOpeningIds: ["opening_added_south"],
+        removedOpeningIds: [],
+      },
+    });
+    expect((await execute("inspect_room", store))).toMatchObject({
+      revision: 2,
+      room: {
+        dimensions: { width: 5, depth: 3.5, height: 2.7 },
+        geometry: {
+          shape: "l-shape",
+          notch: { corner: "south-east", width: 1, depth: 1 },
+        },
+        openings: expect.arrayContaining([
+          expect.objectContaining({ id: "opening_added_south" }),
+        ]),
+      },
+    });
+  });
+
+  it("routes rectangle and every opening operation through one WebMCP transaction", async () => {
+    const store = createRoomStore(
+      getTemplate("blank-room"),
+      TEST_TRANSACTION_DEPENDENCIES,
+    );
+
+    const output = await execute("apply_room_structure_edit", store, {
+      expectedRevision: 1,
+      dimensions: { width: 4.2 },
+      geometry: { shape: "rectangle" },
+      openingOperations: [
+        {
+          type: "move",
+          openingId: "opening_blank_door_west",
+          patch: { wall: "east", centerOffset: 1 },
+        },
+        {
+          type: "resize",
+          openingId: "opening_blank_window_north",
+          patch: { width: 1 },
+        },
+        {
+          type: "update",
+          openingId: "opening_blank_window_north",
+          patch: { bottom: 0.8, height: 1.3 },
+        },
+        {
+          type: "add",
+          opening: {
+            id: "opening_added_then_removed",
+            kind: "window",
+            wall: "south",
+            centerOffset: 2,
+            width: 1,
+            bottom: 0.9,
+            height: 1.2,
+          },
+        },
+        { type: "remove", openingId: "opening_added_then_removed" },
+      ],
+    });
+
+    expect(output).toMatchObject({
+      ok: true,
+      revision: 2,
+      applied: 1,
+      receipt: {
+        changeType: "structure",
+        affectedOpeningIds: [
+          "opening_blank_door_west",
+          "opening_blank_window_north",
+          "opening_blank_window_north",
+          "opening_added_then_removed",
+          "opening_added_then_removed",
+        ],
+        removedOpeningIds: ["opening_added_then_removed"],
+      },
+    });
+    expect((await execute("inspect_room", store))).toMatchObject({
+      revision: 2,
+      room: {
+        dimensions: { width: 4.2 },
+        geometry: { shape: "rectangle" },
+        openings: [
+          {
+            id: "opening_blank_door_west",
+            wall: "east",
+            centerOffset: 1,
+          },
+          {
+            id: "opening_blank_window_north",
+            width: 1,
+            bottom: 0.8,
+            height: 1.3,
+          },
+        ],
+      },
+    });
+  });
+
+  it("rejects empty or over-precise dimensions without changing the room", async () => {
+    const store = createRoomStore(
+      getTemplate("blank-room"),
+      TEST_TRANSACTION_DEPENDENCIES,
+    );
+    const before = structuredClone(store.getState().room);
+
+    await expect(
+      execute("apply_room_structure_edit", store, {
+        expectedRevision: 1,
+        dimensions: {},
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      revision: 1,
+      code: "INVALID_DOCUMENT",
+    });
+    expect(store.getState().room).toEqual(before);
+
+    await expect(
+      execute("apply_room_structure_edit", store, {
+        expectedRevision: 1,
+        dimensions: { width: 4.0001 },
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      revision: 1,
+      code: "INVALID_DOCUMENT",
+    });
+    expect(store.getState().room).toEqual(before);
+  });
+
+  it("rejects a stale structure revision without changing the room", async () => {
+    const store = createRoomStore(
+      getTemplate("blank-room"),
+      TEST_TRANSACTION_DEPENDENCIES,
+    );
+    const beforeStaleCall = structuredClone(store.getState().room);
+    const humanResult = store.getState().transact({
+      expectedRevision: 1,
+      origin: "human",
+      change: {
+        type: "replace",
+        room: structuredClone(beforeStaleCall) as WimyRoomV1,
+      },
+    });
+    expect(humanResult.ok).toBe(true);
+
+    const output = await execute("apply_room_structure_edit", store, {
+      expectedRevision: 1,
+      dimensions: { width: 5 },
+    });
+
+    expect(output).toMatchObject({
+      ok: false,
+      revision: 2,
+      code: "REVISION_CONFLICT",
+      message: "Expected revision 1, but the room is at revision 2",
+      receipt: { status: "rejected", changeType: "structure", revision: 2 },
+    });
+    expect(store.getState().revision).toBe(2);
+    expect(store.getState().room).toEqual(beforeStaleCall);
+  });
+
+  it("rejects a bounded structure batch atomically when a later operation is invalid", async () => {
+    const store = createRoomStore(
+      getTemplate("blank-room"),
+      TEST_TRANSACTION_DEPENDENCIES,
+    );
+    const before = structuredClone(store.getState().room);
+
+    const output = await execute("apply_room_structure_edit", store, {
+      expectedRevision: 1,
+      openingOperations: [
+        {
+          type: "move",
+          openingId: "opening_blank_door_west",
+          patch: { wall: "east", centerOffset: 1 },
+        },
+        { type: "remove", openingId: "missing_opening" },
+      ],
+    });
+
+    expect(output).toMatchObject({
+      ok: false,
+      revision: 1,
+      code: "UNKNOWN_OPENING",
+      message: "Unknown opening missing_opening",
+      receipt: { status: "rejected", changeType: "structure" },
+    });
+    expect(store.getState().room).toEqual(before);
+    expect(store.getState().revision).toBe(1);
+  });
+
+  it("reports an explicit bound for oversized opening batches", async () => {
+    const output = await execute("apply_room_structure_edit", undefined, {
+      expectedRevision: 1,
+      openingOperations: Array.from({ length: 9 }, (_, index) => ({
+        type: "remove",
+        openingId: `opening_${index}`,
+      })),
+    });
+
+    expect(output).toEqual({
+      ok: false,
+      revision: 1,
+      code: "TOO_MANY_OPERATIONS",
+      message: "openingOperations must contain 1 to 8 items",
+    });
   });
 
   it("marks projected room inspection as untrusted read-only content without commerce URLs", async () => {
@@ -1942,6 +2211,10 @@ describe("createRoomToolDefinitions", () => {
         operations: [{ type: "remove", itemId: "item_living_rug" }],
       },
     ],
+    [
+      "apply_room_structure_edit",
+      { expectedRevision: 1, dimensions: { width: 5 } },
+    ],
   ])(
     "%s rejects a pre-aborted invocation with AbortError and no room effect",
     async (toolName, input) => {
@@ -1979,6 +2252,11 @@ describe("createRoomToolDefinitions", () => {
         expectedRevision: 1,
         operations: [{ type: "remove", itemId: "item_living_rug" }],
       },
+      { ok: true, revision: 2, applied: 1 },
+    ],
+    [
+      "apply_room_structure_edit",
+      { expectedRevision: 1, dimensions: { width: 5 } },
       { ok: true, revision: 2, applied: 1 },
     ],
   ])(
@@ -2034,6 +2312,43 @@ describe("createRoomToolDefinitions", () => {
             expectedRevision: 1,
             operations: [{ type: "remove", itemId: "item_living_rug" }],
           },
+          { signal: controller.signal },
+        ),
+      ),
+    ).rejects.toMatchObject({ name: "AbortError" });
+    expect(transact).not.toHaveBeenCalled();
+    expect(source.getState().revision).toBe(1);
+    expect(source.getState().receipts).toEqual([]);
+  });
+
+  it("rechecks cancellation immediately before a structure transaction", async () => {
+    const source = createRoomStore(
+      getTemplate("blank-room"),
+      TEST_TRANSACTION_DEPENDENCIES,
+    );
+    const controller = new AbortController();
+    const transact = vi.fn(source.getState().transact);
+    const store: RoomStore = {
+      getInitialState: source.getInitialState,
+      getState: () => {
+        const state = source.getState();
+        controller.abort();
+        return { ...state, transact };
+      },
+      subscribe: source.subscribe,
+      readCatalog: source.readCatalog,
+      resolveProduct: source.resolveProduct,
+      importCatalogPackages: source.importCatalogPackages,
+    };
+    const apply = createRoomToolDefinitions(store).find(
+      ({ name }) => name === "apply_room_structure_edit",
+    );
+    if (!apply) throw new Error("apply_room_structure_edit was not defined");
+
+    await expect(
+      Promise.resolve().then(() =>
+        apply.execute(
+          { expectedRevision: 1, dimensions: { width: 5 } },
           { signal: controller.signal },
         ),
       ),
@@ -2138,6 +2453,7 @@ describe("registerRoomTools", () => {
       "inspect_room",
       "find_furniture",
       "apply_room_edit",
+      "apply_room_structure_edit",
       "inspect_retailer_offers",
       "inspect_room_shopping_plan",
       "find_substitutes",
@@ -2155,7 +2471,7 @@ describe("registerRoomTools", () => {
     third.resolve();
     await expect(registration).resolves.toEqual({
       available: true,
-      registered: ["inspect_room", "find_furniture", "apply_room_edit", "inspect_retailer_offers", "inspect_room_shopping_plan", "find_substitutes"],
+      registered: ["inspect_room", "find_furniture", "apply_room_edit", "apply_room_structure_edit", "inspect_retailer_offers", "inspect_room_shopping_plan", "find_substitutes"],
       errors: [],
     });
   });
@@ -2177,7 +2493,7 @@ describe("registerRoomTools", () => {
     const registration = registerRoomTools(modelContext, store, controller);
 
     await Promise.resolve();
-    expect(modelContext.definitions).toHaveLength(6);
+    expect(modelContext.definitions).toHaveLength(7);
 
     controller.abort();
     first.resolve();
@@ -2235,7 +2551,7 @@ describe("registerRoomTools", () => {
       fulfilled: true,
       value: {
         available: true,
-        registered: ["find_furniture", "apply_room_edit", "inspect_retailer_offers", "inspect_room_shopping_plan", "find_substitutes"],
+        registered: ["find_furniture", "apply_room_edit", "apply_room_structure_edit", "inspect_retailer_offers", "inspect_room_shopping_plan", "find_substitutes"],
         errors: ["inspect_room: client denied by policy"],
       },
     });
@@ -2256,13 +2572,14 @@ describe("registerRoomTools", () => {
       registerRoomTools(modelContext, store, new AbortController()),
     ).resolves.toEqual({
       available: true,
-      registered: ["inspect_room", "find_furniture", "inspect_retailer_offers", "inspect_room_shopping_plan", "find_substitutes"],
+      registered: ["inspect_room", "find_furniture", "apply_room_structure_edit", "inspect_retailer_offers", "inspect_room_shopping_plan", "find_substitutes"],
       errors: ["apply_room_edit: mutating tool denied"],
     });
     expect(modelContext.definitions.map(({ name }) => name)).toEqual([
       "inspect_room",
       "find_furniture",
       "apply_room_edit",
+      "apply_room_structure_edit",
       "inspect_retailer_offers",
       "inspect_room_shopping_plan",
       "find_substitutes",
@@ -2306,6 +2623,7 @@ describe("registerRoomTools", () => {
       "inspect_room",
       "find_furniture",
       "apply_room_edit",
+      "apply_room_structure_edit",
       "inspect_retailer_offers",
       "inspect_room_shopping_plan",
       "find_substitutes",
@@ -2321,7 +2639,7 @@ describe("registerRoomTools", () => {
       fulfilled: true,
       value: {
         available: true,
-        registered: ["find_furniture", "apply_room_edit", "inspect_retailer_offers", "inspect_room_shopping_plan", "find_substitutes"],
+        registered: ["find_furniture", "apply_room_edit", "apply_room_structure_edit", "inspect_retailer_offers", "inspect_room_shopping_plan", "find_substitutes"],
         errors: ["inspect_room: synchronous client refusal"],
       },
     });
@@ -2355,6 +2673,7 @@ describe("registerRoomTools", () => {
       ]),
     );
     expect(modelContext.options.map((options) => options?.signal)).toEqual([
+      controller.signal,
       controller.signal,
       controller.signal,
       controller.signal,

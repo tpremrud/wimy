@@ -30,7 +30,10 @@ import {
 } from "../room/catalog";
 import {
   EntityIdSchema,
+  OpeningSchema,
   PoseSchema,
+  RoomDimensionsSchema,
+  RoomGeometrySchema,
   type WimyRoomV1,
 } from "../room/document";
 import { projectFurnitureOrientation } from "../room/orientation";
@@ -38,6 +41,7 @@ import { projectOpeningSemantics } from "../room/opening";
 import { findLayoutWarnings, type RoomWarning } from "../room/placement";
 import type { RoomStore } from "../room/store";
 import { LOCAL_CATALOG_TRANSACTION } from "../room/transaction";
+import type { RoomStructureChange } from "../room/transaction";
 import {
   rankComparableSubstitutes,
   type SubstituteSuggestion,
@@ -1244,6 +1248,190 @@ const ApplyRoomEditInputSchema = z
   })
   .strict();
 
+const ROOM_STRUCTURE_DIMENSIONS_INPUT_SCHEMA = {
+  type: "object",
+  properties: {
+    width: { type: "number", multipleOf: 0.001, minimum: 1, maximum: 30 },
+    depth: { type: "number", multipleOf: 0.001, minimum: 1, maximum: 30 },
+    height: { type: "number", multipleOf: 0.001, minimum: 2, maximum: 10 },
+  },
+  minProperties: 1,
+  additionalProperties: false,
+} as const;
+
+const ROOM_STRUCTURE_PORTABLE_NUMBER_INPUT_SCHEMA = {
+  type: "number",
+  multipleOf: 0.001,
+} as const;
+
+const ROOM_STRUCTURE_GEOMETRY_INPUT_SCHEMA = {
+  oneOf: [
+    { type: "object", properties: { shape: { const: "rectangle" } }, required: ["shape"], additionalProperties: false },
+    {
+      type: "object",
+      properties: {
+        shape: { const: "l-shape" },
+        notch: {
+          type: "object",
+          properties: {
+            corner: { const: "south-east" },
+            width: { ...ROOM_STRUCTURE_PORTABLE_NUMBER_INPUT_SCHEMA, exclusiveMinimum: 0 },
+            depth: { ...ROOM_STRUCTURE_PORTABLE_NUMBER_INPUT_SCHEMA, exclusiveMinimum: 0 },
+          },
+          required: ["corner", "width", "depth"],
+          additionalProperties: false,
+        },
+      },
+      required: ["shape", "notch"],
+      additionalProperties: false,
+    },
+  ],
+} as const;
+
+const ROOM_STRUCTURE_OPENING_INPUT_SCHEMA = {
+  type: "object",
+  properties: {
+    id: ENTITY_ID_INPUT_SCHEMA,
+    kind: { enum: ["door", "window"] },
+    wall: { enum: ["north", "east", "south", "west"] },
+    centerOffset: ROOM_STRUCTURE_PORTABLE_NUMBER_INPUT_SCHEMA,
+    width: { ...ROOM_STRUCTURE_PORTABLE_NUMBER_INPUT_SCHEMA, exclusiveMinimum: 0 },
+    bottom: ROOM_STRUCTURE_PORTABLE_NUMBER_INPUT_SCHEMA,
+    height: { ...ROOM_STRUCTURE_PORTABLE_NUMBER_INPUT_SCHEMA, exclusiveMinimum: 0 },
+  },
+  required: ["id", "kind", "wall", "centerOffset", "width", "bottom", "height"],
+  additionalProperties: false,
+} as const;
+
+const ROOM_STRUCTURE_OPENING_PATCH_SCHEMA = {
+  type: "object",
+  properties: {
+    kind: { enum: ["door", "window"] },
+    wall: { enum: ["north", "east", "south", "west"] },
+    centerOffset: ROOM_STRUCTURE_PORTABLE_NUMBER_INPUT_SCHEMA,
+    width: { ...ROOM_STRUCTURE_PORTABLE_NUMBER_INPUT_SCHEMA, exclusiveMinimum: 0 },
+    bottom: ROOM_STRUCTURE_PORTABLE_NUMBER_INPUT_SCHEMA,
+    height: { ...ROOM_STRUCTURE_PORTABLE_NUMBER_INPUT_SCHEMA, exclusiveMinimum: 0 },
+  },
+  minProperties: 1,
+  additionalProperties: false,
+} as const;
+
+const ROOM_STRUCTURE_OPENING_OPERATION_SCHEMA = {
+  oneOf: [
+    {
+      type: "object",
+      properties: { type: { const: "add" }, opening: ROOM_STRUCTURE_OPENING_INPUT_SCHEMA },
+      required: ["type", "opening"],
+      additionalProperties: false,
+    },
+    {
+      type: "object",
+      properties: { type: { const: "update" }, openingId: ENTITY_ID_INPUT_SCHEMA, patch: ROOM_STRUCTURE_OPENING_PATCH_SCHEMA },
+      required: ["type", "openingId", "patch"],
+      additionalProperties: false,
+    },
+    {
+      type: "object",
+      properties: { type: { const: "move" }, openingId: ENTITY_ID_INPUT_SCHEMA, patch: {
+        type: "object",
+        properties: { wall: { enum: ["north", "east", "south", "west"] }, centerOffset: ROOM_STRUCTURE_PORTABLE_NUMBER_INPUT_SCHEMA },
+        minProperties: 1,
+        additionalProperties: false,
+      } },
+      required: ["type", "openingId", "patch"],
+      additionalProperties: false,
+    },
+    {
+      type: "object",
+      properties: { type: { const: "resize" }, openingId: ENTITY_ID_INPUT_SCHEMA, patch: {
+        type: "object",
+        properties: { width: { ...ROOM_STRUCTURE_PORTABLE_NUMBER_INPUT_SCHEMA, exclusiveMinimum: 0 }, height: { ...ROOM_STRUCTURE_PORTABLE_NUMBER_INPUT_SCHEMA, exclusiveMinimum: 0 } },
+        minProperties: 1,
+        additionalProperties: false,
+      } },
+      required: ["type", "openingId", "patch"],
+      additionalProperties: false,
+    },
+    {
+      type: "object",
+      properties: { type: { const: "remove" }, openingId: ENTITY_ID_INPUT_SCHEMA },
+      required: ["type", "openingId"],
+      additionalProperties: false,
+    },
+  ],
+} as const;
+
+const APPLY_ROOM_STRUCTURE_EDIT_INPUT_SCHEMA = {
+  type: "object",
+  properties: {
+    expectedRevision: {
+      type: "integer",
+      minimum: 1,
+      maximum: Number.MAX_SAFE_INTEGER,
+    },
+    dimensions: ROOM_STRUCTURE_DIMENSIONS_INPUT_SCHEMA,
+    geometry: ROOM_STRUCTURE_GEOMETRY_INPUT_SCHEMA,
+    openingOperations: {
+      type: "array",
+      minItems: 1,
+      maxItems: 8,
+      items: ROOM_STRUCTURE_OPENING_OPERATION_SCHEMA,
+    },
+  },
+  required: ["expectedRevision"],
+  anyOf: [
+    { required: ["dimensions"] },
+    { required: ["geometry"] },
+    { required: ["openingOperations"] },
+  ],
+  additionalProperties: false,
+} as const;
+
+const WebMcpRoomOpeningPatchSchema = z.object({
+  kind: z.enum(["door", "window"]).optional(),
+  wall: z.enum(["north", "east", "south", "west"]).optional(),
+  centerOffset: z.number().transform(canonicalizeWebMcpCoordinate).optional(),
+  width: z.number().positive().transform(canonicalizeWebMcpCoordinate).optional(),
+  bottom: z.number().transform(canonicalizeWebMcpCoordinate).optional(),
+  height: z.number().positive().transform(canonicalizeWebMcpCoordinate).optional(),
+}).strict().refine((patch) => Object.keys(patch).length > 0, "An opening patch must change at least one field");
+
+const WebMcpRoomOpeningOperationSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("add"), opening: OpeningSchema }).strict(),
+  z.object({ type: z.literal("update"), openingId: EntityIdSchema, patch: WebMcpRoomOpeningPatchSchema }).strict(),
+  z.object({
+    type: z.literal("move"),
+    openingId: EntityIdSchema,
+    patch: z.object({
+      wall: z.enum(["north", "east", "south", "west"]).optional(),
+      centerOffset: z.number().transform(canonicalizeWebMcpCoordinate).optional(),
+    }).strict().refine((patch) => Object.keys(patch).length > 0, "A move patch must change wall or centerOffset"),
+  }).strict(),
+  z.object({
+    type: z.literal("resize"),
+    openingId: EntityIdSchema,
+    patch: z.object({
+      width: z.number().positive().transform(canonicalizeWebMcpCoordinate).optional(),
+      height: z.number().positive().transform(canonicalizeWebMcpCoordinate).optional(),
+    }).strict().refine((patch) => Object.keys(patch).length > 0, "A resize patch must change width or height"),
+  }).strict(),
+  z.object({ type: z.literal("remove"), openingId: EntityIdSchema }).strict(),
+]);
+
+const ApplyRoomStructureEditInputSchema = z.object({
+  expectedRevision: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+  dimensions: RoomDimensionsSchema.partial().refine(
+    (dimensions) => Object.keys(dimensions).length > 0,
+    "A dimensions patch must change at least one field",
+  ).optional(),
+  geometry: RoomGeometrySchema.optional(),
+  openingOperations: z.array(WebMcpRoomOpeningOperationSchema).min(1).max(8).optional(),
+}).strict().refine(
+  (input) => input.dimensions !== undefined || input.geometry !== undefined || (input.openingOperations?.length ?? 0) > 0,
+  "A structure edit must include dimensions, geometry, or openingOperations",
+);
+
 const applyRoomEdit = (
   store: RoomStore,
   rawInput: unknown,
@@ -1329,6 +1517,84 @@ const applyRoomEdit = (
   });
 };
 
+const projectStructureReceipt = (receipt: NonNullable<ReturnType<RoomStore["getState"]>["receipts"][number]>) => ({
+  origin: receipt.origin,
+  status: receipt.status,
+  revision: receipt.revision,
+  changeType: receipt.changeType,
+  summary: receipt.summary,
+  affectedItemIds: [...receipt.affectedItemIds],
+  removedItemIds: [...receipt.removedItemIds],
+  affectedOpeningIds: [...(receipt.affectedOpeningIds ?? [])],
+  removedOpeningIds: [...(receipt.removedOpeningIds ?? [])],
+  ...(receipt.code ? { code: receipt.code } : {}),
+});
+
+const applyRoomStructureEdit = (
+  store: RoomStore,
+  rawInput: unknown,
+  signal?: AbortSignal,
+) => {
+  throwIfAborted(signal);
+  const current = store.getState();
+  if (
+    rawInput !== null &&
+    typeof rawInput === "object" &&
+    !Array.isArray(rawInput) &&
+    Array.isArray((rawInput as Record<string, unknown>).openingOperations) &&
+    ((rawInput as Record<string, unknown>).openingOperations as unknown[]).length > 8
+  ) {
+    return enforceWebMcpOutputBound({
+      ok: false as const,
+      revision: current.revision,
+      code: "TOO_MANY_OPERATIONS" as const,
+      message: "openingOperations must contain 1 to 8 items",
+    });
+  }
+  const parsedInput = ApplyRoomStructureEditInputSchema.safeParse(rawInput);
+  if (!parsedInput.success) {
+    return enforceWebMcpOutputBound({
+      ok: false as const,
+      revision: current.revision,
+      code: "INVALID_DOCUMENT" as const,
+      message: "input must contain a bounded structure change at an exact room revision",
+    });
+  }
+
+  const input = parsedInput.data;
+  throwIfAborted(signal);
+  const result = current.transact({
+    [LOCAL_CATALOG_TRANSACTION]: true,
+    expectedRevision: input.expectedRevision,
+    origin: "webmcp",
+    change: {
+      type: "structure",
+      dimensions: input.dimensions,
+      geometry: input.geometry,
+      openingOperations: input.openingOperations ?? [],
+    } satisfies RoomStructureChange,
+  });
+
+  if (!result.ok) {
+    return enforceWebMcpOutputBound({
+      ok: false as const,
+      revision: result.revision,
+      code: result.code,
+      message: result.message,
+      ...projectWarnings(result.warnings),
+      receipt: projectStructureReceipt(result.receipt),
+    });
+  }
+
+  return enforceWebMcpOutputBound({
+    ok: true as const,
+    revision: result.revision,
+    applied: result.applied,
+    ...projectWarnings(result.warnings),
+    receipt: projectStructureReceipt(result.receipt),
+  });
+};
+
 export const createRoomToolDefinitions = (
   store: RoomStore,
   offerResolver: RetailerOfferResolver = createSyntheticRetailerOfferResolver(
@@ -1377,6 +1643,19 @@ export const createRoomToolDefinitions = (
         untrustedContentHint: true,
       },
       execute: (input, { signal }) => applyRoomEdit(store, input, signal),
+    },
+    {
+      name: "apply_room_structure_edit",
+      title: "Apply room structure edit",
+      description:
+        "Atomically change one room's dimensions, rectangle or southeast-notch L shape, and bounded door or window openings at an exact room revision; invalidated furniture or openings are rejected without relocation.",
+      inputSchema: APPLY_ROOM_STRUCTURE_EDIT_INPUT_SCHEMA,
+      annotations: {
+        readOnlyHint: false,
+        untrustedContentHint: true,
+      },
+      execute: (input, { signal }) =>
+        applyRoomStructureEdit(store, input, signal),
     },
     {
       name: "inspect_retailer_offers",
