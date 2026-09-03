@@ -13,7 +13,11 @@ import {
 } from "./placement";
 import type { ResolvedProduct } from "./transaction";
 import { DEMO_CATALOG } from "./catalog-data";
-import type { CatalogLicense, CatalogProvenance } from "../catalog/package";
+import type {
+  CatalogLicense,
+  CatalogProvenance,
+  CatalogProvider,
+} from "../catalog/package";
 
 type CatalogSnapshot = FurnitureSnapshot;
 
@@ -33,6 +37,7 @@ export type CatalogItemMetadata = {
   catalogVersion: string;
   itemId: string;
   variantId: string;
+  provider: CatalogProvider;
   provenance: CatalogProvenance;
   license: CatalogLicense;
 };

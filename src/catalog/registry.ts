@@ -13,6 +13,7 @@ export type CatalogRegistryPackage = {
   catalogId: string;
   catalogVersion: string;
   name: string;
+  provider: WimyCatalogV1["provider"];
   provenance: WimyCatalogV1["catalog"]["provenance"];
   license: WimyCatalogV1["catalog"]["license"];
   origin: "fictional" | "project-authored";
@@ -70,6 +71,12 @@ const DEMO_PROVENANCE = {
 const DEMO_LICENSE = {
   name: "Wimy Project Authored License",
   spdxId: "MIT",
+} as const;
+
+const DEMO_PROVIDER = {
+  providerId: "00000000-0000-4000-8000-000000000001",
+  name: "Wimy Atelier",
+  connection: "not_connected",
 } as const;
 
 const deepFreeze = <T>(value: T): T => {
@@ -130,6 +137,7 @@ const metadataForPackageVariant = (
   catalogVersion: catalogPackage.catalog.version,
   itemId: item.itemId,
   variantId,
+  provider: structuredClone(catalogPackage.provider),
   provenance: structuredClone(catalogPackage.catalog.provenance),
   license: structuredClone(catalogPackage.catalog.license),
 });
@@ -171,6 +179,7 @@ const adaptDemoCatalog = (seed: readonly CatalogItem[]) =>
         catalogVersion: "builtin-v1",
         itemId: item.catalogRef.productId,
         variantId: item.catalogRef.productId,
+        provider: structuredClone(DEMO_PROVIDER),
         provenance: structuredClone(DEMO_PROVENANCE),
         license: structuredClone(DEMO_LICENSE),
       },
@@ -183,6 +192,7 @@ const demoDescriptor: CatalogRegistryPackage = {
   catalogId: "wimy-demo-v1",
   catalogVersion: "builtin-v1",
   name: "Wimy fictional demo catalog",
+  provider: DEMO_PROVIDER,
   provenance: DEMO_PROVENANCE,
   license: DEMO_LICENSE,
   origin: "fictional",
@@ -348,6 +358,7 @@ export const createCatalogRegistry = (
           catalogId: catalogPackage.catalog.catalogId,
           catalogVersion: catalogPackage.catalog.version,
           name: catalogPackage.catalog.name,
+          provider: structuredClone(catalogPackage.provider),
           provenance: structuredClone(catalogPackage.catalog.provenance),
           license: structuredClone(catalogPackage.catalog.license),
           origin: "project-authored",

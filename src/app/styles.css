@@ -3523,7 +3523,7 @@ body {
   font-weight: 800;
 }
 
-/* Cart review reads as a compact shop list while keeping room and cart state distinct. */
+/* Shopping-plan review groups provider selections while keeping room and selection state distinct. */
 .cart-review-panel {
   width: min(38rem, calc(100vw - 2.5rem));
   gap: 0.8rem;
@@ -3609,18 +3609,77 @@ body {
   font-weight: 800;
 }
 
-.retailer-cart {
+.provider-plan {
   display: grid;
   gap: 0.5rem;
 }
 
-.retailer-cart h3 {
+.provider-plan h3 {
   font-size: 0.9rem;
 }
 
-.retailer-cart .cart-room-items-heading > span {
+.provider-plan .cart-room-items-heading > span {
   color: var(--muted);
   font-size: 0.72rem;
+}
+
+.provider-plan-groups {
+  display: grid;
+}
+
+.provider-plan-group {
+  display: grid;
+  border-top: 1px solid var(--line);
+  padding-block: 0.75rem;
+  gap: 0.25rem;
+}
+
+.provider-plan-heading,
+.provider-plan-handoff {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.provider-plan-heading > div {
+  display: grid;
+  gap: 0.1rem;
+}
+
+.provider-plan-heading h4 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 0.9rem;
+}
+
+.provider-plan-heading > span {
+  color: var(--ink);
+  font-size: 0.85rem;
+  font-weight: 800;
+}
+
+.provider-plan-eyebrow {
+  color: var(--muted);
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.provider-plan-handoff {
+  align-items: end;
+}
+
+.provider-plan-handoff button {
+  min-height: 2.25rem;
+}
+
+.provider-plan-handoff p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.68rem;
+  text-align: right;
 }
 
 .cart-review-lines li {

@@ -33,6 +33,11 @@ const catalogItem = (
     catalogVersion: "builtin-v1",
     itemId: productId,
     variantId: productId,
+    provider: {
+      providerId: "00000000-0000-4000-8000-000000000001",
+      name: "Wimy Atelier",
+      connection: "not_connected",
+    },
     provenance: {
       sourceName: "Wimy fictional demo catalog",
       observedAt: "2026-09-02T00:00:00Z",

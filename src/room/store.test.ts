@@ -16,6 +16,11 @@ const uuid = (value: number) =>
 const makeProjectPackage = (): WimyCatalogV1 => ({
   format: "wimy-catalog",
   schemaVersion: 1,
+  provider: {
+    providerId: uuid(105),
+    name: "Northstar Home",
+    connection: "not_connected",
+  },
   publisher: {
     publisherId: uuid(101),
     name: "Wimy Project Studio",

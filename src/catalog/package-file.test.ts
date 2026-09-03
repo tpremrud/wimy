@@ -30,6 +30,11 @@ const makeItem = (itemValue = 3, variantValue = itemValue + 1) => ({
 const makeCatalog = () => ({
   format: "wimy-catalog" as const,
   schemaVersion: 1 as const,
+  provider: {
+    providerId: uuid(5),
+    name: "Northstar Home",
+    connection: "not_connected" as const,
+  },
   publisher: {
     publisherId: uuid(1),
     name: "Wimy Studio",

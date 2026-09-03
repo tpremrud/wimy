@@ -183,7 +183,7 @@ const SunStudyControls = ({
         />
       </label>
       <label>
-        IANA timezone
+        IANA time zone
         <input
           list="sun-study-timezones"
           onChange={(event) => onChange("timeZone", event.target.value)}

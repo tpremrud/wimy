@@ -65,7 +65,7 @@ const createResolver = (readOffer: () => RetailerOffer): RetailerOfferResolver =
 });
 
 describe("authenticated WebMCP Cart tools", () => {
-  it("publishes the five bounded Cart tools only for a scoped Customer Session", async () => {
+  it("publishes four bounded shopping-plan tools only for a scoped Customer Session", async () => {
     const store = createRoomStore(
       getTemplate("living-room"),
       CATALOG_TRANSACTION_DEPENDENCIES,
@@ -88,13 +88,12 @@ describe("authenticated WebMCP Cart tools", () => {
     );
     expect(
       definitions
-        .filter(({ name }) => name.endsWith("_cart") || name === "set_cart_quantity")
+        .filter(({ name }) => ["inspect_cart", "add_to_cart", "remove_from_cart"].includes(name))
         .map(({ name, annotations }) => ({ name, annotations })),
     ).toEqual([
       { name: "inspect_cart", annotations: { readOnlyHint: true, untrustedContentHint: true } },
       { name: "add_to_cart", annotations: { readOnlyHint: false, untrustedContentHint: true } },
       { name: "remove_from_cart", annotations: { readOnlyHint: false, untrustedContentHint: true } },
-      { name: "set_cart_quantity", annotations: { readOnlyHint: false, untrustedContentHint: true } },
     ]);
   });
 
@@ -128,6 +127,7 @@ describe("authenticated WebMCP Cart tools", () => {
         }),
       }),
     ]));
+    expect((definition.inputSchema as { properties: Record<string, unknown> }).properties).not.toHaveProperty("quantity");
 
     const rejected = await definition.execute(
       {
@@ -139,7 +139,6 @@ describe("authenticated WebMCP Cart tools", () => {
           catalogRef,
           price: { amountMinor: 49_900, currency: "USD", unit: "each", quantity: 2 },
         },
-        quantity: 1,
       },
       { signal: new AbortController().signal },
     );
@@ -218,10 +217,10 @@ describe("authenticated WebMCP Cart tools", () => {
   });
 
   it("projects exact offers and mutations without secrets, URLs, hidden metadata, or room changes", async () => {
-    const store = createRoomStore(
-      getTemplate("living-room"),
-      CATALOG_TRANSACTION_DEPENDENCIES,
-    );
+    const shoppingRoom = getTemplate("living-room");
+    shoppingRoom.items[0]!.catalogRef = catalogRef;
+    shoppingRoom.items[1]!.catalogRef = catalogRef;
+    const store = createRoomStore(shoppingRoom, CATALOG_TRANSACTION_DEPENDENCIES);
     let currentOffer = createOffer();
     const customerSession = createCustomerSessionDemo({
       offerResolver: createResolver(() => currentOffer),
@@ -267,7 +266,7 @@ describe("authenticated WebMCP Cart tools", () => {
       price: currentOffer.price,
     };
     const added = await tool("add_to_cart").execute(
-      { expectedRevision: 1, idempotencyKey: "add-chair", offer: offerInput, quantity: 2 },
+      { expectedRevision: 1, idempotencyKey: "add-chair", offer: offerInput },
       { signal },
     );
     expect(added).toMatchObject({
@@ -289,36 +288,19 @@ describe("authenticated WebMCP Cart tools", () => {
     expect(JSON.stringify(added)).not.toMatch(/https?:\/\/|seller|sourceUrl|csrf|session-token/iu);
 
     const replay = await tool("add_to_cart").execute(
-      { expectedRevision: 1, idempotencyKey: "add-chair", offer: offerInput, quantity: 2 },
+      { expectedRevision: 1, idempotencyKey: "add-chair", offer: offerInput },
       { signal },
     );
     expect(replay).toEqual(added);
 
     const lineId = (added as { cart: { lines: Array<{ lineId: string }> } }).cart.lines[0]!.lineId;
-    const changed = await tool("set_cart_quantity").execute(
-      { expectedRevision: 2, idempotencyKey: "change-chair", lineId, quantity: 1 },
-      { signal },
-    );
-    expect(changed).toMatchObject({
-      ok: true,
-      cart: { revision: 3, lines: [{ quantity: 1 }] },
-      receipt: {
-        origin: "webmcp",
-        operation: "change_quantity",
-        target: {
-          offerId: "northstar-chair",
-          displayName: "Ember Nest Chair",
-          retailer: "Northstar Furnishings",
-        },
-      },
-    });
     const removed = await tool("remove_from_cart").execute(
-      { expectedRevision: 3, idempotencyKey: "remove-chair", lineId },
+      { expectedRevision: 2, idempotencyKey: "remove-chair", lineId },
       { signal },
     );
     expect(removed).toMatchObject({
       ok: true,
-      cart: { revision: 4, lines: [] },
+      cart: { revision: 3, lines: [] },
       receipt: {
         origin: "webmcp",
         operation: "remove",
@@ -332,14 +314,16 @@ describe("authenticated WebMCP Cart tools", () => {
 
     currentOffer = createOffer({ price: { amountMinor: 50_000, currency: "USD" } });
     const stale = await tool("add_to_cart").execute(
-      { expectedRevision: 4, idempotencyKey: "stale-chair", offer: offerInput, quantity: 1 },
+      { expectedRevision: 3, idempotencyKey: "stale-chair", offer: offerInput },
       { signal },
     );
     expect(stale).toMatchObject({ ok: false, error: { code: "OFFER_VERSION_MISMATCH" }, receipt: { origin: "webmcp" } });
   });
 
   it("fails captured commerce tools closed after sign-out and on cancellation", async () => {
-    const store = createRoomStore(getTemplate("living-room"), CATALOG_TRANSACTION_DEPENDENCIES);
+    const roomWithCatalogItem = getTemplate("living-room");
+    roomWithCatalogItem.items[0]!.catalogRef = catalogRef;
+    const store = createRoomStore(roomWithCatalogItem, CATALOG_TRANSACTION_DEPENDENCIES);
     let resolveOffer!: (value: RetailerOffer) => void;
     const pendingOffer = new Promise<RetailerOffer>((resolve) => { resolveOffer = resolve; });
     const customerSession = createCustomerSessionDemo({
@@ -367,7 +351,6 @@ describe("authenticated WebMCP Cart tools", () => {
           catalogRef,
           price: createOffer().price,
         },
-        quantity: 1,
       },
       { signal: controller.signal },
     );

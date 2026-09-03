@@ -79,8 +79,8 @@ describe("WebMcpToolList", () => {
     expect(screen.getByText("find_retailer_offers")).toBeVisible();
     expect(screen.getByText("add_to_cart")).toBeVisible();
     expect(screen.getByText("remove_from_cart")).toBeVisible();
-    expect(screen.getByText("set_cart_quantity")).toBeVisible();
-    expect(screen.getAllByText("Sign in")).toHaveLength(5);
+    expect(screen.queryByText("set_cart_quantity")).not.toBeInTheDocument();
+    expect(screen.getAllByText("Sign in")).toHaveLength(4);
   });
 
   it("closes outside and returns focus to the trigger on Escape", async () => {

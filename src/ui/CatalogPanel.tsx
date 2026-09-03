@@ -684,6 +684,11 @@ export function CatalogPanel({
                       <small title={presentationSummary(item.catalogRef.productId, item)}>
                         {item.snapshot.category} · {item.snapshot.dimensions.width} × {item.snapshot.dimensions.depth} m · {presentationLicense(item.catalogRef.productId, item)}
                       </small>
+                      {item.metadata ? (
+                        <small className="catalog-provider">
+                          Provided by {item.metadata.provider.name} · Not connected
+                        </small>
+                      ) : null}
                     </div>
                     <div className="catalog-item-actions">
                       <button

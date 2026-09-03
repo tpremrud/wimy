@@ -3,5 +3,4 @@ export const SIGNED_IN_WEBMCP_TOOL_NAMES = [
   "find_retailer_offers",
   "add_to_cart",
   "remove_from_cart",
-  "set_cart_quantity",
 ] as const;

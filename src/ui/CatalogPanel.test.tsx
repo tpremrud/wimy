@@ -53,6 +53,11 @@ const searchForWarmModernChair = async () => {
 const makeProjectCatalogPackage = (): WimyCatalogV1 => ({
   format: "wimy-catalog",
   schemaVersion: 1,
+  provider: {
+    providerId: "00000000-0000-4000-8000-000000000205",
+    name: "Northstar Home",
+    connection: "not_connected",
+  },
   publisher: {
     publisherId: "00000000-0000-4000-8000-000000000201",
     name: "Wimy Project Studio",
@@ -151,6 +156,7 @@ describe("CatalogPanel", () => {
       await screen.findByRole("status", { name: "Catalog import result" }),
     ).toHaveTextContent(/Imported.*Aurora Project Chair/iu);
     expect(screen.getByText("Aurora Project Chair")).toBeVisible();
+    expect(screen.getByText("Provided by Northstar Home · Not connected")).toBeVisible();
     expect(screen.getByText(/Wimy Project Studio.*2026\.09\.02/iu)).toBeVisible();
     expect(fetchSpy).not.toHaveBeenCalled();
     fetchSpy.mockRestore();

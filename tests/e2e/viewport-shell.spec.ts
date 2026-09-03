@@ -108,7 +108,7 @@ test("keeps the cart review closed and out of the room layout until requested", 
 
   const header = page.locator(".app-header");
   const workspace = page.locator(".workspace-grid");
-  const cartTrigger = page.getByRole("button", { name: "Review cart" });
+  const cartTrigger = page.getByRole("button", { name: "Review shopping plan" });
   const cartSurface = page.locator(".cart-review-panel");
   const [headerBox, closedWorkspaceBox] = await Promise.all([
     header.boundingBox(),
@@ -155,7 +155,7 @@ test("keeps the cart review popover inside a mobile viewport", async ({ page }) 
   await page.setViewportSize(viewport);
   await page.goto("/");
 
-  const cartTrigger = page.getByRole("button", { name: "Review cart" });
+  const cartTrigger = page.getByRole("button", { name: "Review shopping plan" });
   const cartSurface = page.locator(".cart-review-panel");
   await expect(cartTrigger).toBeVisible();
   await expect.poll(() => page.evaluate(() => ({

@@ -20,7 +20,6 @@ export const CART_READ_WEBMCP_TOOL_NAMES = [
 export const CART_WRITE_WEBMCP_TOOL_NAMES = [
   "add_to_cart",
   "remove_from_cart",
-  "set_cart_quantity",
 ] as const;
 
 export const CART_WEBMCP_TOOL_NAMES = [

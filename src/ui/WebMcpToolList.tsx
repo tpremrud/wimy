@@ -133,8 +133,8 @@ export function WebMcpToolList({
                   </span>
                   {writes ? (
                     <span className="webmcp-tool-write">
-                      {definition.name.endsWith("_cart") || definition.name === "set_cart_quantity"
-                        ? "Can change cart"
+                      {definition.name.endsWith("_cart")
+                        ? "Can change plan"
                         : "Can change room"}
                     </span>
                   ) : null}

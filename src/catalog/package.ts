@@ -160,6 +160,14 @@ const CatalogPublisherSchema = z
   })
   .strict();
 
+export const CatalogProviderSchema = z
+  .object({
+    providerId: UuidSchema,
+    name: boundedText(160),
+    connection: z.literal("not_connected"),
+  })
+  .strict();
+
 const CatalogMetadataSchema = z
   .object({
     catalogId: UuidSchema,
@@ -174,6 +182,7 @@ export const WimyCatalogV1Schema = z
   .object({
     format: z.literal(WIMY_CATALOG_FORMAT),
     schemaVersion: z.literal(WIMY_CATALOG_SCHEMA_VERSION),
+    provider: CatalogProviderSchema,
     publisher: CatalogPublisherSchema,
     catalog: CatalogMetadataSchema,
     items: z
@@ -217,4 +226,5 @@ export type ExternalIdentifier = z.infer<typeof ExternalIdentifierSchema>;
 export type ClassificationRef = z.infer<typeof ClassificationRefSchema>;
 export type CatalogVariant = z.infer<typeof CatalogVariantSchema>;
 export type CatalogPackageItem = z.infer<typeof CatalogPackageItemSchema>;
+export type CatalogProvider = z.infer<typeof CatalogProviderSchema>;
 export type WimyCatalogV1 = z.infer<typeof WimyCatalogV1Schema>;

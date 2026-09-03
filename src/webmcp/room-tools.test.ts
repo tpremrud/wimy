@@ -202,7 +202,7 @@ describe("createRoomToolDefinitions", () => {
         name: "find_furniture",
         title: "Find furniture",
         description:
-          "Find deterministic geometric fits in Wimy's local fictional catalog without changing the room; suggestions are not aesthetic guarantees.",
+          "Find deterministic geometric fits in Wimy's local fictional and imported project-authored catalog without changing the room; suggestions are not aesthetic guarantees.",
       },
       {
         name: "apply_room_edit",
@@ -1069,7 +1069,7 @@ describe("createRoomToolDefinitions", () => {
 
     expect(find.annotations).toEqual({
       readOnlyHint: true,
-      untrustedContentHint: false,
+      untrustedContentHint: true,
     });
     expect(find.inputSchema).toEqual({
       type: "object",
@@ -1139,6 +1139,27 @@ describe("createRoomToolDefinitions", () => {
           dimensions: { width: 0.6, depth: 0.6, height: 0.82 },
           styleTags: ["warm-modern", "compact"],
           price: { amount: 499, currency: "USD" },
+          metadata: {
+            origin: "fictional",
+            publisherId: "wimy-project-publisher",
+            catalogId: "wimy-demo-v1",
+            catalogVersion: "builtin-v1",
+            itemId: "ember-nest-chair",
+            variantId: "ember-nest-chair",
+            provider: {
+              providerId: "00000000-0000-4000-8000-000000000001",
+              name: "Wimy Atelier",
+              connection: "not_connected",
+            },
+            provenance: {
+              sourceName: "Wimy fictional demo catalog",
+              observedAt: "2026-09-02T00:00:00Z",
+            },
+            license: {
+              name: "Wimy Project Authored License",
+              spdxId: "MIT",
+            },
+          },
           suggestedPose: { x: 0.3, y: 0.3, rotationDeg: 0 },
         },
       ],
@@ -1372,6 +1393,11 @@ describe("createRoomToolDefinitions", () => {
     const catalogPackage = {
       format: "wimy-catalog" as const,
       schemaVersion: 1 as const,
+      provider: {
+        providerId: "00000000-0000-4000-8000-000000000405",
+        name: "Northstar Home",
+        connection: "not_connected" as const,
+      },
       publisher: {
         publisherId: "00000000-0000-4000-8000-000000000401",
         name: "Wimy Project Studio",
@@ -1458,6 +1484,11 @@ describe("createRoomToolDefinitions", () => {
     const catalogPackage = {
       format: "wimy-catalog" as const,
       schemaVersion: 1 as const,
+      provider: {
+        providerId: "00000000-0000-4000-8000-000000000505",
+        name: "Northstar Home",
+        connection: "not_connected" as const,
+      },
       publisher: {
         publisherId: "00000000-0000-4000-8000-000000000501",
         name: "Wimy Project Studio",
