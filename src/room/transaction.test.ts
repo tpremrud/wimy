@@ -701,4 +701,308 @@ describe("applyRoomTransaction", () => {
       itemIds: ["item_chair_1", "item_chair_2"],
     });
   });
+
+  it("commits one atomic structure change while preserving placed-item identity and snapshots", () => {
+    const item = makePlacedItem({
+      id: "item_preserved",
+      pose: { x: 1, y: 1, rotationDeg: 90 },
+    });
+    const before = makeRuntimeState(
+      makeRoom({ items: [item] }),
+      7,
+    );
+
+    const outcome = applyRoomTransaction(
+      before,
+      {
+        expectedRevision: 7,
+        origin: "webmcp",
+        change: {
+          type: "structure",
+          dimensions: { width: 5 },
+          geometry: {
+            shape: "l-shape",
+            notch: { corner: "south-east", width: 1, depth: 1 },
+          },
+          openingOperations: [
+            {
+              type: "add",
+              opening: {
+                id: "window_added",
+                kind: "window",
+                wall: "north",
+                centerOffset: 2.5,
+                width: 1.2,
+                bottom: 0.9,
+                height: 1.2,
+              },
+            },
+          ],
+        },
+      },
+      TEST_TRANSACTION_DEPENDENCIES,
+    );
+
+    expect(outcome.result).toMatchObject({
+      ok: true,
+      revision: 8,
+      applied: 1,
+      affectedItemIds: [],
+      receipt: {
+        origin: "webmcp",
+        status: "accepted",
+        revision: 8,
+        changeType: "structure",
+        affectedItemIds: [],
+        removedItemIds: [],
+        affectedOpeningIds: ["window_added"],
+        removedOpeningIds: [],
+      },
+    });
+    expect(outcome.state.room).toMatchObject({
+      dimensions: { width: 5, depth: 3, height: 2.7 },
+      geometry: {
+        shape: "l-shape",
+        notch: { corner: "south-east", width: 1, depth: 1 },
+      },
+      openings: [
+        expect.objectContaining({ id: "window_added", kind: "window" }),
+      ],
+    });
+    expect(outcome.state.room.items).toEqual([item]);
+    expect(outcome.state.revision).toBe(8);
+  });
+
+  it("supports every opening operation without changing the room more than once", () => {
+    const before = makeRuntimeState(
+      makeRoom({
+        openings: [
+          {
+            id: "door_existing",
+            kind: "door",
+            wall: "west",
+            centerOffset: 2,
+            width: 0.8,
+            bottom: 0,
+            height: 2.1,
+          },
+          {
+            id: "window_existing",
+            kind: "window",
+            wall: "north",
+            centerOffset: 2,
+            width: 1.2,
+            bottom: 1,
+            height: 1.2,
+          },
+        ],
+      }),
+      3,
+    );
+
+    const outcome = applyRoomTransaction(
+      before,
+      {
+        expectedRevision: 3,
+        origin: "webmcp",
+        change: {
+          type: "structure",
+          openingOperations: [
+            {
+              type: "move",
+              openingId: "door_existing",
+              patch: { wall: "east", centerOffset: 1 },
+            },
+            {
+              type: "resize",
+              openingId: "window_existing",
+              patch: { width: 1 },
+            },
+            {
+              type: "update",
+              openingId: "window_existing",
+              patch: { bottom: 0.8, height: 1.3 },
+            },
+            {
+              type: "add",
+              opening: {
+                id: "window_added",
+                kind: "window",
+                wall: "south",
+                centerOffset: 2,
+                width: 1,
+                bottom: 0.9,
+                height: 1.2,
+              },
+            },
+            { type: "remove", openingId: "window_added" },
+          ],
+        },
+      },
+      TEST_TRANSACTION_DEPENDENCIES,
+    );
+
+    expect(outcome.result).toMatchObject({
+      ok: true,
+      revision: 4,
+      applied: 1,
+      receipt: {
+        affectedOpeningIds: [
+          "door_existing",
+          "window_existing",
+          "window_existing",
+          "window_added",
+          "window_added",
+        ],
+        removedOpeningIds: ["window_added"],
+      },
+    });
+    expect(outcome.state.room.openings).toEqual([
+      {
+        id: "door_existing",
+        kind: "door",
+        wall: "east",
+        centerOffset: 1,
+        width: 0.8,
+        bottom: 0,
+        height: 2.1,
+      },
+      {
+        id: "window_existing",
+        kind: "window",
+        wall: "north",
+        centerOffset: 2,
+        width: 1,
+        bottom: 0.8,
+        height: 1.3,
+      },
+    ]);
+  });
+
+  it.each([
+    {
+      label: "shrinking around furniture",
+      room: makeRoom({
+        items: [makePlacedItem({ pose: { x: 3.7, y: 1, rotationDeg: 0 } })],
+      }),
+      change: { dimensions: { width: 3 } },
+      code: "INVALID_DOCUMENT",
+    },
+    {
+      label: "cutting through furniture with the L notch",
+      room: makeRoom({
+        items: [makePlacedItem({ pose: { x: 3.5, y: 2.5, rotationDeg: 0 } })],
+      }),
+      change: {
+        geometry: {
+          shape: "l-shape" as const,
+          notch: { corner: "south-east" as const, width: 1, depth: 1 },
+        },
+      },
+      code: "INVALID_DOCUMENT",
+    },
+  ])("rejects a structure change that invalidates $label", ({ room, change, code }) => {
+    const before = makeRuntimeState(room);
+    const outcome = applyRoomTransaction(
+      before,
+      {
+        expectedRevision: 1,
+        origin: "webmcp",
+        change: { type: "structure", openingOperations: [], ...change },
+      },
+      TEST_TRANSACTION_DEPENDENCIES,
+    );
+
+    expect(outcome.result).toMatchObject({ ok: false, code, revision: 1 });
+    expect(outcome.state).toBe(before);
+  });
+
+  it("rejects overlapping openings and rolls back earlier opening operations", () => {
+    const before = makeRuntimeState(makeRoom());
+    const outcome = applyRoomTransaction(
+      before,
+      {
+        expectedRevision: 1,
+        origin: "webmcp",
+        change: {
+          type: "structure",
+          openingOperations: [
+            {
+              type: "add",
+              opening: {
+                id: "window_first",
+                kind: "window",
+                wall: "north",
+                centerOffset: 1.5,
+                width: 1,
+                bottom: 1,
+                height: 1,
+              },
+            },
+            {
+              type: "add",
+              opening: {
+                id: "window_overlap",
+                kind: "window",
+                wall: "north",
+                centerOffset: 1.8,
+                width: 1,
+                bottom: 1,
+                height: 1,
+              },
+            },
+          ],
+        },
+      },
+      TEST_TRANSACTION_DEPENDENCIES,
+    );
+
+    expect(outcome.result).toMatchObject({
+      ok: false,
+      code: "INVALID_DOCUMENT",
+      message: expect.stringMatching(/overlap/iu),
+    });
+    expect(outcome.state).toBe(before);
+    expect(outcome.state.room.openings).toEqual([]);
+  });
+
+  it("rejects adding a door whose protected clearance would invalidate existing furniture", () => {
+    const before = makeRuntimeState(
+      makeRoom({
+        items: [makePlacedItem({ pose: { x: 2, y: 0.5, rotationDeg: 0 } })],
+      }),
+    );
+    const outcome = applyRoomTransaction(
+      before,
+      {
+        expectedRevision: 1,
+        origin: "webmcp",
+        change: {
+          type: "structure",
+          openingOperations: [
+            {
+              type: "add",
+              opening: {
+                id: "door_added_north",
+                kind: "door",
+                wall: "north",
+                centerOffset: 2,
+                width: 1,
+                bottom: 0,
+                height: 2.1,
+              },
+            },
+          ],
+        },
+      },
+      TEST_TRANSACTION_DEPENDENCIES,
+    );
+
+    expect(outcome.result).toMatchObject({
+      ok: false,
+      code: "DOOR_CLEARANCE",
+      message: "The placed item blocks door clearance at door_added_north",
+    });
+    expect(outcome.state).toBe(before);
+  });
 });

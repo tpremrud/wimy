@@ -30,14 +30,24 @@ import {
 } from "../room/catalog";
 import {
   EntityIdSchema,
+  OpeningSchema,
   PoseSchema,
+  RoomDimensionsSchema,
+  RoomGeometrySchema,
   type WimyRoomV1,
 } from "../room/document";
 import { projectFurnitureOrientation } from "../room/orientation";
 import { projectOpeningSemantics } from "../room/opening";
 import { findLayoutWarnings, type RoomWarning } from "../room/placement";
+import {
+  createLightingPreviewStore,
+  deriveLightingPreview,
+  localTimeFromMinutes,
+  type LightingPreviewStore,
+} from "../room/lighting-preview";
 import type { RoomStore } from "../room/store";
 import { LOCAL_CATALOG_TRANSACTION } from "../room/transaction";
+import type { RoomStructureChange } from "../room/transaction";
 import {
   rankComparableSubstitutes,
   type SubstituteSuggestion,
@@ -193,7 +203,65 @@ const enforceWebMcpOutputBound = <Output,>(output: Output): Output => {
   return output;
 };
 
-const InspectRoomInputSchema = z.object({}).strict();
+const EmptyInputSchema = z.object({}).strict();
+
+const INSPECT_LIGHTING_PREVIEW_INPUT_SCHEMA = {
+  type: "object",
+  properties: {},
+  additionalProperties: false,
+} as const;
+
+const hasLightingDecimalPlacesAtMost = (value: number, places: number) =>
+  Number(value.toFixed(places)) === value;
+
+const SET_LIGHTING_PREVIEW_INPUT_SCHEMA = {
+  type: "object",
+  properties: {
+    expectedLightingRevision: {
+      type: "integer",
+      minimum: 1,
+      maximum: Number.MAX_SAFE_INTEGER,
+    },
+    date: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
+    minuteOfDay: { type: "integer", minimum: 0, maximum: 1439 },
+    timeZone: { type: "string", minLength: 1, maxLength: 64 },
+    latitude: { type: "number", minimum: -90, maximum: 90, multipleOf: 0.01 },
+    longitude: { type: "number", minimum: -180, maximum: 180, multipleOf: 0.01 },
+    planNorthAzimuthDeg: { type: "number", minimum: 0, exclusiveMaximum: 360, multipleOf: 0.001 },
+  },
+  required: ["expectedLightingRevision"],
+  anyOf: [
+    { required: ["date"] },
+    { required: ["minuteOfDay"] },
+    { required: ["timeZone"] },
+    { required: ["latitude"] },
+    { required: ["longitude"] },
+    { required: ["planNorthAzimuthDeg"] },
+  ],
+  additionalProperties: false,
+} as const;
+
+const SetLightingPreviewInputSchema = z.object({
+  expectedLightingRevision: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/u).optional(),
+  minuteOfDay: z.number().int().min(0).max(1439).optional(),
+  timeZone: z.string().min(1).max(64).optional(),
+  latitude: z.number().finite().min(-90).max(90)
+    .refine((value) => hasLightingDecimalPlacesAtMost(value, 2), "Latitude is limited to two decimal places")
+    .optional(),
+  longitude: z.number().finite().min(-180).max(180)
+    .refine((value) => hasLightingDecimalPlacesAtMost(value, 2), "Longitude is limited to two decimal places")
+    .optional(),
+  planNorthAzimuthDeg: z.number().finite().min(0).lt(360)
+    .refine((value) => hasLightingDecimalPlacesAtMost(value, 3), "Plan North is limited to three decimal places")
+    .optional(),
+}).strict().refine(
+  ({ date, minuteOfDay, timeZone, latitude, longitude, planNorthAzimuthDeg }) =>
+    date !== undefined || minuteOfDay !== undefined || timeZone !== undefined ||
+    latitude !== undefined || longitude !== undefined ||
+    planNorthAzimuthDeg !== undefined,
+  { message: "At least one lighting field is required" },
+);
 
 const isStoreCatalogProductAvailable = (
   store: RoomStore,
@@ -292,8 +360,6 @@ const InspectRetailerOffersInputSchema = z
     productId: z.string().uuid(),
   })
   .strict();
-
-const InspectRoomShoppingPlanInputSchema = z.object({}).strict();
 
 const ENTITY_ID_INPUT_SCHEMA = {
   type: "string",
@@ -440,7 +506,6 @@ const FindRetailerOffersInputSchema = z.union([
   z.object({ placedItemId: EntityIdSchema }).strict(),
 ]);
 
-const CartReadInputSchema = z.object({}).strict();
 const hasControlCharacters = (value: string) =>
   Array.from(value).some((character) => {
     const codePoint = character.codePointAt(0);
@@ -511,6 +576,85 @@ const FindSubstitutesInputSchema = z
     limit: z.number().int().min(1).max(5).default(5),
   })
   .strict();
+
+const projectLightingScenario = (scenario: ReturnType<typeof deriveLightingPreview>["scenario"]) => ({
+  latitude: Number.isFinite(scenario.latitude) ? scenario.latitude : null,
+  longitude: Number.isFinite(scenario.longitude) ? scenario.longitude : null,
+  date: scenario.date.slice(0, 128),
+  localTime: scenario.localTime.slice(0, 128),
+  timeZone: scenario.timeZone.slice(0, 128),
+  planNorthAzimuthDeg: Number.isFinite(scenario.planNorthAzimuthDeg)
+    ? scenario.planNorthAzimuthDeg
+    : null,
+});
+
+const inspectLightingPreview = (
+  lightingPreviewStore: LightingPreviewStore,
+  rawInput: Record<string, unknown>,
+  signal?: AbortSignal,
+) => {
+  throwIfAborted(signal);
+  if (!EmptyInputSchema.safeParse(rawInput).success) {
+    throw new TypeError("inspect_lighting_preview input must be an empty object");
+  }
+  const state = lightingPreviewStore.getState();
+  const preview = deriveLightingPreview(state.draft);
+  return enforceWebMcpOutputBound({
+    revision: state.revision,
+    scenario: projectLightingScenario(preview.scenario),
+    draft: {
+      latitude: state.draft.latitude.slice(0, 128),
+      longitude: state.draft.longitude.slice(0, 128),
+      date: state.draft.date.slice(0, 128),
+      localTime: state.draft.localTime.slice(0, 128),
+      timeZone: state.draft.timeZone.slice(0, 128),
+      planNorthAzimuthDeg: state.draft.planNorthAzimuthDeg.slice(0, 128),
+    },
+    validation: preview.validation.valid
+      ? { valid: true as const, errors: {} }
+      : { valid: false as const, errors: { ...preview.validation.errors } },
+    derived: preview.derived,
+  });
+};
+
+const setLightingPreview = async (
+  lightingPreviewStore: LightingPreviewStore,
+  rawInput: Record<string, unknown>,
+  signal?: AbortSignal,
+) => {
+  throwIfAborted(signal);
+  const parsed = SetLightingPreviewInputSchema.safeParse(rawInput);
+  if (!parsed.success) {
+    throw new TypeError("set_lighting_preview input must match the bounded scenario schema");
+  }
+  const input = parsed.data;
+  const result = lightingPreviewStore.getState().setScenario(
+    input.expectedLightingRevision,
+    {
+      ...(input.date === undefined ? {} : { date: input.date }),
+      ...(input.minuteOfDay === undefined
+        ? {}
+        : { localTime: localTimeFromMinutes(input.minuteOfDay) }),
+      ...(input.timeZone === undefined ? {} : { timeZone: input.timeZone }),
+      ...(input.latitude === undefined ? {} : { latitude: input.latitude }),
+      ...(input.longitude === undefined ? {} : { longitude: input.longitude }),
+      ...(input.planNorthAzimuthDeg === undefined
+        ? {}
+        : { planNorthAzimuthDeg: input.planNorthAzimuthDeg }),
+    },
+  );
+  if (!result.ok) {
+    return enforceWebMcpOutputBound(result);
+  }
+  const preview = deriveLightingPreview(result.draft);
+  return enforceWebMcpOutputBound({
+    ok: true as const,
+    revision: result.revision,
+    scenario: projectLightingScenario(preview.scenario),
+    validation: { valid: true as const, errors: {} },
+    derived: preview.derived,
+  });
+};
 const PORTABLE_COORDINATE_INPUT_SCHEMA = {
   type: "number",
 } as const;
@@ -521,7 +665,7 @@ const inspectRoom = (
   signal?: AbortSignal,
 ) => {
   throwIfAborted(signal);
-  if (!InspectRoomInputSchema.safeParse(rawInput).success) {
+  if (!EmptyInputSchema.safeParse(rawInput).success) {
     throw new TypeError("inspect_room input must be an empty object");
   }
 
@@ -853,7 +997,7 @@ const inspectRoomShoppingPlan = async (
   signal?: AbortSignal,
 ) => {
   throwIfAborted(signal);
-  if (!InspectRoomShoppingPlanInputSchema.safeParse(rawInput).success) {
+  if (!EmptyInputSchema.safeParse(rawInput).success) {
     throw new TypeError("inspect_room_shopping_plan input must be an empty object");
   }
 
@@ -1034,7 +1178,7 @@ const inspectCartTool = async (
   rawInput: unknown,
   signal: AbortSignal,
 ) => {
-  const parsed = CartReadInputSchema.safeParse(rawInput);
+  const parsed = EmptyInputSchema.safeParse(rawInput);
   if (!parsed.success) return cartToolFailure("read", "INVALID_REQUEST", "inspect_cart input must be empty");
   const authorization = await authorizeCartReadTool(customerSession, signal);
   if (!authorization.ok) return authorization;
@@ -1244,6 +1388,190 @@ const ApplyRoomEditInputSchema = z
   })
   .strict();
 
+const ROOM_STRUCTURE_DIMENSIONS_INPUT_SCHEMA = {
+  type: "object",
+  properties: {
+    width: { type: "number", multipleOf: 0.001, minimum: 1, maximum: 30 },
+    depth: { type: "number", multipleOf: 0.001, minimum: 1, maximum: 30 },
+    height: { type: "number", multipleOf: 0.001, minimum: 2, maximum: 10 },
+  },
+  minProperties: 1,
+  additionalProperties: false,
+} as const;
+
+const ROOM_STRUCTURE_PORTABLE_NUMBER_INPUT_SCHEMA = {
+  type: "number",
+  multipleOf: 0.001,
+} as const;
+
+const ROOM_STRUCTURE_GEOMETRY_INPUT_SCHEMA = {
+  oneOf: [
+    { type: "object", properties: { shape: { const: "rectangle" } }, required: ["shape"], additionalProperties: false },
+    {
+      type: "object",
+      properties: {
+        shape: { const: "l-shape" },
+        notch: {
+          type: "object",
+          properties: {
+            corner: { const: "south-east" },
+            width: { ...ROOM_STRUCTURE_PORTABLE_NUMBER_INPUT_SCHEMA, exclusiveMinimum: 0 },
+            depth: { ...ROOM_STRUCTURE_PORTABLE_NUMBER_INPUT_SCHEMA, exclusiveMinimum: 0 },
+          },
+          required: ["corner", "width", "depth"],
+          additionalProperties: false,
+        },
+      },
+      required: ["shape", "notch"],
+      additionalProperties: false,
+    },
+  ],
+} as const;
+
+const ROOM_STRUCTURE_OPENING_INPUT_SCHEMA = {
+  type: "object",
+  properties: {
+    id: ENTITY_ID_INPUT_SCHEMA,
+    kind: { enum: ["door", "window"] },
+    wall: { enum: ["north", "east", "south", "west"] },
+    centerOffset: ROOM_STRUCTURE_PORTABLE_NUMBER_INPUT_SCHEMA,
+    width: { ...ROOM_STRUCTURE_PORTABLE_NUMBER_INPUT_SCHEMA, exclusiveMinimum: 0 },
+    bottom: ROOM_STRUCTURE_PORTABLE_NUMBER_INPUT_SCHEMA,
+    height: { ...ROOM_STRUCTURE_PORTABLE_NUMBER_INPUT_SCHEMA, exclusiveMinimum: 0 },
+  },
+  required: ["id", "kind", "wall", "centerOffset", "width", "bottom", "height"],
+  additionalProperties: false,
+} as const;
+
+const ROOM_STRUCTURE_OPENING_PATCH_SCHEMA = {
+  type: "object",
+  properties: {
+    kind: { enum: ["door", "window"] },
+    wall: { enum: ["north", "east", "south", "west"] },
+    centerOffset: ROOM_STRUCTURE_PORTABLE_NUMBER_INPUT_SCHEMA,
+    width: { ...ROOM_STRUCTURE_PORTABLE_NUMBER_INPUT_SCHEMA, exclusiveMinimum: 0 },
+    bottom: ROOM_STRUCTURE_PORTABLE_NUMBER_INPUT_SCHEMA,
+    height: { ...ROOM_STRUCTURE_PORTABLE_NUMBER_INPUT_SCHEMA, exclusiveMinimum: 0 },
+  },
+  minProperties: 1,
+  additionalProperties: false,
+} as const;
+
+const ROOM_STRUCTURE_OPENING_OPERATION_SCHEMA = {
+  oneOf: [
+    {
+      type: "object",
+      properties: { type: { const: "add" }, opening: ROOM_STRUCTURE_OPENING_INPUT_SCHEMA },
+      required: ["type", "opening"],
+      additionalProperties: false,
+    },
+    {
+      type: "object",
+      properties: { type: { const: "update" }, openingId: ENTITY_ID_INPUT_SCHEMA, patch: ROOM_STRUCTURE_OPENING_PATCH_SCHEMA },
+      required: ["type", "openingId", "patch"],
+      additionalProperties: false,
+    },
+    {
+      type: "object",
+      properties: { type: { const: "move" }, openingId: ENTITY_ID_INPUT_SCHEMA, patch: {
+        type: "object",
+        properties: { wall: { enum: ["north", "east", "south", "west"] }, centerOffset: ROOM_STRUCTURE_PORTABLE_NUMBER_INPUT_SCHEMA },
+        minProperties: 1,
+        additionalProperties: false,
+      } },
+      required: ["type", "openingId", "patch"],
+      additionalProperties: false,
+    },
+    {
+      type: "object",
+      properties: { type: { const: "resize" }, openingId: ENTITY_ID_INPUT_SCHEMA, patch: {
+        type: "object",
+        properties: { width: { ...ROOM_STRUCTURE_PORTABLE_NUMBER_INPUT_SCHEMA, exclusiveMinimum: 0 }, height: { ...ROOM_STRUCTURE_PORTABLE_NUMBER_INPUT_SCHEMA, exclusiveMinimum: 0 } },
+        minProperties: 1,
+        additionalProperties: false,
+      } },
+      required: ["type", "openingId", "patch"],
+      additionalProperties: false,
+    },
+    {
+      type: "object",
+      properties: { type: { const: "remove" }, openingId: ENTITY_ID_INPUT_SCHEMA },
+      required: ["type", "openingId"],
+      additionalProperties: false,
+    },
+  ],
+} as const;
+
+const APPLY_ROOM_STRUCTURE_EDIT_INPUT_SCHEMA = {
+  type: "object",
+  properties: {
+    expectedRevision: {
+      type: "integer",
+      minimum: 1,
+      maximum: Number.MAX_SAFE_INTEGER,
+    },
+    dimensions: ROOM_STRUCTURE_DIMENSIONS_INPUT_SCHEMA,
+    geometry: ROOM_STRUCTURE_GEOMETRY_INPUT_SCHEMA,
+    openingOperations: {
+      type: "array",
+      minItems: 1,
+      maxItems: 8,
+      items: ROOM_STRUCTURE_OPENING_OPERATION_SCHEMA,
+    },
+  },
+  required: ["expectedRevision"],
+  anyOf: [
+    { required: ["dimensions"] },
+    { required: ["geometry"] },
+    { required: ["openingOperations"] },
+  ],
+  additionalProperties: false,
+} as const;
+
+const WebMcpRoomOpeningPatchSchema = z.object({
+  kind: z.enum(["door", "window"]).optional(),
+  wall: z.enum(["north", "east", "south", "west"]).optional(),
+  centerOffset: z.number().transform(canonicalizeWebMcpCoordinate).optional(),
+  width: z.number().positive().transform(canonicalizeWebMcpCoordinate).optional(),
+  bottom: z.number().transform(canonicalizeWebMcpCoordinate).optional(),
+  height: z.number().positive().transform(canonicalizeWebMcpCoordinate).optional(),
+}).strict().refine((patch) => Object.keys(patch).length > 0, "An opening patch must change at least one field");
+
+const WebMcpRoomOpeningOperationSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("add"), opening: OpeningSchema }).strict(),
+  z.object({ type: z.literal("update"), openingId: EntityIdSchema, patch: WebMcpRoomOpeningPatchSchema }).strict(),
+  z.object({
+    type: z.literal("move"),
+    openingId: EntityIdSchema,
+    patch: z.object({
+      wall: z.enum(["north", "east", "south", "west"]).optional(),
+      centerOffset: z.number().transform(canonicalizeWebMcpCoordinate).optional(),
+    }).strict().refine((patch) => Object.keys(patch).length > 0, "A move patch must change wall or centerOffset"),
+  }).strict(),
+  z.object({
+    type: z.literal("resize"),
+    openingId: EntityIdSchema,
+    patch: z.object({
+      width: z.number().positive().transform(canonicalizeWebMcpCoordinate).optional(),
+      height: z.number().positive().transform(canonicalizeWebMcpCoordinate).optional(),
+    }).strict().refine((patch) => Object.keys(patch).length > 0, "A resize patch must change width or height"),
+  }).strict(),
+  z.object({ type: z.literal("remove"), openingId: EntityIdSchema }).strict(),
+]);
+
+const ApplyRoomStructureEditInputSchema = z.object({
+  expectedRevision: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+  dimensions: RoomDimensionsSchema.partial().refine(
+    (dimensions) => Object.keys(dimensions).length > 0,
+    "A dimensions patch must change at least one field",
+  ).optional(),
+  geometry: RoomGeometrySchema.optional(),
+  openingOperations: z.array(WebMcpRoomOpeningOperationSchema).min(1).max(8).optional(),
+}).strict().refine(
+  (input) => input.dimensions !== undefined || input.geometry !== undefined || (input.openingOperations?.length ?? 0) > 0,
+  "A structure edit must include dimensions, geometry, or openingOperations",
+);
+
 const applyRoomEdit = (
   store: RoomStore,
   rawInput: unknown,
@@ -1329,12 +1657,91 @@ const applyRoomEdit = (
   });
 };
 
+const projectStructureReceipt = (receipt: NonNullable<ReturnType<RoomStore["getState"]>["receipts"][number]>) => ({
+  origin: receipt.origin,
+  status: receipt.status,
+  revision: receipt.revision,
+  changeType: receipt.changeType,
+  summary: receipt.summary,
+  affectedItemIds: [...receipt.affectedItemIds],
+  removedItemIds: [...receipt.removedItemIds],
+  affectedOpeningIds: [...(receipt.affectedOpeningIds ?? [])],
+  removedOpeningIds: [...(receipt.removedOpeningIds ?? [])],
+  ...(receipt.code ? { code: receipt.code } : {}),
+});
+
+const applyRoomStructureEdit = (
+  store: RoomStore,
+  rawInput: unknown,
+  signal?: AbortSignal,
+) => {
+  throwIfAborted(signal);
+  const current = store.getState();
+  if (
+    rawInput !== null &&
+    typeof rawInput === "object" &&
+    !Array.isArray(rawInput) &&
+    Array.isArray((rawInput as Record<string, unknown>).openingOperations) &&
+    ((rawInput as Record<string, unknown>).openingOperations as unknown[]).length > 8
+  ) {
+    return enforceWebMcpOutputBound({
+      ok: false as const,
+      revision: current.revision,
+      code: "TOO_MANY_OPERATIONS" as const,
+      message: "openingOperations must contain 1 to 8 items",
+    });
+  }
+  const parsedInput = ApplyRoomStructureEditInputSchema.safeParse(rawInput);
+  if (!parsedInput.success) {
+    return enforceWebMcpOutputBound({
+      ok: false as const,
+      revision: current.revision,
+      code: "INVALID_DOCUMENT" as const,
+      message: "input must contain a bounded structure change at an exact room revision",
+    });
+  }
+
+  const input = parsedInput.data;
+  throwIfAborted(signal);
+  const result = current.transact({
+    [LOCAL_CATALOG_TRANSACTION]: true,
+    expectedRevision: input.expectedRevision,
+    origin: "webmcp",
+    change: {
+      type: "structure",
+      dimensions: input.dimensions,
+      geometry: input.geometry,
+      openingOperations: input.openingOperations ?? [],
+    } satisfies RoomStructureChange,
+  });
+
+  if (!result.ok) {
+    return enforceWebMcpOutputBound({
+      ok: false as const,
+      revision: result.revision,
+      code: result.code,
+      message: result.message,
+      ...projectWarnings(result.warnings),
+      receipt: projectStructureReceipt(result.receipt),
+    });
+  }
+
+  return enforceWebMcpOutputBound({
+    ok: true as const,
+    revision: result.revision,
+    applied: result.applied,
+    ...projectWarnings(result.warnings),
+    receipt: projectStructureReceipt(result.receipt),
+  });
+};
+
 export const createRoomToolDefinitions = (
   store: RoomStore,
   offerResolver: RetailerOfferResolver = createSyntheticRetailerOfferResolver(
     store.readCatalog,
   ),
   commerce?: WebMcpCommerceContext,
+  lightingPreviewStore: LightingPreviewStore = createLightingPreviewStore(),
 ): WebMcpToolDefinition[] => {
   const definitions: WebMcpToolDefinition[] = [
     {
@@ -1377,6 +1784,45 @@ export const createRoomToolDefinitions = (
         untrustedContentHint: true,
       },
       execute: (input, { signal }) => applyRoomEdit(store, input, signal),
+    },
+    {
+      name: "apply_room_structure_edit",
+      title: "Apply room structure edit",
+      description:
+        "Atomically change one room's dimensions, rectangle or southeast-notch L shape, and bounded door or window openings at an exact room revision; invalidated furniture or openings are rejected without relocation.",
+      inputSchema: APPLY_ROOM_STRUCTURE_EDIT_INPUT_SCHEMA,
+      annotations: {
+        readOnlyHint: false,
+        untrustedContentHint: true,
+      },
+      execute: (input, { signal }) =>
+        applyRoomStructureEdit(store, input, signal),
+    },
+    {
+      name: "inspect_lighting_preview",
+      title: "Inspect lighting preview",
+      description:
+        "Read the ephemeral Wimy sun and moon preview scenario, independent lighting revision, validation state, and bounded derived status without changing the room.",
+      inputSchema: INSPECT_LIGHTING_PREVIEW_INPUT_SCHEMA,
+      annotations: {
+        readOnlyHint: true,
+        untrustedContentHint: false,
+      },
+      execute: (input, { signal }) =>
+        inspectLightingPreview(lightingPreviewStore, input, signal),
+    },
+    {
+      name: "set_lighting_preview",
+      title: "Set lighting preview",
+      description:
+        "Atomically update the ephemeral sun and moon preview at an exact lighting revision using bounded local date, minute-of-day, timezone, coarse coordinates, or Plan North bearing; this never changes the room document.",
+      inputSchema: SET_LIGHTING_PREVIEW_INPUT_SCHEMA,
+      annotations: {
+        readOnlyHint: false,
+        untrustedContentHint: false,
+      },
+      execute: (input, { signal }) =>
+        setLightingPreview(lightingPreviewStore, input, signal),
     },
     {
       name: "inspect_retailer_offers",
@@ -1497,11 +1943,11 @@ export const registerRoomTools = async (
     ...definition,
     execute: (
       input: Record<string, unknown>,
-      { signal }: { signal: AbortSignal },
+      options?: WebMCP.ToolExecuteCallbackOptions,
     ) =>
       definition.execute(input, {
-        signal: signal
-          ? AbortSignal.any([controller.signal, signal])
+        signal: options?.signal
+          ? AbortSignal.any([controller.signal, options.signal])
           : controller.signal,
       }),
   }));

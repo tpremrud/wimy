@@ -2,8 +2,11 @@ import type {
   EntityId,
   CatalogRef,
   FurnitureSnapshot,
+  Opening,
   PlacedItem,
   Pose,
+  RoomDimensions,
+  RoomGeometry,
   WimyRoomV1,
 } from "./document";
 import { WimyRoomV1Schema } from "./document";
@@ -37,10 +40,37 @@ export type RoomOperation =
       productId: string;
       sourceCatalogRef?: CatalogRef;
       confirmedByHuman: true;
-    };
+  };
+
+export type RoomOpeningOperation =
+  | { type: "add"; opening: Opening }
+  | {
+      type: "update";
+      openingId: EntityId;
+      patch: Partial<Omit<Opening, "id">>;
+    }
+  | {
+      type: "move";
+      openingId: EntityId;
+      patch: Partial<Pick<Opening, "wall" | "centerOffset">>;
+    }
+  | {
+      type: "resize";
+      openingId: EntityId;
+      patch: Partial<Pick<Opening, "width" | "height">>;
+    }
+  | { type: "remove"; openingId: EntityId };
+
+export type RoomStructureChange = {
+  type: "structure";
+  dimensions?: Partial<RoomDimensions>;
+  geometry?: RoomGeometry;
+  openingOperations: RoomOpeningOperation[];
+};
 
 export type RoomChange =
   | { type: "edit"; operations: RoomOperation[] }
+  | RoomStructureChange
   | { type: "replace"; room: WimyRoomV1 };
 
 export const LOCAL_CATALOG_TRANSACTION = Symbol(
@@ -59,6 +89,7 @@ export type TransactionFailureCode =
   | "INVALID_DOCUMENT"
   | "UNKNOWN_PRODUCT"
   | "UNKNOWN_ITEM"
+  | "UNKNOWN_OPENING"
   | "OUT_OF_BOUNDS"
   | "COLLISION"
   | "DOOR_CLEARANCE"
@@ -73,6 +104,8 @@ export type ActivityReceipt = {
   code?: TransactionFailureCode;
   affectedItemIds: EntityId[];
   removedItemIds: EntityId[];
+  affectedOpeningIds?: EntityId[];
+  removedOpeningIds?: EntityId[];
 };
 
 export type RoomTransactionResult =
@@ -163,6 +196,104 @@ const rejectTransaction = (
   },
 });
 
+type StructureCandidateResult =
+  | {
+      ok: true;
+      room: WimyRoomV1;
+      affectedOpeningIds: EntityId[];
+      removedOpeningIds: EntityId[];
+    }
+  | {
+      ok: false;
+      code: TransactionFailureCode;
+      message: string;
+    };
+
+const applyRoomStructureChange = (
+  currentRoom: WimyRoomV1,
+  change: RoomStructureChange,
+): StructureCandidateResult => {
+  const nextRoom = structuredClone(currentRoom);
+  if (change.dimensions) {
+    nextRoom.dimensions = { ...nextRoom.dimensions, ...change.dimensions };
+  }
+  if (change.geometry) {
+    nextRoom.geometry = structuredClone(change.geometry);
+  }
+
+  const affectedOpeningIds: EntityId[] = [];
+  const removedOpeningIds: EntityId[] = [];
+  for (const operation of change.openingOperations) {
+    if (operation.type === "add") {
+      if (
+        nextRoom.openings.some(({ id }) => id === operation.opening.id) ||
+        nextRoom.items.some(({ id }) => id === operation.opening.id)
+      ) {
+        return {
+          ok: false,
+          code: "INVALID_DOCUMENT",
+          message: `Opening identity ${operation.opening.id} is already in use`,
+        };
+      }
+      nextRoom.openings.push(structuredClone(operation.opening));
+      affectedOpeningIds.push(operation.opening.id);
+      continue;
+    }
+
+    const openingIndex = nextRoom.openings.findIndex(
+      ({ id }) => id === operation.openingId,
+    );
+    if (openingIndex < 0) {
+      return {
+        ok: false,
+        code: "UNKNOWN_OPENING",
+        message: `Unknown opening ${operation.openingId}`,
+      };
+    }
+
+    const opening = nextRoom.openings[openingIndex];
+    if (!opening) {
+      return {
+        ok: false,
+        code: "UNKNOWN_OPENING",
+        message: `Unknown opening ${operation.openingId}`,
+      };
+    }
+    affectedOpeningIds.push(operation.openingId);
+    if (operation.type === "remove") {
+      nextRoom.openings.splice(openingIndex, 1);
+      removedOpeningIds.push(operation.openingId);
+    } else {
+      nextRoom.openings[openingIndex] = {
+        ...opening,
+        ...operation.patch,
+      };
+    }
+  }
+
+  const parsedRoom = WimyRoomV1Schema.safeParse(nextRoom);
+  if (!parsedRoom.success) {
+    const issue = parsedRoom.error.issues[0];
+    return {
+      ok: false,
+      code: "INVALID_DOCUMENT",
+      message: issue ? `Invalid room document: ${issue.message}` : "Invalid room document",
+    };
+  }
+
+  for (const item of parsedRoom.data.items) {
+    const placement = validatePlacement(parsedRoom.data, item, item.pose);
+    if (!placement.ok) return placement;
+  }
+
+  return {
+    ok: true,
+    room: parsedRoom.data,
+    affectedOpeningIds,
+    removedOpeningIds,
+  };
+};
+
 export function applyRoomTransaction(
   state: RuntimeRoomState,
   request: RoomTransactionRequest,
@@ -205,6 +336,25 @@ export function applyRoomTransaction(
       dependencies,
       "TOO_MANY_OPERATIONS",
       "Edit transactions require 1 to 8 operations",
+    );
+  }
+
+  if (
+    request.change.type === "structure" &&
+    (request.change.openingOperations.length > 8 ||
+      (request.change.openingOperations.length === 0 &&
+        (request.change.dimensions === undefined ||
+          Object.keys(request.change.dimensions).length === 0) &&
+        request.change.geometry === undefined))
+  ) {
+    return rejectTransaction(
+      state,
+      request,
+      dependencies,
+      "TOO_MANY_OPERATIONS",
+      request.change.openingOperations.length > 8
+        ? "Structure edits allow at most 8 opening operations"
+        : "Structure edits require dimensions, geometry, or an opening operation",
     );
   }
 
@@ -278,6 +428,50 @@ export function applyRoomTransaction(
         applied: 1,
         affectedItemIds,
         warnings: getRoomLayoutWarnings(room, dependencies),
+        receipt,
+      },
+    };
+  }
+
+  if (request.change.type === "structure") {
+    const candidate = applyRoomStructureChange(state.room, request.change);
+    if (!candidate.ok) {
+      return rejectTransaction(
+        state,
+        request,
+        dependencies,
+        candidate.code,
+        candidate.message,
+      );
+    }
+
+    const revision = state.revision + 1;
+    const receipt: ActivityReceipt = {
+      origin: request.origin,
+      status: "accepted",
+      revision,
+      changeType: request.change.type,
+      summary: `Updated room structure (${[
+        request.change.dimensions ? "dimensions" : undefined,
+        request.change.geometry ? "geometry" : undefined,
+        request.change.openingOperations.length > 0
+          ? `${request.change.openingOperations.length} opening operation${request.change.openingOperations.length === 1 ? "" : "s"}`
+          : undefined,
+      ].filter((part): part is string => part !== undefined).join(", ")})`,
+      affectedItemIds: [],
+      removedItemIds: [],
+      affectedOpeningIds: candidate.affectedOpeningIds,
+      removedOpeningIds: candidate.removedOpeningIds,
+    };
+
+    return {
+      state: { room: candidate.room, revision },
+      result: {
+        ok: true,
+        revision,
+        applied: 1,
+        affectedItemIds: [],
+        warnings: getRoomLayoutWarnings(candidate.room, dependencies),
         receipt,
       },
     };
