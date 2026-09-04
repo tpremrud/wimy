@@ -4,15 +4,13 @@ Wimy ("What's in my room?") is a local-first room decision workspace where a per
 
 Built for [The WebMCP Challenge](https://webmcp.devpost.com/). The repository is released under the [MIT License](LICENSE).
 
-> Draft status — 2026-08-30: this is a local release candidate. The static application gates are being verified, while a deployed URL and an exact native WebMCP browser transcript remain owner-run release gates. This README does not claim either one.
-
 ## What is shipped
 
 - One rectangular or L-shaped room with dimensions in meters, movable/addable/removable doors and windows, and a primary SVG 2D editor.
 - Human selection, keyboard activation, drag-to-move, quarter-turn rotation, add, and remove actions. Accepted changes show a visible activity receipt and advance the runtime revision.
 - A read-only procedural 3D preview derived from the same committed room. It uses room geometry and item snapshots to draw floors, walls, openings, and category-shaped primitives; it never edits the room. Direct sun and illustrative moon shadow sources originate only at qualifying window apertures, while non-shadow-casting ambient sky light keeps the room legible. If WebGL or the preview chunk is unavailable, the room summary and placed-item list remain usable.
 - Three independent room templates: Blank Room, Compact Bedroom, and Living Room.
-- A twelve-item local fictional catalog. Category, style tags, fictional USD price snapshots, and maximum footprint filters are deterministic. A fit search tries quarter-turns in `0`, `90`, `180`, `270` degree order and scans a fixed 0.1 m grid, returning the first legal pose for each result.
+- A seventeen-item local fictional catalog. Category, style tags, fictional USD price snapshots, and maximum footprint filters are deterministic. A fit search tries quarter-turns in `0`, `90`, `180`, `270` degree order and scans a fixed 0.1 m grid, returning the first legal pose for each result.
 - Nine anonymous WebMCP room tools that share the human editor's committed state: `inspect_room`, `find_furniture`, `apply_room_edit`, `apply_room_structure_edit`, `inspect_lighting_preview`, `set_lighting_preview`, the read-only `inspect_retailer_offers` evidence lookup, the read-only `inspect_room_shopping_plan` comparison, and the read-only `find_substitutes` ranking. An authenticated local demo session additionally exposes four bounded shopping-plan tools for exact project-authored offers. Quantities come from placed catalog items, and no checkout, order, payment, or buy connection exists.
 - Lighting preview controls use a separate ephemeral revision from the canonical room revision. They can change the human timeline and window-light preview without changing room geometry, furniture, receipts, undo state, or exported `.wimy` content; every tool write requires the current `expectedLightingRevision`.
 - A versioned `.wimy` file for no-account export/import. The file is UTF-8 JSON, intentionally human-readable and strict; a custom Markdown-like room language is not part of v1.
